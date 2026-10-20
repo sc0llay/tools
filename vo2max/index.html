@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VO₂max Estimator</title>
+<meta name="description" content="Estimate VO2max from heart rate, pace, grade and surface, plus grade-adjusted energy cost.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VO₂max">
+<meta name="theme-color" content="#E9EEF5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#07090D" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/vo2max-180.png">
+<link rel="icon" type="image/png" href="../icons/vo2max-192.png">
+<style>
+  /* Layout: floating glass header over an ambient colour field; two columns of glass panels (inputs | results), one column on phones. */
+  :root{
+    --bg:#E9EEF5; --card:#FFFFFF;
+    --blob-a:#5AC8FA; --blob-b:#FFB340; --blob-c:#7D7AFF;
+    --glass:rgba(255,255,255,.52); --glass-strong:rgba(255,255,255,.72);
+    --glass-edge:rgba(255,255,255,.85); --glass-rim:rgba(0,0,0,.06);
+    --shadow:0 8px 32px rgba(31,45,80,.12),0 1px 2px rgba(31,45,80,.06);
+    --label:#0B0D12; --label-2:rgba(40,46,60,.66); --label-3:rgba(40,46,60,.36);
+    --sep:rgba(40,46,60,.14); --fill:rgba(120,128,150,.14);
+    --teal:#1EA5BD; --green:#28A745; --orange:#F08A00; --red:#E5322B; --blue:#007AFF; --yellow:#C9A000;
+    --o2:#1EA5BD; --kcal:#F08A00; --grid:rgba(40,46,60,.10);
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+    --round:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --blur:blur(24px) saturate(180%);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#07090D; --card:#2A2E38;
+      --blob-a:#0E6E8C; --blob-b:#8A4A00; --blob-c:#3A2E9C;
+      --glass:rgba(40,44,54,.46); --glass-strong:rgba(52,56,68,.62);
+      --glass-edge:rgba(255,255,255,.16); --glass-rim:rgba(255,255,255,.05);
+      --shadow:0 10px 36px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
+      --label:#F5F7FA; --label-2:rgba(235,238,245,.64); --label-3:rgba(235,238,245,.32);
+      --sep:rgba(235,238,245,.12); --fill:rgba(140,145,165,.18);
+      --teal:#5AD6EC; --green:#34D364; --orange:#FFA733; --red:#FF5A50; --blue:#3D9BFF; --yellow:#FFD84D;
+      --o2:#5AD6EC; --kcal:#FFA733; --grid:rgba(235,238,245,.09);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#07090D; --card:#2A2E38;
+    --blob-a:#0E6E8C; --blob-b:#8A4A00; --blob-c:#3A2E9C;
+    --glass:rgba(40,44,54,.46); --glass-strong:rgba(52,56,68,.62);
+    --glass-edge:rgba(255,255,255,.16); --glass-rim:rgba(255,255,255,.05);
+    --shadow:0 10px 36px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
+    --label:#F5F7FA; --label-2:rgba(235,238,245,.64); --label-3:rgba(235,238,245,.32);
+    --sep:rgba(235,238,245,.12); --fill:rgba(140,145,165,.18);
+    --teal:#5AD6EC; --green:#34D364; --orange:#FFA733; --red:#FF5A50; --blue:#3D9BFF; --yellow:#FFD84D;
+    --o2:#5AD6EC; --kcal:#FFA733; --grid:rgba(235,238,245,.09);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--bg);color:var(--label);font-family:var(--font);
+    font-size:17px;line-height:1.29;letter-spacing:-.41px;
+    padding-inline:16px;padding-block:0 40px;min-height:100vh;
+  }
+
+  /* Ambient colour field the glass refracts */
+  .field{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+  .field i{position:absolute;border-radius:50%;filter:blur(70px);opacity:.75}
+  .field i:nth-child(1){width:55vmax;height:55vmax;left:-18vmax;top:-14vmax;background:var(--blob-a)}
+  .field i:nth-child(2){width:46vmax;height:46vmax;right:-16vmax;top:22vh;background:var(--blob-b);opacity:.55}
+  .field i:nth-child(3){width:50vmax;height:50vmax;left:10vw;bottom:-26vmax;background:var(--blob-c);opacity:.55}
+  @media (prefers-reduced-motion:no-preference){
+    .field i{animation:drift 28s ease-in-out infinite alternate}
+    .field i:nth-child(2){animation-duration:34s}
+    .field i:nth-child(3){animation-duration:40s}
+  }
+  @keyframes drift{to{transform:translate(4vmax,3vmax) scale(1.06)}}
+
+  .wrap{position:relative;z-index:1;max-width:980px;margin:0 auto}
+
+  /* Glass material */
+  .glass{
+    background:var(--glass);
+    -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+    border:1px solid var(--glass-rim);
+    box-shadow:var(--shadow),inset 0 1px 0 var(--glass-edge),inset 0 -1px 0 var(--glass-rim);
+    position:relative;
+  }
+  .glass::before{
+    content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(160deg,rgba(255,255,255,.28),rgba(255,255,255,0) 38%);
+    mix-blend-mode:soft-light;
+  }
+  @media (prefers-reduced-transparency:reduce){
+    .glass{background:var(--glass-strong);-webkit-backdrop-filter:none;backdrop-filter:none}
+  }
+
+  /* Floating header capsule */
+  .nav{
+    position:sticky;top:calc(env(safe-area-inset-top,0px) + 10px);z-index:5;
+    margin-top:14px;padding:12px 20px;border-radius:26px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  }
+  .nav .eyebrow{font-size:12px;font-weight:600;color:var(--label-2);text-transform:uppercase;letter-spacing:.4px}
+  .nav h1{font-size:28px;font-weight:700;letter-spacing:.2px;line-height:1.15;text-wrap:balance}
+  .nav h1 span{color:var(--o2)}
+  .nav .live{display:flex;align-items:baseline;gap:6px;font-family:var(--round);font-weight:700;font-size:22px;color:var(--o2);font-variant-numeric:tabular-nums}
+  .nav .live small{font-size:12px;font-weight:600;color:var(--label-2);text-transform:uppercase;letter-spacing:.3px}
+
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 24px;align-items:start;margin-top:18px}
+  .cols > div{min-width:0}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+
+  /* Segmented control with sliding glass thumb */
+  .seg{display:grid;grid-template-columns:1fr 1fr;border-radius:999px;padding:3px;margin-bottom:10px;background:var(--fill);position:relative;
+    -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-rim)}
+  .seg .thumb{
+    position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;
+    background:var(--glass-strong);box-shadow:0 2px 10px rgba(0,0,0,.12),inset 0 1px 0 var(--glass-edge);
+    transition:transform .38s cubic-bezier(.3,1.4,.5,1);
+  }
+  .seg:has(button:nth-of-type(2).on) .thumb{transform:translateX(100%)}
+  .seg button{
+    position:relative;z-index:1;border:none;background:none;color:var(--label-2);
+    font-family:var(--font);font-size:14px;font-weight:600;letter-spacing:-.1px;
+    padding:9px 6px;border-radius:999px;cursor:pointer;transition:color .2s;
+  }
+  .seg button.on{color:var(--label)}
+  .seg button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+  @media (prefers-reduced-motion:reduce){.seg .thumb{transition:none}}
+
+  /* Grouped inset glass lists */
+  .section-h{font-size:12px;font-weight:600;color:var(--label-2);text-transform:uppercase;letter-spacing:.4px;padding:18px 18px 7px}
+  .section-f{font-size:13px;color:var(--label-2);letter-spacing:-.08px;padding:8px 18px 0;line-height:1.38}
+  .group{border-radius:22px;overflow:hidden}
+  .cell{display:flex;align-items:center;min-height:48px;padding:0 18px;gap:10px;position:relative;z-index:1}
+  .cell + .cell::after{content:"";position:absolute;top:0;left:18px;right:0;height:.5px;background:var(--sep)}
+  .cell .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cell .lbl small{display:block;font-size:12px;color:var(--label-2);letter-spacing:0}
+  .cell input{
+    border:none;color:var(--label);font-family:var(--font);font-size:17px;font-weight:500;
+    text-align:right;width:92px;padding:7px 10px;border-radius:12px;background:var(--fill);
+    letter-spacing:-.41px;font-variant-numeric:tabular-nums;transition:box-shadow .2s,background .2s;
+  }
+  .cell input:focus{outline:none;background:var(--glass-strong);box-shadow:0 0 0 2px var(--blue)}
+  .cell input::placeholder{color:var(--label-3)}
+  .cell .u{color:var(--label-3);font-size:14px;min-width:30px}
+  .cell select{
+    -webkit-appearance:none;appearance:none;border:none;font-family:var(--font);font-size:15px;font-weight:600;
+    color:var(--blue);background:var(--fill);border-radius:999px;padding:7px 30px 7px 14px;max-width:64%;cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='14' viewBox='0 0 9 14'%3E%3Cpath d='M1.5 5L4.5 2 7.5 5M1.5 9l3 3 3-3' stroke='%23007AFF' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;
+  }
+  .cell select:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+  .cell select option{color:#000;background:#fff}
+
+  /* Result tiles */
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:380px){.tiles{grid-template-columns:1fr}}
+  .tile{border-radius:26px;padding:16px 18px 18px;overflow:hidden}
+  .tile > *{position:relative;z-index:1}
+  .tile .tint{position:absolute;inset:0;z-index:0;opacity:.16;pointer-events:none}
+  .tile.o2 .tint{background:radial-gradient(120% 90% at 0% 0%,var(--o2),transparent 70%)}
+  .tile.kc .tint{background:radial-gradient(120% 90% at 0% 0%,var(--kcal),transparent 70%)}
+  .tile .t-h{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600}
+  .tile .t-h svg{width:17px;height:17px}
+  .tile.o2 .t-h{color:var(--o2)} .tile.kc .t-h{color:var(--kcal)}
+  .tile .v{font-family:var(--round);font-size:42px;font-weight:700;line-height:1.05;margin-top:10px;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+  .tile .v small{font-family:var(--round);font-size:13px;font-weight:600;color:var(--label-2);margin-left:4px;letter-spacing:.2px;text-transform:uppercase}
+  .tile .sub{font-size:13px;color:var(--label-2);margin-top:7px;letter-spacing:-.08px;min-height:17px}
+  .pill{display:inline-block;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;margin-top:9px;box-shadow:inset 0 1px 0 var(--glass-edge)}
+
+  .cell .val{font-variant-numeric:tabular-nums;color:var(--label);font-weight:500;text-align:right;white-space:nowrap}
+  .cell .val.o2{color:var(--o2)} .cell .val.kcal{color:var(--kcal)}
+  .cell.ro{padding-top:8px;padding-bottom:8px}
+
+  .banner{display:none;gap:10px;align-items:flex-start;border-radius:20px;padding:13px 16px;margin-top:12px;font-size:15px;line-height:1.33}
+  .banner.show{display:flex}
+  .banner > *{position:relative;z-index:1}
+  .banner svg{flex:none;width:20px;height:20px;margin-top:1px}
+  .banner b{font-weight:600}
+
+  .chart{border-radius:22px;padding:16px 14px 12px}
+  .chart > *{position:relative;z-index:1}
+  svg.curve{display:block;width:100%;height:auto}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--label-2);margin-top:8px;padding:0 4px;font-variant-numeric:tabular-nums}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .dot{width:8px;height:8px;border-radius:50%}
+
+  details{border-radius:22px;padding:0 18px}
+  details > *{position:relative;z-index:1}
+  summary{list-style:none;cursor:pointer;min-height:48px;display:flex;align-items:center;justify-content:space-between;color:var(--blue);font-weight:500}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--label-3);border-bottom:2px solid var(--label-3);transform:rotate(45deg);transition:.2s;margin-right:4px}
+  details[open] summary::after{transform:rotate(225deg)}
+  summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:8px}
+  details p{font-size:13px;color:var(--label-2);line-height:1.45;padding-bottom:12px;max-width:65ch}
+  details p b{color:var(--label);font-weight:600}
+</style>
+<style>
+  :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .home{display:inline-flex;align-items:center;gap:4px;font-size:15px;font-weight:600;color:var(--blue);text-decoration:none;
+    padding:8px 14px;border-radius:999px;background:var(--fill)}
+  .home:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  .home svg{width:9px;height:15px}
+  .saved{font-size:12px;color:var(--label-3);padding:10px 18px 0}
+</style>
+</head>
+<body>
+
+
+<div class="field" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="wrap">
+  <header class="nav glass">
+    <div>
+      <div class="eyebrow">Submaximal field estimate</div>
+      <h1><span>VO₂max</span> &amp; Effort</h1>
+    </div>
+    <a class="home" href="../"><svg viewBox="0 0 9 15" aria-hidden="true"><path d="M7.5 1.5L1.5 7.5l6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>All tools</a>
+  </header>
+
+  <div class="cols">
+    <!-- INPUT COLUMN -->
+    <div>
+      <div class="seg" id="modeSeg">
+        <span class="thumb" aria-hidden="true"></span>
+        <button data-mode="run" class="on">Run</button>
+        <button data-mode="walk">Walk</button>
+      </div>
+      <div class="seg" id="engineSeg">
+        <span class="thumb" aria-hidden="true"></span>
+        <button data-engine="acsm" class="on">ACSM</button>
+        <button data-engine="minetti">Minetti</button>
+      </div>
+
+      <div class="section-h">Heart Rate</div>
+      <div class="group glass">
+        <label class="cell"><span class="lbl">Average</span><input id="hr" type="number" inputmode="numeric" placeholder="165"><span class="u">bpm</span></label>
+        <label class="cell"><span class="lbl">Resting</span><input id="rhr" type="number" inputmode="numeric" placeholder="50"><span class="u">bpm</span></label>
+        <label class="cell"><span class="lbl">Maximum</span><input id="mhr" type="number" inputmode="numeric" placeholder="190"><span class="u">bpm</span></label>
+        <label class="cell"><span class="lbl">Age<small id="mhrHint">Tanaka est: —</small></span><input id="age" type="number" inputmode="numeric" placeholder="30"><span class="u">yr</span></label>
+      </div>
+      <div class="section-f">Maximum is the highest HR you've ever recorded on a chest strap, not this workout's peak.</div>
+
+      <div class="section-h">Workout</div>
+      <div class="group glass">
+        <label class="cell"><span class="lbl">Pace</span><input id="pace" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="4:30"><span class="u">/km</span></label>
+        <label class="cell"><span class="lbl">Distance</span><input id="dist" type="number" inputmode="decimal" placeholder="5.0" step="0.01"><span class="u">km</span></label>
+        <label class="cell"><span class="lbl">Elevation Gain</span><input id="elev" type="number" inputmode="numeric" placeholder="0"><span class="u">m</span></label>
+        <label class="cell"><span class="lbl">Surface</span>
+          <select id="surface">
+            <option value="1.00">Road ×1.00</option>
+            <option value="1.05">Grass / Firm Trail ×1.05</option>
+            <option value="1.10">Technical Trail ×1.10</option>
+            <option value="1.35">Soft / Mud / Sand ×1.35</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="section-h">Body &amp; Energy</div>
+      <div class="group glass">
+        <label class="cell"><span class="lbl">Weight</span><input id="wt" type="number" inputmode="decimal" placeholder="70" step="0.05"><span class="u">kg</span></label>
+        <label class="cell"><span class="lbl">Total Calories<small>Optional · from watch</small></span><input id="kcalIn" type="number" inputmode="numeric" placeholder="—"><span class="u">kcal</span></label>
+      </div>
+      <div class="section-f">Adding total calories shows measured kcal/km and a watch-vs-model comparison.</div>
+      <div class="saved" id="savedNote">Your entries stay on this device only.</div>
+    </div>
+
+    <!-- OUTPUT COLUMN -->
+    <div>
+      <div class="section-h" style="padding-top:0">Results</div>
+      <div class="tiles">
+        <div class="tile o2 glass">
+          <span class="tint" aria-hidden="true"></span>
+          <div class="t-h"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.1C.9 8.6 3 5 6.5 5c2.1 0 3.4 1.1 4.2 2.3h2.6C14.1 6.1 15.4 5 17.5 5 21 5 23.1 8.6 21.6 11.9 19.5 16.4 12 21 12 21z"/></svg>VO₂max</div>
+          <div class="v"><span id="vo2max">—</span><small>ml/kg/min</small></div>
+          <span class="pill" id="catBadge" style="display:none"></span>
+          <div class="sub" id="vo2foot">—</div>
+        </div>
+        <div class="tile kc glass">
+          <span class="tint" aria-hidden="true"></span>
+          <div class="t-h"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 2s1 3.2-1.6 6.4C9.4 11.4 7 13 7 16.3 7 19.5 9.4 22 12.5 22s5.5-2.4 5.5-5.8c0-4-3-5.6-3-8.7 0 0-2 1.3-2.3 3.4C12.4 7.4 14.7 5 13.5 2z"/></svg>Energy</div>
+          <div class="v"><span id="kcalkm">—</span><small>kcal/km</small></div>
+          <div class="sub" id="kcalfoot">—</div>
+        </div>
+      </div>
+
+      <div class="banner glass" id="flag">
+        <svg viewBox="0 0 24 24"><path d="M12 3L1.5 21h21L12 3z" fill="var(--orange)"/><path d="M12 9.5v5M12 17.2v.3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        <div id="flagText"></div>
+      </div>
+
+      <div class="section-h">Details</div>
+      <div class="group glass" id="metrics"></div>
+
+      <div class="section-h">Grade Cost Curve · Minetti 2002</div>
+      <div class="chart glass">
+        <svg class="curve" id="curve" viewBox="0 0 400 200" preserveAspectRatio="none" aria-label="Energy cost of running versus gradient"></svg>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--kcal)"></span>Cost J·kg⁻¹·m⁻¹</span>
+          <span><span class="dot" style="background:var(--o2)"></span>Your workout</span>
+          <span id="gradeReadout"></span>
+        </div>
+      </div>
+
+      <div class="section-h">About</div>
+      <details class="glass">
+        <summary>Method, accuracy &amp; sources</summary>
+        <p><b>Method.</b> VO₂ at pace from the selected engine, extrapolated to max via %VO₂ reserve ≈ %HR reserve: VO₂max = 3.5 + (VO₂pace − 3.5) ÷ %HRR. Energy cost from Minetti's gradient polynomial, O₂ → energy at 20.9 kJ·L⁻¹.</p>
+        <p><b>Reliability.</b> Most accurate from a sustained, steady effort at ≥70% HRR. Easy runs (&lt;60% HRR) get noisy. Grade = total ascent ÷ distance as one average gradient; descents aren't credited.</p>
+        <p><b>Surface factor</b> scales movement (net) cost on top of grade: road ×1.00, grass/firm ×1.05, technical ×1.10, soft/mud/sand ×1.35. Road leaves results unchanged.</p>
+        <p><b>Uth cross-check</b> (15.3 × HRmax/HRrest) runs high at very low resting HR, so treat it as a loose upper bound.</p>
+        <p><b>Sources.</b> ACSM metabolic equations (11th ed.); Minetti et al., J Appl Physiol 2002; Swain &amp; Leutholtz, MSSE 1997/2004; Uth et al., Eur J Appl Physiol 2004; Pinnington &amp; Dawson, J Sci Med Sport 2001.</p>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const state = { mode:"run", engine:"acsm" };
+
+// ---- constants ----
+const REST_VO2 = 3.5;
+const O2_J_PER_ML = 20.9;
+const KCAL_PER_L = O2_J_PER_ML/4.184;
+const KCAL_PER_J = 1/4184;
+
+function minettiC(g){
+  g = Math.max(-0.45, Math.min(0.45, g));
+  return 155.4*g**5 - 30.4*g**4 - 43.3*g**3 + 46.3*g**2 + 19.5*g + 3.6;
+}
+function parsePace(str){
+  if(!str) return NaN;
+  str = str.trim();
+  if(str.includes(":")){
+    const [m,s] = str.split(":");
+    const mm = parseFloat(m), ss = parseFloat(s||"0");
+    if(isNaN(mm)||isNaN(ss)) return NaN;
+    return mm*60 + ss;
+  }
+  const v = parseFloat(str);
+  return isNaN(v) ? NaN : v*60;
+}
+function fmtPace(sec){
+  if(!isFinite(sec)||sec<=0) return "—";
+  const m = Math.floor(sec/60), s = Math.round(sec-m*60);
+  return `${m}:${s.toString().padStart(2,"0")}`;
+}
+function vo2Category(v, age){
+  const bands = {"20":[42,46,50,55],"30":[41,45,49,53],"40":[38,42,46,50],"50":[35,39,43,47],"60":[31,36,40,44]};
+  const key = age<30?"20":age<40?"30":age<50?"40":age<60?"50":"60";
+  const b = bands[key];
+  if(v>=b[3]) return {label:"Superior",color:"var(--teal)"};
+  if(v>=b[2]) return {label:"Excellent",color:"var(--green)"};
+  if(v>=b[1]) return {label:"Good",color:"var(--yellow)"};
+  if(v>=b[0]) return {label:"Fair",color:"var(--orange)"};
+  return {label:"Below Avg",color:"var(--red)"};
+}
+
+function compute(){
+  const hr = +$("hr").value, rhr = +$("rhr").value, mhr = +$("mhr").value;
+  const age = +$("age").value;
+  const paceSec = parsePace($("pace").value);
+  const dist = +$("dist").value;
+  const elev = +$("elev").value || 0;
+  const wt = +$("wt").value;
+  const kcalIn = parseFloat($("kcalIn").value);
+  const terrain = parseFloat($("surface").value) || 1;
+
+  $("mhrHint").textContent = age>0 ? `Tanaka est. max: ${Math.round(208-0.7*age)} bpm` : "Tanaka est: —";
+
+  const flags = [];
+  const valid = hr>0&&rhr>0&&mhr>0&&paceSec>0&&dist>0&&wt>0&&mhr>rhr&&hr>rhr;
+  if(!valid){ blank(); return; }
+
+  const speed_ms = 1000/paceSec;
+  const v_mmin = speed_ms*60;
+  const kmh = speed_ms*3.6;
+  const grade = elev/(dist*1000);
+
+  let engine = state.engine;
+  if(state.mode==="walk" && engine==="minetti"){
+    engine="acsm"; flags.push("Walk mode uses the <b>ACSM walking</b> equation — the Minetti curve is for running.");
+  }
+  if(state.mode==="run" && kmh<8) flags.push(`<b>${kmh.toFixed(1)} km/h</b> is below the running-equation floor (~8 km/h). Try Walk mode.`);
+  if(state.mode==="walk" && kmh>7.5) flags.push(`<b>${kmh.toFixed(1)} km/h</b> is above the walking-equation ceiling. Try Run mode.`);
+
+  let vo2pace;
+  if(engine==="acsm"){
+    vo2pace = state.mode==="walk"
+      ? 0.1*v_mmin + 1.8*v_mmin*grade + REST_VO2
+      : 0.2*v_mmin + 0.9*v_mmin*grade + REST_VO2;
+  } else {
+    vo2pace = minettiC(grade) * v_mmin / O2_J_PER_ML + REST_VO2;
+  }
+  vo2pace = REST_VO2 + (vo2pace - REST_VO2) * terrain;
+
+  const pHRR = (hr-rhr)/(mhr-rhr);
+  const vo2max = REST_VO2 + (vo2pace-REST_VO2)/pHRR;
+  const vo2maxUth = 15.3*mhr/rhr;
+  if(pHRR<0.6) flags.push(`Effort is <b>${Math.round(pHRR*100)}% HRR</b> — too low to extrapolate reliably. Aim for ≥70%.`);
+
+  const paceMin = paceSec/60;
+  const kcalMin = vo2pace*wt/1000*KCAL_PER_L;
+  const kcalkmModel = kcalMin*paceMin;
+  const Cg = minettiC(grade), C0 = minettiC(0);
+  const kcalkmNet = Cg*1000*wt*KCAL_PER_J*terrain;
+  const gradeTax = (Cg/C0 - 1)*100;
+  const gapSec = paceSec * C0/Cg;
+  const met = vo2pace/REST_VO2;
+  const kcalkmMeasured = (isFinite(kcalIn)&&kcalIn>0) ? kcalIn/dist : null;
+  const totalModel = kcalkmModel*dist;
+
+  $("vo2max").textContent = vo2max.toFixed(1);
+  const cat = vo2Category(vo2max, age||28);
+  const badge = $("catBadge");
+  badge.style.display="inline-block"; badge.textContent=cat.label;
+  badge.style.background=`color-mix(in srgb, ${cat.color} 18%, transparent)`;
+  badge.style.color=cat.color;
+  $("vo2foot").textContent = `${Math.round(pHRR*100)}% HRR · VO₂ at pace ${vo2pace.toFixed(1)}`;
+
+  $("kcalkm").textContent = Math.round(kcalkmMeasured ?? kcalkmModel);
+  $("kcalfoot").textContent = kcalkmMeasured!=null
+     ? `Measured · model ${Math.round(kcalkmModel)} · net ${Math.round(kcalkmNet)}`
+     : `Modeled gross · net ${Math.round(kcalkmNet)}`;
+
+  const faint = s => `<span style="color:var(--label-3)">${s}</span>`;
+  const rows = [
+    ["Grade-Adjusted Pace", `${fmtPace(gapSec)}${faint(" /km")}`, "o2", grade>0.002?"Flat pace of equal effort":"≈ actual (flat)"],
+    ["Elevation Tax", `${(grade*100).toFixed(1)}% · <span style="color:var(--kcal)">${gradeTax>=0?"+":""}${gradeTax.toFixed(0)}%</span>`, "", "Avg grade · energy vs flat"],
+    ["VO₂ at Pace", `${vo2pace.toFixed(1)}`, "", `${met.toFixed(1)} MET`],
+    ["Effort", `${Math.round(pHRR*100)}% HRR · ${Math.round(hr/mhr*100)}% max`, "", ""],
+    ["Uth Cross-Check", `${vo2maxUth.toFixed(1)}`, "o2", "15.3 × HRmax / HRrest"],
+    ["Modeled Burn", `${Math.round(totalModel)}${faint(" kcal")}`, "kcal", `${kcalMin.toFixed(1)} kcal/min`],
+  ];
+  if(terrain>1){
+    const label = $("surface").options[$("surface").selectedIndex].text.replace(/\s*×.*/,"");
+    rows.splice(2,0,["Surface Penalty", `×${terrain.toFixed(2)}`, "kcal", `${label} vs road`]);
+  }
+  if(kcalkmMeasured!=null){
+    const delta = (kcalkmMeasured/kcalkmModel-1)*100;
+    rows.push(["Watch vs Model", `${delta>=0?"+":""}${delta.toFixed(0)}%`, Math.abs(delta)>15?"kcal":"o2", "Measured / modeled kcal/km"]);
+  }
+  $("metrics").innerHTML = rows.map(r=>`
+    <div class="cell ro"><div class="lbl">${r[0]}${r[3]?`<small>${r[3]}</small>`:""}</div>
+    <div class="val ${r[2]}">${r[1]}</div></div>`).join("");
+
+  const fl = $("flag");
+  if(flags.length){ fl.classList.add("show"); $("flagText").innerHTML = flags.join("<br>"); }
+  else fl.classList.remove("show");
+
+  drawCurve(grade, Cg);
+  $("gradeReadout").textContent = `${(grade*100).toFixed(1)}% · C ${Cg.toFixed(1)}`;
+}
+
+function blank(){
+  ["vo2max","kcalkm"].forEach(i=>$(i).textContent="—");
+  $("vo2foot").textContent="Enter HR, pace and distance";
+  $("kcalfoot").textContent="—";
+  $("catBadge").style.display="none";
+  $("metrics").innerHTML="";
+  $("flag").classList.remove("show");
+  drawCurve(null,null);
+}
+
+function drawCurve(userG, userC){
+  const W=400,H=200,pad={l:30,r:8,t:12,b:24};
+  const gMin=-0.30,gMax=0.30;
+  const yLo=1, yHi=Math.ceil(minettiC(gMax));
+  const x = g => pad.l + (g-gMin)/(gMax-gMin)*(W-pad.l-pad.r);
+  const y = c => H-pad.b - (c-yLo)/(yHi-yLo)*(H-pad.t-pad.b);
+  let path="";
+  for(let g=gMin; g<=gMax+1e-9; g+=0.01) path += (g===gMin?"M":"L")+x(g).toFixed(1)+" "+y(minettiC(g)).toFixed(1)+" ";
+  const font = `font-size="9" font-family="-apple-system,system-ui,sans-serif" fill="var(--label-2)"`;
+  let grid="";
+  for(let gg=-0.3; gg<=0.3+1e-9; gg+=0.15){
+    grid+=`<line x1="${x(gg)}" y1="${pad.t}" x2="${x(gg)}" y2="${H-pad.b}" stroke="var(--grid)"/>`;
+    grid+=`<text x="${x(gg)}" y="${H-pad.b+15}" ${font} text-anchor="middle">${gg>0?"+":""}${Math.round(gg*100)}%</text>`;
+  }
+  for(let cc=3; cc<=yHi; cc+=3){
+    grid+=`<line x1="${pad.l}" y1="${y(cc)}" x2="${W-pad.r}" y2="${y(cc)}" stroke="var(--grid)"/>`;
+    grid+=`<text x="${pad.l-6}" y="${y(cc)+3}" ${font} text-anchor="end">${cc}</text>`;
+  }
+  const flat=`<line x1="${x(0)}" y1="${pad.t}" x2="${x(0)}" y2="${H-pad.b}" stroke="var(--label-3)" stroke-dasharray="3 3"/>`;
+  let pt="";
+  if(userG!=null && userG>=gMin && userG<=gMax){
+    const px=x(userG), py=y(userC);
+    pt=`<line x1="${px}" y1="${py}" x2="${px}" y2="${H-pad.b}" stroke="var(--o2)" stroke-dasharray="2 3" opacity=".6"/>
+        <circle cx="${px}" cy="${py}" r="9" fill="var(--o2)" opacity=".2"/>
+        <circle cx="${px}" cy="${py}" r="5" fill="var(--o2)" stroke="var(--card)" stroke-width="2"/>`;
+  }
+  $("curve").innerHTML = grid+flat+`<path d="${path}" fill="none" stroke="var(--kcal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`+pt;
+}
+
+function wireSeg(id, key, attr){
+  document.querySelectorAll(`#${id} button`).forEach(b=>b.onclick=()=>{
+    state[key]=b.dataset[attr];
+    document.querySelectorAll(`#${id} button`).forEach(x=>x.classList.toggle("on",x===b));
+    compute();
+  });
+}
+wireSeg("modeSeg","mode","mode");
+wireSeg("engineSeg","engine","engine");
+document.querySelectorAll("input").forEach(i=>i.addEventListener("input",compute));
+$("surface").addEventListener("change",compute);
+compute();
+</script>
+
+<script>
+"use strict";
+(function(){
+  const KEY="vo2max.inputs.v1";
+  const ids=["hr","rhr","mhr","age","pace","dist","elev","wt","kcalIn","surface"];
+  function save(){
+    const data={mode:state.mode,engine:state.engine};
+    ids.forEach(id=>{data[id]=$(id).value;});
+    try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){}
+  }
+  let data=null;
+  try{data=JSON.parse(localStorage.getItem(KEY)||"null");}catch(e){}
+  if(data){
+    ids.forEach(id=>{ if(typeof data[id]==="string") $(id).value=data[id]; });
+    const m=document.querySelector(`#modeSeg button[data-mode="${data.mode}"]`); if(m) m.click();
+    const e=document.querySelector(`#engineSeg button[data-engine="${data.engine}"]`); if(e) e.click();
+    compute();
+  }
+  document.querySelectorAll("input").forEach(i=>i.addEventListener("input",save));
+  $("surface").addEventListener("change",save);
+  document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",save));
+  if("serviceWorker" in navigator){
+    window.addEventListener("load",()=>navigator.serviceWorker.register("../sw.js",{scope:"../"}).catch(()=>{}));
+  }
+})();
+</script>
+</body>
+</html>
