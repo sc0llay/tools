@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EV Charge Planner</title>
+<meta name="description" content="Plan an EV charge: time, target battery, charger power, cost and miles added.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EV Charge">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/ev-charge-180.png">
+<link rel="icon" type="image/png" href="../icons/ev-charge-192.png">
+<style>
+/* iOS-style layout: large title, inset grouped lists, one segmented control, a blue result card.
+   Two columns on wide screens (lists left, sticky result right); on phones the result moves into a
+   frosted bar at the bottom. Type is the system font, so it renders as SF Pro on Apple devices.
+   Colour is Apple's system palette; the blue result card is the one loud element. */
+:root {
+  --bg: #f2f2f7;
+  --cell: #ffffff;
+  --ink: #000000;
+  --ink-2: #6c6c70;
+  --ink-3: #c7c7cc;
+  --sep: #c6c6c8;
+  --tint: #0071e3;
+  --hero: #0071e3;
+  --fill: rgba(120, 120, 128, .16);
+  --seg-on: #ffffff;
+  --seg-shadow: rgba(0, 0, 0, .14);
+  --hl: rgba(0, 113, 227, .06);
+  --clear: #aeaeb2;
+  --green: #34c759;
+  --orange: #ff9500;
+  --red: #e5281d;
+  --dock: rgba(249, 249, 249, .82);
+  --glass: rgba(255, 255, 255, .56);
+  --glass-hi: rgba(255, 255, 255, .85);
+  --glass-lo: rgba(255, 255, 255, .25);
+  --glass-edge: rgba(255, 255, 255, .6);
+  --glass-shadow: rgba(30, 50, 90, .14);
+  --orb1: rgba(10, 132, 255, .38);
+  --orb2: rgba(48, 209, 160, .30);
+  --orb3: rgba(191, 90, 242, .24);
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+  --font-round: ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #000000;
+    --cell: #1c1c1e;
+    --ink: #ffffff;
+    --ink-2: #98989f;
+    --ink-3: #48484a;
+    --sep: #38383a;
+    --tint: #2997ff;
+    --hero: #0071e3;
+    --fill: rgba(120, 120, 128, .32);
+    --seg-on: #636366;
+    --seg-shadow: rgba(0, 0, 0, .4);
+    --hl: rgba(255, 255, 255, .06);
+    --clear: #8e8e93;
+    --green: #30d158;
+    --orange: #ff9f0a;
+    --red: #ff6961;
+    --dock: rgba(29, 29, 31, .82);
+    --glass: rgba(58, 58, 64, .42);
+    --glass-hi: rgba(255, 255, 255, .22);
+    --glass-lo: rgba(255, 255, 255, .05);
+    --glass-edge: rgba(255, 255, 255, .16);
+    --glass-shadow: rgba(0, 0, 0, .5);
+    --orb1: rgba(10, 132, 255, .42);
+    --orb2: rgba(48, 209, 160, .22);
+    --orb3: rgba(191, 90, 242, .34);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --cell: #1c1c1e;
+  --ink: #ffffff;
+  --ink-2: #98989f;
+  --ink-3: #48484a;
+  --sep: #38383a;
+  --tint: #2997ff;
+  --hero: #0071e3;
+  --fill: rgba(120, 120, 128, .32);
+  --seg-on: #636366;
+  --seg-shadow: rgba(0, 0, 0, .4);
+  --hl: rgba(255, 255, 255, .06);
+  --clear: #8e8e93;
+  --green: #30d158;
+  --orange: #ff9f0a;
+  --red: #ff6961;
+  --dock: rgba(29, 29, 31, .82);
+  --glass: rgba(58, 58, 64, .42);
+  --glass-hi: rgba(255, 255, 255, .22);
+  --glass-lo: rgba(255, 255, 255, .05);
+  --glass-edge: rgba(255, 255, 255, .16);
+  --glass-shadow: rgba(0, 0, 0, .5);
+  --orb1: rgba(10, 132, 255, .42);
+  --orb2: rgba(48, 209, 160, .22);
+  --orb3: rgba(191, 90, 242, .34);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.3 var(--font);
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding-inline: 16px;
+  padding-block: 12px calc(40px + max(env(safe-area-inset-bottom, 0px), 34px));
+}
+button, input { font-family: inherit; }
+.app { max-width: 980px; margin-inline: auto; display: flex; flex-direction: column; gap: 14px; }
+
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 8px; }
+.navbtn { background: none; border: 0; color: var(--tint); font-size: 17px; padding: 8px 0; cursor: pointer; }
+.navbtn:active { opacity: .5; }
+.navbtn:focus-visible, .rowbtn:focus-visible, .segbtn:focus-visible, .x:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--tint); outline-offset: 2px; border-radius: 6px;
+}
+
+h1 { font: 700 34px/1.1 var(--font); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.lede { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; max-width: 60ch; }
+.example-note { margin: 8px 0 0; font-size: 13px; color: var(--tint); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 6px; }
+@media (min-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+  .results { position: sticky; top: 16px; }
+}
+.inputs, .results { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.sec { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sec h2 { font-size: 13px; font-weight: 400; color: var(--ink-2); margin: 0 0 0 16px; }
+.foot { margin: 0 16px; font-size: 13px; color: var(--ink-2); }
+
+/* Grouped list */
+.list { background: var(--cell); border-radius: 12px; overflow: hidden; }
+.row {
+  position: relative; display: flex; align-items: center; gap: 12px;
+  min-height: 52px; padding: 8px 16px;
+}
+.row + .row::before { content: ''; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--sep); }
+.row:focus-within { background: var(--hl); }
+.lab { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: text; }
+.lab .t { font-size: 17px; }
+.sub { font-size: 13px; line-height: 1.25; color: var(--ink-2); }
+.sub:empty { display: none; }
+.val { flex: 0 1 46%; display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.val input {
+  flex: 1 1 auto; width: 100%; min-width: 0; border: 0; background: transparent; outline: none;
+  text-align: right; color: var(--ink); font-size: 17px; font-variant-numeric: tabular-nums; padding: 6px 0;
+}
+.val input::placeholder { color: var(--ink-3); }
+.unit { color: var(--ink-2); font-size: 15px; white-space: nowrap; }
+.x {
+  flex: none; width: 20px; height: 20px; border: 0; border-radius: 50%; padding: 0;
+  background: var(--clear); color: var(--cell); font-size: 15px; line-height: 20px; cursor: pointer; visibility: hidden;
+}
+.xs { flex: none; width: 20px; }
+.row[data-state="calc"] .val input, .row[data-state="calc"] .sub { color: var(--tint); }
+.row[data-state="error"] .val input, .row[data-state="error"] .sub { color: var(--red); }
+
+.slide-row { padding-block: 4px 12px; }
+.slide-row[hidden] { display: none; }
+.slide { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; margin: 0; background: transparent; cursor: pointer; }
+.slide::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--clear); }
+.slide::-moz-range-track { height: 4px; border-radius: 2px; background: var(--clear); }
+.slide::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -12px; border-radius: 50%; background: #fff; border: .5px solid rgba(0,0,0,.08); box-shadow: 0 2px 6px rgba(0,0,0,.28); }
+.slide::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: .5px solid rgba(0,0,0,.08); box-shadow: 0 2px 6px rgba(0,0,0,.28); }
+.slide:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; border-radius: 6px; }
+.rowbtn { background: none; border: 0; color: var(--tint); font-size: 17px; padding: 8px 0; cursor: pointer; text-align: left; flex: 1; }
+.rowbtn:active { opacity: .5; }
+
+/* Segmented control */
+.seg-row { padding: 12px; }
+.seg { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; background: var(--fill); padding: 2px; border-radius: 9px; }
+.segbtn {
+  border: 0; background: transparent; color: var(--ink); border-radius: 7px; padding: 6px 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; cursor: pointer; min-width: 0;
+}
+.segbtn b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.segbtn span { font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
+.segbtn.on { background: var(--seg-on); box-shadow: 0 3px 8px var(--seg-shadow), 0 1px 1px var(--seg-shadow); }
+
+/* Settings disclosure */
+details.set summary { list-style: none; cursor: pointer; }
+details.set summary::-webkit-details-marker { display: none; }
+.chev { flex: none; width: 8px; height: 8px; border-right: 2px solid var(--ink-3); border-top: 2px solid var(--ink-3); transform: rotate(45deg); margin-right: 4px; }
+details.set[open] .chev { transform: rotate(135deg); }
+details.set[open] .set-rows { border-top: .5px solid var(--sep); }
+
+/* Results */
+.hero { background: var(--hero); color: #fff; border-radius: 22px; padding: 22px 20px 20px; display: flex; flex-direction: column; gap: 16px; }
+.hl { font-size: 15px; color: rgba(255, 255, 255, .86); }
+.big { font: 700 clamp(56px, 13vw, 84px)/1 var(--font-round); letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.big small { font-size: .3em; font-weight: 600; color: rgba(255, 255, 255, .86); margin-inline: .12em .38em; letter-spacing: 0; }
+.big .dash { opacity: .5; }
+.hero-times { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border-top: .5px solid rgba(255, 255, 255, .4); padding-top: 14px; }
+.hv { font: 600 30px/1.1 var(--font-round); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.day { font: 500 13px var(--font); color: rgba(255, 255, 255, .86); margin-left: 6px; }
+
+.bat { flex-direction: column; align-items: stretch; gap: 8px; padding-block: 14px; }
+.bat-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.bat-head .cap { font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.chart { display: grid; grid-template-columns: minmax(0, 1fr) 34px; grid-template-rows: 112px 16px; column-gap: 8px; }
+.plot { position: relative; padding-top: 16px; }
+.plot::before, .plot::after { content: ''; position: absolute; left: 0; right: 0; height: .5px; background: var(--sep); }
+.plot::before { top: 16px; }
+.plot::after { top: calc(16px + (100% - 16px) / 2); }
+.bars { position: absolute; inset: 16px 0 0 0; display: flex; align-items: flex-end; gap: 2px; border-bottom: .5px solid var(--sep); }
+.bar { flex: 1 1 0; height: 100%; border-radius: 2.5px 2.5px 0 0; background: var(--ink-3); transform-origin: bottom; transform: scaleY(0); }
+.bar.on { background: linear-gradient(var(--green), color-mix(in srgb, var(--green) 60%, #fff)); }
+.span { position: absolute; top: 0; height: 16px; border-radius: 4px; background: var(--green); opacity: 0; }
+.span.show { opacity: 1; }
+.bolt { position: absolute; top: -2px; width: 18px; height: 22px; transform: translateX(-50%); display: none; }
+.bolt.show { display: block; }
+.ylab { position: relative; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ylab span { position: absolute; left: 0; transform: translateY(-50%); }
+.xlab { position: relative; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.xlab span { position: absolute; top: 3px; }
+
+.stats { margin: 0; }
+.stat { justify-content: space-between; }
+.stat dt { font-size: 17px; }
+.stat dd { margin: 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat dd small { font-size: 15px; font-weight: 400; color: var(--ink-2); margin-left: 4px; }
+
+.warns { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.warns:empty { display: none; }
+.warns li { display: flex; gap: 12px; align-items: flex-start; background: var(--cell); border-radius: 12px; padding: 12px 16px; font-size: 15px; }
+.ic { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--orange); color: #fff; font: 700 14px/22px var(--font); text-align: center; }
+.warns li.err .ic { background: var(--red); }
+.hint { margin: 0 16px; font-size: 13px; color: var(--ink-2); }
+
+/* Summary card */
+.summary { background: var(--cell); border-radius: 16px; padding: 14px 16px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: start; }
+.summary .dl { font-size: 13px; color: var(--ink-2); }
+.summary .dv { font: 600 24px/1.15 var(--font-round); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.summary .dv small { display: block; font: 400 13px var(--font); color: var(--ink-2); }
+.summary .mid { text-align: center; }
+.summary .end { text-align: right; }
+@media (min-width: 860px) { .summary .dv { font-size: 32px; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bar { transition: transform .55s cubic-bezier(.2,.8,.2,1); }
+  .segbtn { transition: background-color .15s ease, box-shadow .15s ease; }
+  .chev { transition: transform .2s ease; }
+}
+
+/* Liquid Glass: translucent, blurred surfaces with specular edges over a soft colour field */
+body {
+  background:
+    radial-gradient(460px 460px at 88% 90px, var(--orb1), transparent 70%),
+    radial-gradient(520px 520px at 4% 620px, var(--orb2), transparent 70%),
+    radial-gradient(520px 520px at 96% 1180px, var(--orb3), transparent 70%),
+    var(--bg);
+  background-repeat: no-repeat;
+}
+.list, .summary {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(26px) saturate(190%); backdrop-filter: blur(26px) saturate(190%);
+  border: .5px solid var(--glass-edge);
+  border-radius: 28px;
+  box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 var(--glass-lo), 0 10px 34px var(--glass-shadow);
+}
+.summary { border-radius: 30px; padding: 16px 20px; }
+.row + .row::before { left: 20px; right: 20px; opacity: .55; }
+.row { padding-inline: 20px; }
+.row:focus-within { background: var(--hl); }
+.navbtn {
+  padding: 8px 18px; border-radius: 999px; font-weight: 500; font-size: 16px;
+  background: var(--glass); border: .5px solid var(--glass-edge);
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 4px 14px var(--glass-shadow);
+}
+.seg { border-radius: 18px; padding: 3px; background: color-mix(in srgb, var(--fill) 70%, transparent); box-shadow: inset 0 1px 2px var(--glass-shadow); }
+.segbtn { border-radius: 15px; }
+.segbtn.on {
+  background: var(--glass-hi); border: .5px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 #fff, 0 4px 12px var(--glass-shadow);
+}
+.slide::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; }
+.slide::-webkit-slider-thumb {
+  width: 40px; height: 26px; margin-top: -10px; border-radius: 13px;
+  background: rgba(255, 255, 255, .92); border: .5px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 #fff, 0 3px 10px rgba(0, 0, 0, .28);
+}
+.slide::-moz-range-thumb {
+  width: 40px; height: 26px; border-radius: 13px; background: rgba(255, 255, 255, .92);
+  border: .5px solid var(--glass-edge); box-shadow: inset 0 1px 0 #fff, 0 3px 10px rgba(0, 0, 0, .28);
+}
+.span { border-radius: 8px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5); }
+.bar { border-radius: 4px 4px 0 0; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .list, .summary, .navbtn { background: var(--cell); }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <h1>EV Charge Planner</h1>
+    <button type="button" class="navbtn" id="btn-clear">Reset</button>
+  </header>
+
+  <div class="summary" role="status" aria-label="Summary">
+    <div><div class="dl">Charge time</div><div class="dv" id="d-dur"></div></div>
+    <div class="mid"><div class="dl">Miles added</div><div class="dv" id="d-mi"></div></div>
+    <div class="end"><div class="dl">Finish</div><div class="dv" id="d-end"></div></div>
+  </div>
+
+  <div class="layout">
+    <section class="inputs" aria-label="Inputs">
+      <div class="sec">
+        <h2>Battery</h2>
+        <div class="list" id="l-batt"></div>
+      </div>
+
+      <div class="sec">
+        <h2>Charger</h2>
+        <div class="list" id="l-charger"></div>
+      </div>
+
+      <div class="sec">
+        <h2>Time</h2>
+        <div class="list" id="l-time"></div>
+      </div>
+
+      <div class="sec">
+        <h2>Range</h2>
+        <div class="list" id="l-cost"></div>
+      </div>
+
+      <div class="sec">
+        <details class="list set" id="settings">
+          <summary class="row">
+            <span class="lab"><span class="t">Car and tariff</span><span class="sub" id="set-sum"></span></span>
+            <span class="chev" aria-hidden="true"></span>
+          </summary>
+          <div class="set-rows" id="l-set"></div>
+        </details>
+        <p class="foot">Above 80% the car limits charge power, from about 100 kW easing to 20 kW at 100%.</p>
+      </div>
+    </section>
+
+    <aside class="results" aria-label="Results" aria-live="polite">
+      <div class="list">
+        <div class="row bat">
+          <div class="bat-head"><span>Battery</span><span class="cap" id="bar-cap"></span></div>
+          <div class="chart" aria-hidden="true">
+            <div class="plot"><div class="span" id="span"></div>
+              <svg class="bolt" id="bolt" viewBox="0 0 18 22"><path d="M10.5 1 2.5 12.5h5.2L6.5 21l9-12.2h-5.4z" fill="#34c759" stroke="#0b0b0c" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              <div class="bars" id="bars"></div></div>
+            <div class="ylab"><span style="top:16px">100%</span><span style="top:calc(16px + 48px)">50%</span><span style="top:112px">0%</span></div>
+            <div class="xlab" id="xlab"></div><div></div>
+          </div>
+        </div>
+      </div>
+
+      <dl class="list stats">
+        <div class="row stat"><dt>Added to battery</dt><dd id="r-batt"></dd></div>
+        <div class="row stat"><dt>Drawn from grid</dt><dd id="r-grid"></dd></div>
+        <div class="row stat"><dt>Cost</dt><dd id="r-cost"></dd></div>
+        <div class="row stat"><dt>Miles added</dt><dd id="r-range"></dd></div>
+        <div class="row stat"><dt>Cost per mile</dt><dd id="r-cpm"></dd></div>
+      </dl>
+
+      <ul class="warns" id="warns"></ul>
+      <p class="hint" id="hint"></p>
+    </aside>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const KEYS = ['s', 'e', 'p', 'd', 't0'];
+  const FIELDS = {
+    s:  { label: 'Start battery',  unit: '%',    ph: '20',   mode: 'num' },
+    e:  { label: 'Target battery', unit: '%',    ph: '85',   mode: 'num' },
+    p:  { label: 'Charger power',  unit: 'kW',   ph: '7.5',   mode: 'num' },
+    d:  { label: 'Charge time',    unit: 'h:mm', ph: '1:30', mode: 'dur' },
+    t0: { label: 'Start time',     unit: '',     ph: '',     mode: 'time' },
+  };
+  const SET_DEF = [
+    { k: 'cap',   id: 'c-cap',   label: 'Usable battery',  unit: 'kWh',    min: 20,  max: 200 },
+    { k: 'eff',   id: 'c-eff',   label: 'Efficiency',      unit: '%',      min: 50,  max: 100 },
+    { k: 'price', id: 'c-price', label: 'Cost per kWh',    unit: 'p/kWh',  min: 0,   max: 200 },
+    { k: 'mpk',   id: 'c-mpk',   label: 'Miles per kWh',   unit: 'mi/kWh', min: 0.5, max: 10 }
+  ];
+  const CHIPS = [
+    [2.8, '13A plug'], [7.5, 'wallbox'], [22, 'fast AC'], [50, 'DC'], [150, 'DC']
+  ];
+  const S = { cap: 83.7, eff: 90, price: 45, mpk: 3.0 };
+  try {
+    const raw = localStorage.getItem('taycan-planner-settings');
+    if (raw) {
+      const o = JSON.parse(raw);
+      SET_DEF.forEach(d => { const n = o[d.k]; if (typeof n === 'number' && n >= d.min && n <= d.max) S[d.k] = n; });
+    }
+  } catch (e) {}
+
+  let user = {}, history = [], invalid = {}, edited = false;
+
+  /* ---------- formatting and parsing ---------- */
+  const fmtNum = (n, dp = 1) => String(Math.round(n * 10 ** dp) / 10 ** dp);
+  const fmtDurIn = m => { const t = Math.round(m); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+  const fmtTime = m => {
+    const t = ((Math.round(m) % 1440) + 1440) % 1440;
+    return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+  };
+  const dayLabel = n => n === 0 ? '' : n === 1 ? 'next day' : n === -1 ? 'previous day' : (n > 0 ? '+' + n + ' days' : n + ' days');
+  const durLong = m => {
+    const t = Math.round(m), h = Math.floor(t / 60), mm = t % 60;
+    if (h === 0) return '<span>' + mm + '</span><small>min</small>';
+    if (mm === 0) return '<span>' + h + '</span><small>h</small>';
+    return '<span>' + h + '</span><small>h</small><span>' + mm + '</span><small>min</small>';
+  };
+  const durText = m => {
+    const t = Math.round(m), h = Math.floor(t / 60), mm = t % 60;
+    return (h ? h + ' h ' : '') + (mm || !h ? mm + ' min' : '');
+  };
+  const cap1 = t => t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+  const NUM = /^\d+(?:[.,]\d*)?$/;
+  const toNum = s => parseFloat(s.replace(',', '.'));
+  const fin = min => (min > 0 && min <= 6000) ? { value: min } : { error: 'Enter a time between 1 minute and 100 hours.' };
+  function parseDur(raw) {
+    let m;
+    if ((m = /^(\d+):(\d{1,2})$/.exec(raw))) return fin(+m[1] * 60 + +m[2]);
+    if ((m = /^(\d+(?:[.,]\d+)?)\s*h(?:rs?|ours?)?(?:\s*(\d+)\s*m(?:ins?)?)?$/i.exec(raw))) return fin(toNum(m[1]) * 60 + (m[2] ? +m[2] : 0));
+    if ((m = /^(\d+(?:[.,]\d+)?)\s*m(?:ins?|inutes?)?$/i.exec(raw))) return fin(toNum(m[1]));
+    if (/^\d+$/.test(raw)) return fin(+raw);
+    return { error: 'Use 1:30, 1h30m or 90m.' };
+  }
+  function parseField(k, raw) {
+    raw = raw.trim();
+    if (!raw) return { empty: true };
+    const mode = FIELDS[k].mode;
+    if (mode === 'time') { const m = /^(\d{1,2}):(\d{2})/.exec(raw); return m ? { value: +m[1] * 60 + +m[2] } : { error: 'Enter a time.' }; }
+    if (mode === 'dur') return parseDur(raw);
+    if (!NUM.test(raw)) return { error: 'Enter a number.' };
+    const n = toNum(raw);
+    if (k === 'p') return (n > 0 && n <= 1000) ? { value: n } : { error: 'Enter a power above 0 kW.' };
+    return (n >= 0 && n <= 100) ? { value: n } : { error: 'Enter a percentage from 0 to 100.' };
+  }
+
+  /* ---------- solver ----------
+     finish = start + duration. Charging time follows the battery curve: power is steady up to 80%,
+     then the car limits it, from about 100 kW at 80% easing down to 20 kW at 100%. */
+  const TS = 80, L80 = 100, L100 = 20;
+  function chargeMinutes(s, e, p) {
+    if (e <= s) return 0;
+    const kk = S.eff / S.cap;
+    let t = 0;
+    const b = Math.min(e, TS);
+    if (b > s) t += (b - s) / (kk * p);
+    const lo = Math.max(s, TS);
+    if (e > lo) {
+      const m = (L80 - L100) / (100 - TS);
+      const xc = p >= L80 ? TS : p <= L100 ? Infinity : TS + (L80 - p) / m;
+      const x1 = Math.min(e, xc);
+      if (x1 > lo) t += (x1 - lo) / (kk * p);
+      const x2 = Math.max(lo, xc);
+      if (e > x2) t += (Math.log(L80 - m * (x2 - TS)) - Math.log(L80 - m * (e - TS))) / (m * kk);
+    }
+    return t * 60;
+  }
+  function solveEnd(s, p, d) {
+    const full = chargeMinutes(s, 100, p);
+    if (d >= full) return { e: 100, full };
+    let lo = s, hi = 100;
+    for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (chargeMinutes(s, mid, p) < d) lo = mid; else hi = mid; }
+    return { e: (lo + hi) / 2 };
+  }
+  function solveStart(e, p, d) {
+    const max = chargeMinutes(0, e, p);
+    if (d >= max) return { s: 0, max };
+    let lo = 0, hi = e;
+    for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (chargeMinutes(mid, e, p) > d) lo = mid; else hi = mid; }
+    return { s: (lo + hi) / 2 };
+  }
+  function solvePower(s, e, d) {
+    if (d < chargeMinutes(s, e, 1000) - 1e-6) return null;
+    let lo = 0.01, hi = 1000;
+    for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (chargeMinutes(s, e, mid) > d) lo = mid; else hi = mid; }
+    return (lo + hi) / 2;
+  }
+  function propagate(k) {
+    const v = Object.assign({}, k), errs = [], warns = [];
+    const has = x => v[x] !== undefined;
+    const add = (a, t) => { if (!a.includes(t)) a.push(t); };
+    for (let i = 0; i < 8; i++) {
+      let ch = false;
+      if (has('t0') && has('t1') && !has('d')) {
+        let dd = v.t1 - v.t0; if (dd < 0) dd += 1440;
+        if (dd === 0) add(errs, 'Start and finish time are the same.'); else { v.d = dd; ch = true; }
+      }
+      if (has('t0') && has('d') && !has('t1')) { v.t1 = v.t0 + v.d; ch = true; }
+      if (has('t1') && has('d') && !has('t0')) { v.t0 = v.t1 - v.d; ch = true; }
+      const miss = ['s', 'e', 'p', 'd'].filter(x => !has(x));
+      if (miss.length === 1) {
+        const m = miss[0];
+        if (m === 'd') {
+          if (v.e <= v.s) add(errs, 'Target battery must be above the start.');
+          else { v.d = chargeMinutes(v.s, v.e, v.p); ch = true; }
+        } else if (m === 'p') {
+          if (v.e <= v.s) add(errs, 'Target battery must be above the start.');
+          else {
+            const pp = solvePower(v.s, v.e, v.d);
+            if (pp === null) add(errs, 'That is faster than the car can charge.');
+            else { v.p = pp; ch = true; }
+          }
+        } else if (m === 'e') {
+          const r = solveEnd(v.s, v.p, v.d);
+          if (r.full !== undefined && v.d > r.full + .5) add(warns, 'The battery is full after ' + fmtDurIn(r.full) + '. The rest of the time adds nothing.');
+          v.e = r.e; ch = true;
+        } else {
+          const r = solveStart(v.e, v.p, v.d);
+          if (r.max !== undefined && v.d > r.max + .5) add(warns, 'That much time is more than needed to reach ' + fmtNum(v.e) + '%, so the start is shown as 0%.');
+          v.s = r.s; ch = true;
+        }
+      }
+      if (!ch) break;
+    }
+    return { v, errs, warns };
+  }
+
+  function recompute() {
+    const active = {};
+    [...history].reverse().forEach(f => {
+      if (user[f] === undefined) return;
+      if (propagate(active).v[f] !== undefined) {
+        delete user[f];
+        history = history.filter(x => x !== f);
+      } else {
+        active[f] = user[f];
+      }
+    });
+    render(propagate(active), active);
+  }
+
+  /* ---------- battery chart ---------- */
+  const NB = 24, barsEl = $('bars');
+  for (let i = 0; i < NB; i++) barsEl.appendChild(document.createElement('div')).className = 'bar';
+  const barEls = barsEl.children;
+  function drawChart(v) {
+    const full = v.s !== undefined && v.e !== undefined && v.p !== undefined && v.d !== undefined && v.e > v.s;
+    for (let i = 0; i < NB; i++) {
+      let lvl = 0;
+      if (full) lvl = i === NB - 1 ? v.e : (i === 0 ? v.s : solveEnd(v.s, v.p, i / (NB - 1) * v.d).e);
+      const b = barEls[i];
+      b.classList.toggle('on', full);
+      b.style.transitionDelay = (i * 14) + 'ms';
+      b.style.transform = 'scaleY(' + Math.max(lvl, full ? 1.5 : 0) / 100 + ')';
+    }
+    const sp = $('span'), bo = $('bolt');
+    sp.classList.toggle('show', full); bo.classList.toggle('show', full);
+    sp.style.left = '0'; sp.style.width = '100%'; bo.style.left = '50%';
+    const xl = $('xlab');
+    xl.innerHTML = '';
+    if (!full) return;
+    const hasT = v.t0 !== undefined;
+    const mk = (txt, side) => {
+      const x = document.createElement('span'); x.textContent = txt;
+      x.style[side] = '0'; xl.appendChild(x);
+    };
+    mk(hasT ? fmtTime(v.t0) : 'Start', 'left');
+    mk(hasT ? fmtTime(v.t0 + v.d) : durText(v.d), 'right');
+  }
+
+  /* ---------- rendering ---------- */
+  function fieldText(k, v) {
+    if (k === 's' || k === 'e' || k === 'p') return fmtNum(v[k]);
+    if (k === 'd') return fmtDurIn(v.d);
+    return fmtTime(v[k]);
+  }
+
+  function render(res, active) {
+    const v = res.v;
+    const t1abs = (v.t0 !== undefined && v.d !== undefined) ? v.t0 + v.d : v.t1;
+    KEYS.forEach(k => {
+      const row = $('row-' + k), el = $('f-' + k), sub = $('sub-' + k), x = $('x-' + k);
+      let state;
+      if (invalid[k]) state = 'error';
+      else if (active[k] !== undefined) state = 'user';
+      else if (v[k] !== undefined) state = 'calc';
+      else state = 'blank';
+      row.dataset.state = state;
+      if (k === 'd') {
+        $('row-slide').hidden = state === 'calc';
+        if (state === 'user' && active.d !== undefined) $('f-slide').value = Math.min(1440, Math.max(5, Math.round(active.d / 5) * 5));
+      }
+      const showX = state === 'user' || state === 'error';
+      x.style.visibility = showX ? 'visible' : 'hidden';
+      x.tabIndex = showX ? 0 : -1;
+      if (state === 'calc' && document.activeElement !== el) el.value = fieldText(k, v);
+      if (state === 'blank' && document.activeElement !== el) el.value = '';
+      let text;
+      if (state === 'error') text = invalid[k];
+      else {
+        const day = (k === 't0' && v.t0 !== undefined) ? dayLabel(Math.floor(v.t0 / 1440)) : '';
+        const bits = [];
+        if (state === 'calc') bits.push('Calculated');
+        if (day) bits.push(day);
+        text = bits.join(', ');
+      }
+      sub.textContent = cap1(text);
+    });
+
+    const s = v.s, e = v.e;
+    const endDay = t1abs !== undefined ? dayLabel(Math.floor(t1abs / 1440)) : '';
+    $('d-dur').textContent = v.d !== undefined ? durText(v.d) : '–';
+    $('d-end').innerHTML = t1abs !== undefined ? fmtTime(t1abs) + (endDay ? '<small>' + cap1(endDay) + '</small>' : '') : '\u2013';
+
+    const cap = $('bar-cap');
+    if (s !== undefined && e !== undefined) cap.textContent = fmtNum(s) + '% to ' + fmtNum(e) + '%';
+    else if (s !== undefined || e !== undefined) cap.textContent = 'Add ' + (s !== undefined ? 'a target' : 'a start') + ' level';
+    else cap.textContent = 'Add start and target levels';
+    drawChart(v);
+
+    const dash = '<span>–</span>';
+    if (s !== undefined && e !== undefined && e > s) {
+      const batt = (e - s) / 100 * S.cap, grid = batt / (S.eff / 100);
+      $('r-batt').innerHTML = '<span>' + fmtNum(batt) + '</span><small>kWh</small>';
+      $('r-grid').innerHTML = '<span>' + fmtNum(grid) + '</span><small>kWh</small>';
+      $('r-cost').innerHTML = '<span>£' + (grid * S.price / 100).toFixed(2) + '</span>';
+      $('r-range').innerHTML = '<span>' + Math.round(batt * S.mpk) + '</span><small>mi</small>';
+    } else {
+      ['r-batt', 'r-grid', 'r-cost', 'r-range'].forEach(id => { $(id).innerHTML = dash; });
+    }
+    $('d-mi').textContent = (s !== undefined && e !== undefined && e > s) ? Math.round((e - s) / 100 * S.cap * S.mpk) + ' mi' : '\u2013';
+    $('r-cpm').innerHTML = '<span>' + fmtNum(S.price / (S.eff / 100 * S.mpk)) + '</span><small>p/mi</small>';
+
+    const items = [];
+    const push = (kind, t) => { if (!items.some(i => i.t === t)) items.push({ kind, t }); };
+    res.errs.forEach(t => push('err', t));
+    if (s !== undefined && e !== undefined && e <= s) push('err', 'Target battery must be above the start.');
+    res.warns.forEach(t => push('warn', t));
+    if (v.p !== undefined) {
+      if (v.p > 270) push('warn', 'Above the Taycan’s 270 kW peak.');
+      else if (v.p > 11 && v.p < 40) push('warn', 'The Taycan takes 11 kW on AC as standard.');
+    }
+    const ul = $('warns');
+    ul.innerHTML = '';
+    items.forEach(i => {
+      const li = document.createElement('li');
+      if (i.kind === 'err') li.className = 'err';
+      const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = '!'; ic.setAttribute('aria-hidden', 'true');
+      const tx = document.createElement('span'); tx.textContent = i.t;
+      li.append(ic, tx); ul.append(li);
+    });
+
+    const hint = $('hint');
+    hint.hidden = v.d !== undefined;
+    hint.textContent = 'Fill in any three of start, target, power and time.';
+
+    document.querySelectorAll('.segbtn').forEach(c => {
+      const on = active.p !== undefined && Math.abs(active.p - +c.dataset.p) < 1e-9;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    $('set-sum').textContent = (e !== undefined ? 'Target ' + fmtNum(e) + '%, ' : '') + fmtNum(S.cap) + ' kWh usable, ' + fmtNum(S.eff) + '% efficient';
+  }
+
+  /* ---------- build the form ---------- */
+  function rowHTML(k) {
+    const f = FIELDS[k];
+    const type = f.mode === 'time' ? 'time' : 'text';
+    const im = f.mode === 'num' ? ' inputmode="decimal"' : '';
+    return '<div class="row" id="row-' + k + '" data-state="blank">' +
+      '<label class="lab" for="f-' + k + '"><span class="t">' + f.label + '</span><span class="sub" id="sub-' + k + '"></span></label>' +
+      '<div class="val"><input id="f-' + k + '" type="' + type + '"' + im + ' autocomplete="off" placeholder="' + f.ph + '">' +
+      (f.unit ? '<span class="unit">' + f.unit + '</span>' : '') +
+      '<button type="button" class="x" id="x-' + k + '" aria-label="Clear ' + f.label.toLowerCase() + '" tabindex="-1">&times;</button></div></div>';
+  }
+  function setRowHTML(d) {
+    return '<div class="row" id="srow-' + d.k + '" data-state="blank">' +
+      '<label class="lab" for="' + d.id + '"><span class="t">' + d.label + '</span></label>' +
+      '<div class="val"><input id="' + d.id + '" type="text" inputmode="decimal" autocomplete="off">' +
+      '<span class="unit">' + d.unit + '</span><span class="xs"></span></div></div>';
+  }
+  $('l-batt').innerHTML = rowHTML('s');
+  $('l-charger').innerHTML = rowHTML('p') +
+    '<div class="row seg-row"><div class="seg" id="seg" role="group" aria-label="Quick select charger power in kW">' +
+    CHIPS.map(c => '<button type="button" class="segbtn" data-p="' + c[0] + '" aria-pressed="false"><b>' + c[0] + '</b><span>' + c[1] + '</span></button>').join('') +
+    '</div></div>' + setRowHTML(SET_DEF[2]);
+  $('l-time').innerHTML =
+    '<div class="row"><button type="button" class="rowbtn" id="btn-now">Start Now</button></div>' + rowHTML('d') +
+    '<div class="row slide-row" id="row-slide"><input type="range" class="slide" id="f-slide" min="5" max="1440" step="5" value="90" aria-label="Charge time"></div>' + rowHTML('t0');
+  $('l-cost').innerHTML = setRowHTML(SET_DEF[3]);
+  $('l-set').innerHTML = rowHTML('e') + setRowHTML(SET_DEF[0]) + setRowHTML(SET_DEF[1]);
+
+  SET_DEF.forEach(d => {
+    const el = $(d.id);
+    el.value = fmtNum(S[d.k]);
+    el.addEventListener('input', () => {
+      const raw = el.value.trim();
+      const n = NUM.test(raw) ? toNum(raw) : NaN;
+      const ok = isFinite(n) && n >= d.min && n <= d.max && (d.min > 0 ? n > 0 : true);
+      $('srow-' + d.k).dataset.state = ok ? 'blank' : 'error';
+      if (!ok) return;
+      S[d.k] = n;
+      try { localStorage.setItem('taycan-planner-settings', JSON.stringify(S)); } catch (e) {}
+      recompute();
+    });
+  });
+
+  /* ---------- events ---------- */
+  function onField(k) {
+    const r = parseField(k, $('f-' + k).value);
+    history = history.filter(x => x !== k);
+    if (r.empty) { delete user[k]; delete invalid[k]; }
+    else if (r.error) { delete user[k]; invalid[k] = r.error; }
+    else { user[k] = r.value; delete invalid[k]; history.push(k); }
+    recompute();
+  }
+  KEYS.forEach(k => {
+    const el = $('f-' + k);
+    el.addEventListener('input', () => { edited = true; onField(k); });
+    el.addEventListener('change', () => { edited = true; onField(k); });
+    el.addEventListener('blur', recompute);
+    $('x-' + k).addEventListener('click', () => { el.value = ''; edited = true; onField(k); });
+  });
+  $('f-slide').addEventListener('input', () => {
+    $('f-d').value = fmtDurIn(+$('f-slide').value); edited = true; onField('d');
+  });
+  $('seg').addEventListener('click', ev => {
+    const b = ev.target.closest('.segbtn'); if (!b) return;
+    $('f-p').value = b.dataset.p; edited = true; onField('p');
+  });
+  $('btn-now').addEventListener('click', () => {
+    const n = new Date();
+    $('f-t0').value = String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0');
+    edited = true; onField('t0');
+  });
+  function applyDefaults() {
+    invalid = {}; edited = false;
+    KEYS.forEach(k => { $('f-' + k).value = ''; });
+    user = { e: 85, p: 7.5 };
+    history = ['e', 'p'];
+    $('f-e').value = '85'; $('f-p').value = '7.5';
+    recompute();
+  }
+  $('btn-clear').addEventListener('click', applyDefaults);
+
+  applyDefaults();
+})();
+</script>
+<script>
+  if("serviceWorker" in navigator){
+    window.addEventListener("load",()=>navigator.serviceWorker.register("../sw.js",{scope:"../"}).catch(()=>{}));
+  }
+</script>
+</body>
+</html>

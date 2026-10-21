@@ -1,0 +1,14 @@
+{
+  "name": "EV Charge Planner",
+  "short_name": "EV Charge",
+  "description": "Plan an EV charge: time, target battery, charger power, cost and miles added.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "../icons/ev-charge-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icons/ev-charge-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
