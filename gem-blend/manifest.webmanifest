@@ -1,0 +1,14 @@
+{
+  "name": "GEM Blend Calculator",
+  "short_name": "GEM Blend",
+  "description": "Stoich AFR, RON, flex-fuel sensor reading and fuel cost for gasoline / ethanol / methanol blends.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161a",
+  "theme_color": "#14161a",
+  "icons": [
+    { "src": "../icons/gem-blend-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icons/gem-blend-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

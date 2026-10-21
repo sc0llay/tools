@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v5";
+const VERSION = "tools-v6";
 const FILES = [
   "./",
   "index.html",
@@ -18,7 +18,11 @@ const FILES = [
   "periodic/",
   "periodic/index.html",
   "periodic/manifest.webmanifest",
-  "icons/periodic-180.png", "icons/periodic-192.png", "icons/periodic-512.png"
+  "icons/periodic-180.png", "icons/periodic-192.png", "icons/periodic-512.png",
+  "gem-blend/",
+  "gem-blend/index.html",
+  "gem-blend/manifest.webmanifest",
+  "icons/gem-blend-180.png", "icons/gem-blend-192.png", "icons/gem-blend-512.png"
 ];
 
 self.addEventListener("install", e => {

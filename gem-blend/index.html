@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GEM Blend Calculator</title>
+<meta name="description" content="Stoich AFR, RON, flex-fuel sensor reading and fuel cost for gasoline / ethanol / methanol blends.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GEM Blend">
+<meta name="theme-color" content="#14161a">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/gem-blend-180.png">
+<link rel="icon" type="image/png" href="../icons/gem-blend-192.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+    .gem-root, .gem-root * { box-sizing: border-box; }
+
+  .gem-root {
+    --bg: #14161a;
+    --panel: #1b1e23;
+    --panel2: #20242b;
+    --line: #2a2e35;
+    --text: #edeae3;
+    --text-dim: #868c97;
+    --gas: #8890a0;
+    --eth: #5fbe8a;
+    --meth: #e8a33d;
+    --afr: #3fd0c9;
+    --ron: #e8a33d;
+    --sensor: #c48ce8;
+    --meth-sensor: #e8a33d;
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: -1px -1px;
+    color: var(--text);
+    font-family: 'Space Grotesk', -apple-system, sans-serif;
+    padding: 28px 20px 40px;
+    border-radius: 14px;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+
+  .mono { font-family: 'IBM Plex Mono', 'SF Mono', monospace; }
+
+  .gem-header {
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 16px;
+  }
+  .gem-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 6px;
+  }
+  .gem-title {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .gem-sub {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    margin: 0;
+    line-height: 1.5;
+    max-width: 560px;
+  }
+
+  .gem-presets {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 22px;
+  }
+  .gem-preset-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 6px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .gem-preset-btn:hover { border-color: var(--afr); color: var(--text); }
+
+  .gem-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+
+  .gem-inputs-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  .gem-field-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .gem-field-label .swatch {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    margin-right: 7px;
+  }
+  .gem-field-value { font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--text); }
+  .gem-row { display: flex; align-items: center; gap: 12px; }
+  .gem-row input[type="range"] { flex: 1; accent-color: var(--afr); height: 4px; }
+  .gem-num-input {
+    width: 68px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    text-align: right;
+  }
+  .gem-num-input:focus, .gem-row input[type="range"]:focus { outline: 1px solid var(--afr); }
+
+  .gem-blendbar {
+    display: flex;
+    height: 30px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    margin-top: 4px;
+  }
+  .gem-blendbar div { transition: width 0.2s ease; }
+  .gem-legend { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); }
+  .gem-legend span.swatch {
+    display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    margin-right: 6px; vertical-align: -1px;
+  }
+
+  .gem-results { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 560px) { .gem-results { grid-template-columns: 1fr; } }
+
+  .gem-sensor-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .gem-sensor-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .gem-sensor-readout { display: flex; align-items: baseline; gap: 10px; }
+  .gem-sensor-value { font-family: 'IBM Plex Mono', monospace; font-size: 34px; font-weight: 600; color: var(--sensor); line-height: 1; }
+  .gem-sensor-value.meth { color: var(--meth-sensor); }
+  .gem-sensor-true { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-dim); }
+  .gem-sensor-freq { text-align: right; }
+  .gem-sensor-freq .num { font-family: 'IBM Plex Mono', monospace; font-size: 22px; color: var(--text); }
+  .gem-sensor-freq .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
+  .gem-sensor-note { font-size: 12.5px; color: var(--text-dim); margin-top: 12px; line-height: 1.55; }
+  .gem-sensor-warn {
+    display: none;
+    margin-top: 10px;
+    font-size: 11.5px;
+    background: #2a1414;
+    border: 1px solid #4a2020;
+    color: #e88686;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .gem-sensor-warn.show { display: inline-block; }
+
+  .gem-sensor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 560px) { .gem-sensor-grid { grid-template-columns: 1fr; } }
+  .gem-sensor-mini {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .gem-sensor-mini-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .gem-sensor-mini-label.eth { color: var(--sensor); }
+  .gem-sensor-mini-label.meth { color: var(--meth-sensor); }
+  .gem-sensor-mini-row { display: flex; align-items: baseline; gap: 9px; margin-bottom: 10px; }
+  .gem-sensor-mini-value { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 600; line-height: 1; }
+  .gem-sensor-mini-value.eth { color: var(--sensor); }
+  .gem-sensor-mini-value.meth { color: var(--meth-sensor); }
+  .gem-sensor-mini-true { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim); }
+  .gem-sensor-mini-secondary {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    color: var(--text);
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .gem-sensor-mini-secondary .lbl { color: var(--text-dim); font-size: 11px; margin-left: 6px; }
+
+  .gem-cost-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+  @media (max-width: 560px) { .gem-cost-inputs { grid-template-columns: 1fr; } }
+  .gem-cost-field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+  .gem-cost-field .price-row { display: flex; align-items: center; gap: 6px; }
+  .gem-cost-field .price-row span { color: var(--text-dim); font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+  .gem-cost-field input {
+    width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 6px 8px; border-radius: 6px;
+  }
+  .gem-cost-results { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 560px) { .gem-cost-results { grid-template-columns: 1fr; } }
+  .gem-cost-note { font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+
+  .gem-result-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .gem-result-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .gem-result-value { font-family: 'IBM Plex Mono', monospace; font-size: 38px; font-weight: 600; line-height: 1; margin-bottom: 8px; }
+  .gem-result-value.afr { color: var(--afr); }
+  .gem-result-value.ron { color: var(--ron); }
+  .gem-result-delta { font-size: 12.5px; color: var(--text-dim); margin-bottom: 12px; }
+  .gem-meter { height: 4px; background: var(--panel2); border-radius: 2px; position: relative; overflow: hidden; }
+  .gem-meter-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 2px; transition: width 0.2s ease; }
+
+  .gem-toggle {
+    background: none; border: none; color: var(--text-dim);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    cursor: pointer; padding: 0; display: flex; align-items: center;
+    gap: 6px; margin-bottom: 10px;
+  }
+  .gem-toggle:hover { color: var(--text); }
+
+  .gem-details-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 12px; margin-bottom: 16px; }
+  @media (max-width: 560px) { .gem-details-grid { grid-template-columns: 1fr; } }
+  .gem-details-col { background: var(--panel2); border-radius: 8px; padding: 10px 12px; }
+  .gem-details-col h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 500; }
+  .gem-details-col div.line { display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; padding: 2px 0; color: var(--text); }
+
+  .gem-formula {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-dim);
+    background: var(--panel2); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; line-height: 1.7;
+  }
+
+  .gem-adv-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-top: 18px; margin-bottom: 10px; }
+  .gem-adv-heading:first-of-type { margin-top: 0; }
+
+  .gem-advanced-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 4px; }
+  @media (max-width: 560px) { .gem-advanced-grid { grid-template-columns: 1fr; } }
+  .gem-adv-field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+  .gem-adv-field input {
+    width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; padding: 6px 8px; border-radius: 6px;
+  }
+
+  #details-panel { display: none; }
+  #details-panel.show { display: block; }
+
+  .gem-footnote { font-size: 11.5px; color: var(--text-dim); line-height: 1.6; margin-top: 14px; }
+
+  /* Standalone app: full-bleed page, clear of the iPhone notch and home indicator */
+  html, body { margin: 0; background: #14161a; -webkit-text-size-adjust: 100%; }
+  body { min-height: 100vh; }
+  .gem-root {
+    border-radius: 0;
+    min-height: 100vh;
+    max-width: none;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .gem-root > * { max-width: 780px; margin-left: auto; margin-right: auto; }
+  .gem-root .gem-panel, .gem-root .gem-results, .gem-root .gem-sensor-grid { margin-left: auto; margin-right: auto; }
+  .gem-root button { -webkit-tap-highlight-color: transparent; }
+
+  /* iPhone: 16px inputs stop Safari zooming in on focus; bigger touch targets */
+  @media (max-width: 560px) {
+    .gem-title { font-size: 23px; }
+    .gem-sub { font-size: 13px; }
+    .gem-presets { gap: 6px; }
+    .gem-preset-btn { font-size: 12.5px; min-height: 36px; padding: 8px 11px; }
+    .gem-panel, .gem-sensor-card { padding: 16px; }
+    .gem-num-input, .gem-cost-field input, .gem-adv-field input { font-size: 16px; padding: 8px 9px; }
+    .gem-num-input { width: 78px; }
+    .gem-row input[type="range"] { height: 28px; }
+
+    /* Results stay side by side in half-width tiles */
+    .gem-results, .gem-sensor-grid, .gem-cost-results { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
+    .gem-result-card, .gem-sensor-mini { padding: 14px; min-width: 0; }
+    .gem-result-label, .gem-sensor-mini-label { font-size: 10px; letter-spacing: .08em; }
+    .gem-result-value { font-size: 28px; }
+    .gem-result-value span[style] { font-size: 14px !important; }
+    .gem-sensor-mini-value { font-size: 24px; }
+    .gem-sensor-mini-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .gem-result-delta, .gem-cost-note { font-size: 11.5px; }
+    .gem-sensor-warn { font-size: 10.5px; }
+
+    .gem-cost-inputs { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+    .gem-cost-field label { font-size: 10.5px; min-height: 2.6em; }
+    .gem-toggle { min-height: 40px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="gem-root">
+
+  <div class="gem-header">
+    <p class="gem-eyebrow">GEM Blend Estimator</p>
+    <h1 class="gem-title">Stoich AFR &amp; RON Calculator</h1>
+    <p class="gem-sub">
+      Estimates resultant stoichiometric AFR, Research Octane Number, and what a
+      factory flex-fuel ethanol sensor would actually report for a gasoline /
+      ethanol / methanol blend, from your base gasoline's RON and the two alcohol
+      percentages. Not a substitute for CFR-tested fuel data.
+    </p>
+  </div>
+
+  <div class="gem-presets">
+    <button class="gem-preset-btn" data-eth="0" data-meth="0">Pure gasoline</button>
+    <button class="gem-preset-btn" data-eth="0" data-meth="15">M15</button>
+    <button class="gem-preset-btn" data-eth="0" data-meth="85">M85</button>
+    <button class="gem-preset-btn" data-eth="5" data-meth="15">A20 (E5 / M15)</button>
+    <button class="gem-preset-btn" data-eth="8" data-meth="30">GEM 30M / 8E</button>
+  </div>
+
+  <div class="gem-panel">
+    <div class="gem-inputs-grid">
+
+      <div>
+        <div class="gem-field-label">
+          <span>Gasoline base RON</span>
+          <span class="gem-field-value" id="gasolineRON-value">92.5</span>
+        </div>
+        <div class="gem-row">
+          <input type="range" id="gasolineRON-range" min="80" max="102" step="0.5" value="92.5">
+          <input type="number" inputmode="decimal" class="gem-num-input" id="gasolineRON-num" value="92.5">
+        </div>
+      </div>
+
+      <div>
+        <div class="gem-field-label">
+          <span><span class="swatch" style="background:var(--eth)"></span>Ethanol %</span>
+          <span class="gem-field-value" id="ethanol-value">8.0%</span>
+        </div>
+        <div class="gem-row">
+          <input type="range" id="ethanol-range" min="0" max="100" step="0.5" value="8">
+          <input type="number" inputmode="decimal" class="gem-num-input" id="ethanol-num" value="8">
+        </div>
+      </div>
+
+      <div>
+        <div class="gem-field-label">
+          <span><span class="swatch" style="background:var(--meth)"></span>Methanol %</span>
+          <span class="gem-field-value" id="methanol-value">0.0%</span>
+        </div>
+        <div class="gem-row">
+          <input type="range" id="methanol-range" min="0" max="100" step="0.5" value="0">
+          <input type="number" inputmode="decimal" class="gem-num-input" id="methanol-num" value="0">
+        </div>
+      </div>
+
+      <div>
+        <div class="gem-blendbar">
+          <div id="bar-gas" style="background:var(--gas)"></div>
+          <div id="bar-eth" style="background:var(--eth)"></div>
+          <div id="bar-meth" style="background:var(--meth)"></div>
+        </div>
+        <div class="gem-legend">
+          <span><span class="swatch" style="background:var(--gas)"></span>Gasoline <span id="legend-gas">62.0%</span></span>
+          <span><span class="swatch" style="background:var(--eth)"></span>Ethanol <span id="legend-eth">8.0%</span></span>
+          <span><span class="swatch" style="background:var(--meth)"></span>Methanol <span id="legend-meth">30.0%</span></span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="gem-results">
+    <div class="gem-result-card">
+      <div class="gem-result-label">Resultant Stoich AFR</div>
+      <div class="gem-result-value afr mono"><span id="afr-value">—</span><span style="font-size:20px;color:var(--text-dim)">:1</span></div>
+      <div class="gem-result-delta" id="afr-delta">—</div>
+      <div class="gem-meter"><div class="gem-meter-fill" id="afr-meter" style="background:var(--afr)"></div></div>
+    </div>
+
+    <div class="gem-result-card">
+      <div class="gem-result-label">Resultant RON</div>
+      <div class="gem-result-value ron mono" id="ron-value">—</div>
+      <div class="gem-result-delta" id="ron-delta">—</div>
+      <div class="gem-meter"><div class="gem-meter-fill" id="ron-meter" style="background:var(--ron)"></div></div>
+    </div>
+  </div>
+
+  <div class="gem-sensor-grid">
+    <div class="gem-sensor-mini">
+      <div class="gem-sensor-mini-label eth">Ethanol Sensor</div>
+      <div class="gem-sensor-mini-row">
+        <span class="gem-sensor-mini-value eth mono" id="sensor-eth-value">—</span>
+        <span class="gem-sensor-mini-true" id="sensor-eth-true">actual: —</span>
+      </div>
+      <div class="gem-sensor-mini-secondary mono"><span id="sensor-eth-volt">—</span><span class="lbl">signal</span></div>
+      <div class="gem-sensor-warn" id="sensor-eth-warn">⚠ saturates at E100 ~68% actual methanol (E7 base) — pins here, doesn't read accurately.</div>
+    </div>
+
+    <div class="gem-sensor-mini">
+      <div class="gem-sensor-mini-label meth">Methanol Sensor</div>
+      <div class="gem-sensor-mini-row">
+        <span class="gem-sensor-mini-value meth mono" id="sensor-meth-value">—</span>
+        <span class="gem-sensor-mini-true" id="sensor-meth-true">actual: —</span>
+      </div>
+      <div class="gem-sensor-mini-secondary mono"><span id="sensor-meth-hz">—</span><span class="lbl">signal</span></div>
+      <div class="gem-sensor-warn" id="sensor-meth-warn">⚠ past electrical full-scale — pins here, doesn't report true methanol content.</div>
+    </div>
+  </div>
+
+  <div class="gem-panel">
+    <div class="gem-result-label" style="margin-bottom:14px">Fuel Cost &amp; Consumption</div>
+    <div class="gem-cost-inputs">
+      <div class="gem-cost-field">
+        <label><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:var(--gas)"></span>Gasoline price (£/L)</label>
+        <div class="price-row"><span>£</span><input type="number" inputmode="decimal" step="0.01" id="priceGasoline" value="1.65"></div>
+      </div>
+      <div class="gem-cost-field">
+        <label><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:var(--eth)"></span>Ethanol price (£/L)</label>
+        <div class="price-row"><span>£</span><input type="number" inputmode="decimal" step="0.01" id="priceEthanol" value="1.65"></div>
+      </div>
+      <div class="gem-cost-field">
+        <label><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:var(--meth)"></span>Methanol price (£/L)</label>
+        <div class="price-row"><span>£</span><input type="number" inputmode="decimal" step="0.01" id="priceMethanol" value="1.08"></div>
+      </div>
+    </div>
+
+    <div class="gem-cost-results">
+      <div class="gem-result-card">
+        <div class="gem-result-label">Blended Fuel Cost</div>
+        <div class="gem-result-value mono" style="color:var(--afr)"><span id="cost-value">—</span></div>
+        <div class="gem-cost-note" id="cost-note">—</div>
+      </div>
+      <div class="gem-result-card">
+        <div class="gem-result-label">Consumption Multiplier</div>
+        <div class="gem-result-value mono" style="color:var(--ron)"><span id="consumption-value">—</span><span style="font-size:20px;color:var(--text-dim)">×</span></div>
+        <div class="gem-cost-note" id="consumption-note">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gem-panel">
+    <div class="gem-result-label" style="margin-bottom:14px">Cost Per Mile (Consumption-Corrected)</div>
+    <div class="gem-cost-inputs" style="grid-template-columns: 1fr;">
+      <div class="gem-cost-field" style="max-width:220px">
+        <label>Current MPG (imperial)</label>
+        <input type="number" inputmode="decimal" step="0.1" id="currentMPG" value="25">
+      </div>
+    </div>
+
+    <div class="gem-cost-results">
+      <div class="gem-result-card">
+        <div class="gem-result-label">This Blend</div>
+        <div class="gem-result-value mono" style="color:var(--afr)"><span id="cpm-blend-value">—</span><span style="font-size:18px;color:var(--text-dim)">p/mi</span></div>
+        <div class="gem-cost-note" id="cpm-blend-note">—</div>
+      </div>
+      <div class="gem-result-card">
+        <div class="gem-result-label">Pure Gasoline (same MPG)</div>
+        <div class="gem-result-value mono" style="color:var(--text-dim)"><span id="cpm-gas-value">—</span><span style="font-size:18px;color:var(--text-dim)">p/mi</span></div>
+        <div class="gem-cost-note" id="cpm-gas-note">reference baseline</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="gem-toggle" id="details-toggle" type="button">▸ show calculation, mass/mole fractions &amp; assumptions</button>
+
+  <div class="gem-panel" id="details-panel">
+
+    <div class="gem-formula">
+      AFR_blend&nbsp;=&nbsp;Σ&nbsp;(mass_fraction<sub>i</sub>&nbsp;×&nbsp;AFR<sub>i</sub>)&nbsp;&nbsp;—&nbsp;exact mass balance<br>
+      RON_blend&nbsp;=&nbsp;Σ&nbsp;(mole_fraction<sub>i</sub>&nbsp;×&nbsp;RON<sub>i</sub>)&nbsp;&nbsp;—&nbsp;Anderson et al. molar blending model
+    </div>
+
+    <div class="gem-details-grid">
+      <div class="gem-details-col">
+        <h4>Volume fraction</h4>
+        <div class="line"><span>Gasoline</span><span id="vol-gas">—</span></div>
+        <div class="line"><span>Ethanol</span><span id="vol-eth">—</span></div>
+        <div class="line"><span>Methanol</span><span id="vol-meth">—</span></div>
+      </div>
+      <div class="gem-details-col">
+        <h4>Mass fraction</h4>
+        <div class="line"><span>Gasoline</span><span id="mass-gas">—</span></div>
+        <div class="line"><span>Ethanol</span><span id="mass-eth">—</span></div>
+        <div class="line"><span>Methanol</span><span id="mass-meth">—</span></div>
+      </div>
+      <div class="gem-details-col">
+        <h4>Mole fraction</h4>
+        <div class="line"><span>Gasoline</span><span id="mole-gas">—</span></div>
+        <div class="line"><span>Ethanol</span><span id="mole-eth">—</span></div>
+        <div class="line"><span>Methanol</span><span id="mole-meth">—</span></div>
+      </div>
+    </div>
+
+    <div class="gem-adv-heading">Editable assumptions (base gasoline &amp; alcohol octane references)</div>
+    <div class="gem-advanced-grid">
+      <div class="gem-adv-field"><label>Gasoline stoich AFR</label><input type="number" inputmode="decimal" step="0.01" id="gasAFR" value="14.7"></div>
+      <div class="gem-adv-field"><label>Gasoline density (g/cm³)</label><input type="number" inputmode="decimal" step="0.001" id="gasDensity" value="0.745"></div>
+      <div class="gem-adv-field"><label>Gasoline effective molar mass (g/mol)</label><input type="number" inputmode="decimal" step="1" id="gasMW" value="110"></div>
+      <div class="gem-adv-field">&nbsp;</div>
+      <div class="gem-adv-field"><label>Ethanol reference RON (molar-blend value)</label><input type="number" inputmode="decimal" step="0.5" id="ethRON" value="129"></div>
+      <div class="gem-adv-field"><label>Methanol reference RON (molar-blend value)</label><input type="number" inputmode="decimal" step="0.5" id="methRON" value="133"></div>
+    </div>
+
+    <div class="gem-adv-heading">Ethanol sensor — calibrated model (from measured Continental data)</div>
+    <div class="gem-advanced-grid">
+      <div class="gem-adv-field"><label>Quadratic coefficient a (x²)</label><input type="number" inputmode="decimal" step="0.0001" id="quadA" value="0.00568"></div>
+      <div class="gem-adv-field"><label>Quadratic coefficient b (x)</label><input type="number" inputmode="decimal" step="0.001" id="quadB" value="0.986"></div>
+      <div class="gem-adv-field"><label>Quadratic coefficient c (intercept)</label><input type="number" inputmode="decimal" step="0.001" id="quadC" value="8.269"></div>
+      <div class="gem-adv-field">&nbsp;</div>
+      <div class="gem-adv-field"><label>Base fuel ethanol % (test line, e.g. E7)</label><input type="number" inputmode="decimal" step="0.1" id="baseEthRef" value="7"></div>
+      <div class="gem-adv-field"><label>Ethanol sensitivity coefficient</label><input type="number" inputmode="decimal" step="0.05" id="ethSensitivity" value="1.0"></div>
+      <div class="gem-adv-field"><label>Sensor voltage @ E0 (V)</label><input type="number" inputmode="decimal" step="0.1" id="voltLow" value="0"></div>
+      <div class="gem-adv-field"><label>Sensor voltage @ E100 (V)</label><input type="number" inputmode="decimal" step="0.1" id="voltHigh" value="5"></div>
+    </div>
+
+    <div class="gem-adv-heading">Methanol-scaled output</div>
+    <div class="gem-advanced-grid">
+      <div class="gem-adv-field"><label>Methanol full-scale % (at signal saturation)</label><input type="number" inputmode="decimal" step="1" id="methFullScalePct" value="68"></div>
+      <div class="gem-adv-field">&nbsp;</div>
+      <div class="gem-adv-field"><label>Sensor freq @ 0% methanol (Hz)</label><input type="number" inputmode="decimal" step="1" id="methHzLow" value="50"></div>
+      <div class="gem-adv-field"><label>Sensor freq @ full-scale (Hz)</label><input type="number" inputmode="decimal" step="1" id="methHzHigh" value="150"></div>
+    </div>
+
+    <p class="gem-footnote">
+      Fixed physical constants used: ethanol stoich AFR 9.01, methanol stoich AFR 6.47,
+      ethanol density 0.789 g/cm³, methanol density 0.794 g/cm³, ethanol molar mass 46.07 g/mol,
+      methanol molar mass 32.04 g/mol. Gasoline's effective molar mass isn't a fixed physical
+      constant (gasoline is a mixture, not one molecule) — literature cites a "typical" range of
+      roughly 100–120 g/mol depending on composition, which is why it's left editable. RON blending
+      method: Anderson, Kramer, Mueller &amp; Wallington, <i>"Octane Numbers of Ethanol- and
+      Methanol-Gasoline Blends Estimated from Molar Concentrations,"</i> Energy &amp; Fuels 24 (2010);
+      corroborated by Pearson, Turner et al., <i>"Iso-stoichiometric fuel blends,"</i> IMechE
+      Proceedings (2015). AFR method: standard stoichiometric mass-balance across fuel components.
+      Ethanol-sensor model: fit to a user-supplied 21-point measured sweep on a real Continental
+      flex-fuel sensor (99 RON E7 base, methanol added 0→400ml into 200ml base fuel, quadratic
+      regression R²=0.9998). The methanol-only component is isolated from that sweep and the actual
+      ethanol% is added back in (scaled by the sensitivity coefficient) to generalize beyond the
+      single tested dilution line. The whole curve is then rescaled by a factor derived live from the
+      "Methanol full-scale %" field so the signal hits exactly 100% (5V / 150Hz) at that methanol level
+      with the E7 base ethanol included — the raw regression's own crossing point was closer to ~65%,
+      so this trades a little mid-range fit accuracy (results run a few points low around 40–65%
+      methanol) for an exact, adjustable saturation point matching the sensor's real electrical limit.
+      Treat results as most reliable near the E7 base/tested range and more approximate far outside it.
+      Ethanol-equivalent output is scaled linearly to a 0–5V analog signal (E0→E100); the methanol-scaled
+      output uses the same underlying signal on a 50–150 Hz / 0–68% methanol scale. Adjust the fields
+      above if your specific sensor/interface differs.
+      Fuel cost is a simple volume-weighted average of the three £/L prices you enter. The consumption
+      multiplier is the ratio of base gasoline AFR to blend AFR (gasAFR ÷ AFR_blend, both already
+      computed above) — a richer blend needs more fuel mass per unit air to hold stoichiometric, so
+      at equal airflow the fuel volume burned scales with that same ratio (e.g. E85 ≈1.49×, M50 ≈1.41×
+      with the default constants). It doesn't separately correct for the blend's own density, and it
+      doesn't credit any efficiency gain a properly optimized engine can get from methanol/ethanol's
+      charge cooling and extra knock margin, so treat it as a fuel-volume estimate, not a range estimate.
+      Cost per mile converts your entered imperial MPG to miles/litre (MPG ÷ 4.54), then divides the
+      consumption-corrected cost per litre (blended £/L × consumption multiplier) by that figure — the
+      gasoline reference column uses the same MPG with no multiplier applied, so the comparison isolates
+      the effect of the blend itself rather than any change in driving style.
+    </p>
+
+  </div>
+
+</div>
+
+<script>
+(function(){
+  // Fixed physical constants
+  const ETH_AFR = 9.01, METH_AFR = 6.47;
+  const ETH_DENSITY = 0.789, METH_DENSITY = 0.794;
+  const ETH_MW = 46.07, METH_MW = 32.04;
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n, d) => (isFinite(n) ? n.toFixed(d === undefined ? 2 : d) : "—");
+
+  function clampPct(val, otherVal) {
+    let v = isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
+    if (v + otherVal > 100) v = Math.max(0, 100 - otherVal);
+    return v;
+  }
+
+  function syncPair(rangeEl, numEl, val) {
+    rangeEl.value = val;
+    numEl.value = val;
+  }
+
+  function applyPreset(e, m) {
+    syncPair($('ethanol-range'), $('ethanol-num'), e);
+    syncPair($('methanol-range'), $('methanol-num'), m);
+    recalc();
+  }
+
+  function toggleDetails() {
+    const panel = $('details-panel');
+    const btn = $('details-toggle');
+    const isShown = panel.classList.toggle('show');
+    btn.innerHTML = (isShown ? "▾" : "▸") + " show calculation, mass/mole fractions &amp; assumptions";
+  }
+
+  function onEthanolChange(val) {
+    const methanolPct = parseFloat($('methanol-num').value) || 0;
+    const v = clampPct(parseFloat(val), methanolPct);
+    syncPair($('ethanol-range'), $('ethanol-num'), v);
+    recalc();
+  }
+  function onMethanolChange(val) {
+    const ethanolPct = parseFloat($('ethanol-num').value) || 0;
+    const v = clampPct(parseFloat(val), ethanolPct);
+    syncPair($('methanol-range'), $('methanol-num'), v);
+    recalc();
+  }
+
+  function recalc() {
+    const gasolineRON = parseFloat($('gasolineRON-num').value) || 0;
+    const ethanolPct = parseFloat($('ethanol-num').value) || 0;
+    const methanolPct = parseFloat($('methanol-num').value) || 0;
+
+    const gasAFR = parseFloat($('gasAFR').value) || 0;
+    const gasDensity = parseFloat($('gasDensity').value) || 0;
+    const gasMW = parseFloat($('gasMW').value) || 1;
+    const ethRON = parseFloat($('ethRON').value) || 0;
+    const methRON = parseFloat($('methRON').value) || 0;
+
+    const quadA = parseFloat($('quadA').value) || 0;
+    const quadB = parseFloat($('quadB').value) || 0;
+    const quadC = parseFloat($('quadC').value) || 0;
+    const baseEthRef = parseFloat($('baseEthRef').value) || 0;
+    const ethSensitivity = parseFloat($('ethSensitivity').value) || 0;
+    const voltLow = parseFloat($('voltLow').value) || 0;
+    const voltHigh = parseFloat($('voltHigh').value) || 0;
+
+    const methFullScalePct = parseFloat($('methFullScalePct').value) || 0;
+    const methHzLow = parseFloat($('methHzLow').value) || 0;
+    const methHzHigh = parseFloat($('methHzHigh').value) || 0;
+
+    // header value labels
+    $('gasolineRON-value').textContent = gasolineRON.toFixed(1);
+    $('ethanol-value').textContent = ethanolPct.toFixed(1) + '%';
+    $('methanol-value').textContent = methanolPct.toFixed(1) + '%';
+
+    // --- Core calculation ---
+    const vE = ethanolPct / 100;
+    const vM = methanolPct / 100;
+    const vG = Math.max(0, 1 - vE - vM);
+
+    const mG = vG * gasDensity;
+    const mE = vE * ETH_DENSITY;
+    const mM = vM * METH_DENSITY;
+    const totalMass = (mG + mE + mM) || 1;
+
+    const wG = mG / totalMass, wE = mE / totalMass, wM = mM / totalMass;
+    const afrBlend = wG * gasAFR + wE * ETH_AFR + wM * METH_AFR;
+
+    const nG = mG / gasMW, nE = mE / ETH_MW, nM = mM / METH_MW;
+    const totalMol = (nG + nE + nM) || 1;
+    const xG = nG / totalMol, xE = nE / totalMol, xM = nM / totalMol;
+    const ronBlend = xG * gasolineRON + xE * ethRON + xM * methRON;
+
+    const afrDelta = afrBlend - gasAFR;
+    const ronDelta = ronBlend - gasolineRON;
+    const alcoholMolFrac = xE + xM;
+
+
+    // --- Ethanol sensor model ---
+    const zeroPointOffset = quadC - baseEthRef;
+    function methanolOnlyRaw(mPct) {
+      const implied = baseEthRef * (1 - mPct / 100);
+      const quad = quadA * mPct * mPct + quadB * mPct + quadC;
+      return quad - implied - zeroPointOffset;
+    }
+    // The sensor's real electrical full-scale point (E100 / 5V / 150Hz) occurs at
+    // methFullScalePct actual methanol WITH the E7 base's ethanol already included —
+    // rescale the methanol-only curve so it lands exactly there, rather than wherever
+    // the raw quadratic regression happens to cross 100 on its own.
+    const satTarget = 100 - ethSensitivity * baseEthRef;
+    const rawAtFullScale = methanolOnlyRaw(methFullScalePct) || 1;
+    const satScaleFactor = satTarget / rawAtFullScale;
+    const methanolOnlyComponent = satScaleFactor * methanolOnlyRaw(methanolPct);
+    const sensedEthPct = methanolOnlyComponent + ethSensitivity * ethanolPct;
+    const sensedEthFrac = sensedEthPct / 100;
+    const sensedEthPctClamped = Math.max(0, Math.min(100, sensedEthPct));
+    const sensorOutOfRange = sensedEthPct > 100 || sensedEthPct < 0;
+    const sensorVoltage = voltLow + Math.max(0, Math.min(1, sensedEthFrac)) * (voltHigh - voltLow);
+    const sensorReadingDelta = sensedEthPct - ethanolPct;
+
+    // --- Methanol-scaled reinterpretation ---
+    const methSignalFrac = Math.max(0, Math.min(1, sensedEthFrac));
+    const methScaledPct = methSignalFrac * methFullScalePct;
+    const methScaledHz = methHzLow + methSignalFrac * (methHzHigh - methHzLow);
+    const methScaledOutOfRange = sensedEthFrac > 1 || sensedEthFrac < 0;
+    const methReadingDelta = methScaledPct - methanolPct;
+
+    // meter positions
+    const afrMeterPos = Math.max(0, Math.min(1, (afrBlend - 6) / (15 - 6)));
+    const ronMeterPos = Math.max(0, Math.min(1, (ronBlend - 80) / (140 - 80)));
+
+    // --- update blend bar / legend ---
+    $('bar-gas').style.width = (vG * 100) + '%';
+    $('bar-eth').style.width = (vE * 100) + '%';
+    $('bar-meth').style.width = (vM * 100) + '%';
+    $('legend-gas').textContent = fmt(vG * 100, 1) + '%';
+    $('legend-eth').textContent = fmt(vE * 100, 1) + '%';
+    $('legend-meth').textContent = fmt(vM * 100, 1) + '%';
+
+    // --- update AFR card ---
+    $('afr-value').textContent = fmt(afrBlend, 2);
+    $('afr-delta').textContent = (afrDelta <= 0 ? "▼ " : "▲ ") + fmt(Math.abs(afrDelta), 2) + " vs base gasoline (" + fmt(gasAFR,2) + ":1)";
+    $('afr-meter').style.width = (afrMeterPos * 100) + '%';
+
+    // --- update RON card ---
+    $('ron-value').textContent = fmt(ronBlend, 1);
+    $('ron-delta').textContent = (ronDelta >= 0 ? "▲ " : "▼ ") + fmt(Math.abs(ronDelta), 1) + " vs base gasoline (" + fmt(gasolineRON,1) + ")";
+    $('ron-meter').style.width = (ronMeterPos * 100) + '%';
+
+    // --- update ethanol sensor card ---
+    $('sensor-eth-value').textContent = fmt(sensedEthPctClamped, 1) + '%';
+    $('sensor-eth-true').textContent = 'actual: ' + fmt(ethanolPct, 1) + '%';
+    $('sensor-eth-volt').textContent = fmt(Math.max(voltLow, Math.min(voltHigh, sensorVoltage)), 2) + ' V';
+    $('sensor-eth-warn').classList.toggle('show', sensorOutOfRange);
+
+    // --- update methanol-scaled sensor card ---
+    $('sensor-meth-value').textContent = fmt(methScaledPct, 1) + '%';
+    $('sensor-meth-true').textContent = 'actual: ' + fmt(methanolPct, 1) + '%';
+    $('sensor-meth-hz').textContent = fmt(Math.max(methHzLow, Math.min(methHzHigh, methScaledHz)), 1) + ' Hz';
+    $('sensor-meth-warn').classList.toggle('show', methScaledOutOfRange);
+
+    // --- fuel cost & consumption ---
+    const priceGasoline = parseFloat($('priceGasoline').value) || 0;
+    const priceEthanol = parseFloat($('priceEthanol').value) || 0;
+    const priceMethanol = parseFloat($('priceMethanol').value) || 0;
+
+    // Consumption multiplier via AFR ratio: a richer (lower AFR) blend needs more
+    // fuel mass per unit air to hold stoichiometric, so at equal airflow the fuel
+    // consumption scales as base gasoline AFR / blend AFR.
+    const consumptionMultiplier = afrBlend ? (gasAFR / afrBlend) : 1;
+
+    const blendedCost = vG * priceGasoline + vE * priceEthanol + vM * priceMethanol;
+    const effectiveCost = blendedCost * consumptionMultiplier;
+    const effectiveDeltaPct = priceGasoline ? ((effectiveCost - priceGasoline) / priceGasoline) * 100 : 0;
+
+    $('cost-value').textContent = '£' + fmt(blendedCost, 2);
+    $('cost-note').textContent = 'effective £' + fmt(effectiveCost,2) + '/L-equiv (' + (effectiveDeltaPct>=0?'+':'') + fmt(effectiveDeltaPct,1) + '% vs gasoline)';
+    $('consumption-value').textContent = fmt(consumptionMultiplier, 3);
+    $('consumption-note').textContent = fmt((consumptionMultiplier-1)*100, 1) + '% more volume needed vs pure gasoline (AFR ratio)';
+
+    // --- cost per mile (consumption-corrected) ---
+    // miles/L = MPG (imperial) / 4.54; cost per mile = (cost/L × consumption multiplier) ÷ miles/L
+    const currentMPG = parseFloat($('currentMPG').value) || 0;
+    const milesPerLitre = currentMPG / 4.54;
+    const costPerMileBlend = milesPerLitre ? (blendedCost * consumptionMultiplier) / milesPerLitre : 0;
+    const costPerMileGas = milesPerLitre ? priceGasoline / milesPerLitre : 0;
+    const cpmDeltaPct = costPerMileGas ? ((costPerMileBlend - costPerMileGas) / costPerMileGas) * 100 : 0;
+
+    $('cpm-blend-value').textContent = fmt(costPerMileBlend * 100, 1);
+    $('cpm-blend-note').textContent = (cpmDeltaPct>=0?'+':'') + fmt(cpmDeltaPct,1) + '% vs pure gasoline';
+    $('cpm-gas-value').textContent = fmt(costPerMileGas * 100, 1);
+
+    // --- update details panel ---
+    $('vol-gas').textContent = fmt(vG*100,2)+'%';
+    $('vol-eth').textContent = fmt(vE*100,2)+'%';
+    $('vol-meth').textContent = fmt(vM*100,2)+'%';
+    $('mass-gas').textContent = fmt(wG*100,2)+'%';
+    $('mass-eth').textContent = fmt(wE*100,2)+'%';
+    $('mass-meth').textContent = fmt(wM*100,2)+'%';
+    $('mole-gas').textContent = fmt(xG*100,2)+'%';
+    $('mole-eth').textContent = fmt(xE*100,2)+'%';
+    $('mole-meth').textContent = fmt(xM*100,2)+'%';
+  }
+
+  // --- preset & toggle buttons (no inline handlers / no globals) ---
+  document.querySelectorAll('.gem-preset-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      applyPreset(parseFloat(btn.dataset.eth), parseFloat(btn.dataset.meth));
+    });
+  });
+  $('details-toggle').addEventListener('click', toggleDetails);
+
+  // --- wire up event listeners ---
+  ['input','change'].forEach(evt => {
+    $('gasolineRON-range').addEventListener(evt, () => { $('gasolineRON-num').value = $('gasolineRON-range').value; recalc(); });
+    $('gasolineRON-num').addEventListener(evt, () => { $('gasolineRON-range').value = $('gasolineRON-num').value; recalc(); });
+
+    $('ethanol-range').addEventListener(evt, () => onEthanolChange($('ethanol-range').value));
+    $('ethanol-num').addEventListener(evt, () => onEthanolChange($('ethanol-num').value));
+
+    $('methanol-range').addEventListener(evt, () => onMethanolChange($('methanol-range').value));
+    $('methanol-num').addEventListener(evt, () => onMethanolChange($('methanol-num').value));
+  });
+
+  const advancedIds = ['gasAFR','gasDensity','gasMW','ethRON','methRON','quadA','quadB','quadC',
+    'baseEthRef','ethSensitivity','voltLow','voltHigh','methFullScalePct','methHzLow','methHzHigh',
+    'priceGasoline','priceEthanol','priceMethanol','currentMPG'];
+  advancedIds.forEach(id => {
+    $(id).addEventListener('input', recalc);
+  });
+
+  recalc();
+})();
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("../sw.js", { scope: "../" }).catch(() => {}));
+  }
+</script>
+</body>
+</html>
