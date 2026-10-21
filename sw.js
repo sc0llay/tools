@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v6";
+const VERSION = "tools-v7";
 const FILES = [
   "./",
   "index.html",
@@ -22,7 +22,11 @@ const FILES = [
   "gem-blend/",
   "gem-blend/index.html",
   "gem-blend/manifest.webmanifest",
-  "icons/gem-blend-180.png", "icons/gem-blend-192.png", "icons/gem-blend-512.png"
+  "icons/gem-blend-180.png", "icons/gem-blend-192.png", "icons/gem-blend-512.png",
+  "engine-sim/",
+  "engine-sim/index.html",
+  "engine-sim/manifest.webmanifest",
+  "icons/engine-sim-180.png", "icons/engine-sim-192.png", "icons/engine-sim-512.png"
 ];
 
 self.addEventListener("install", e => {
