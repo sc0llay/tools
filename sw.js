@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v1";
+const VERSION = "tools-v2";
 const FILES = [
   "./",
   "index.html",
@@ -10,7 +10,11 @@ const FILES = [
   "vo2max/",
   "vo2max/index.html",
   "vo2max/manifest.webmanifest",
-  "icons/vo2max-180.png", "icons/vo2max-192.png", "icons/vo2max-512.png"
+  "icons/vo2max-180.png", "icons/vo2max-192.png", "icons/vo2max-512.png",
+  "ev-charge/",
+  "ev-charge/index.html",
+  "ev-charge/manifest.webmanifest",
+  "icons/ev-charge-180.png", "icons/ev-charge-192.png", "icons/ev-charge-512.png"
 ];
 
 self.addEventListener("install", e => {

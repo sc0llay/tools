@@ -7,6 +7,7 @@ Each tool is a single HTML page that runs entirely in the browser: no server, no
 | Tool | Address |
 |---|---|
 | VO₂max Estimator | https://sc0llay.github.io/tools/vo2max/ |
+| EV Charge Planner | https://sc0llay.github.io/tools/ev-charge/ |
 
 ## Adding a tool
 
