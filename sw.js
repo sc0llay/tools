@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v7";
+const VERSION = "tools-v8";
 const FILES = [
   "./",
   "index.html",
@@ -26,7 +26,11 @@ const FILES = [
   "engine-sim/",
   "engine-sim/index.html",
   "engine-sim/manifest.webmanifest",
-  "icons/engine-sim-180.png", "icons/engine-sim-192.png", "icons/engine-sim-512.png"
+  "icons/engine-sim-180.png", "icons/engine-sim-192.png", "icons/engine-sim-512.png",
+  "turbo-toolkit/",
+  "turbo-toolkit/index.html",
+  "turbo-toolkit/manifest.webmanifest",
+  "icons/turbo-toolkit-180.png", "icons/turbo-toolkit-192.png", "icons/turbo-toolkit-512.png"
 ];
 
 self.addEventListener("install", e => {

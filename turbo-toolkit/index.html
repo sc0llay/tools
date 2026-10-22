@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Turbo Match Bench</title>
+<meta name="description" content="Compressor and turbine matching simulator: live compressor map, backpressure and match scorecard for Garrett G-series and Xona Rotor wheels.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Turbo Match">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/turbo-toolkit-180.png">
+<link rel="icon" type="image/png" href="../icons/turbo-toolkit-192.png">
+<style>
+/* Layout: iOS / macOS style. A soft colour wallpaper sits behind everything so the
+   liquid-glass surfaces have something to refract. Floating glass toolbar, floating glass
+   sidebar with a segmented control for the input tabs, glass cards in the workspace.
+   Colour: Apple system palette. Tint = system blue for controls; compressor = yellow,
+   turbine = pink, semantic green / orange / red. */
+:root{
+  --ground:#F2F2F7;
+  --panel:rgba(255,255,255,.58); --panel-2:rgba(255,255,255,.42); --solid:#FFFFFF;
+  --field:rgba(118,118,128,.12); --field-2:rgba(118,118,128,.20);
+  --rule:rgba(60,60,67,.16); --rule-soft:rgba(60,60,67,.09);
+  --ink:#1C1C1E; --ink-2:rgba(60,60,67,.82); --ink-3:rgba(60,60,67,.56);
+  --tint:#007AFF; --on-tint:#FFFFFF;
+  --cold:#D19A00; --cold-dim:rgba(209,154,0,.14);
+  --hot:#FF2D55;  --hot-dim:rgba(255,45,85,.12);
+  --acc:#007AFF;
+  --ok:#28A745; --warn:#F28C00; --bad:#FF3B30;
+  --grid:rgba(60,60,67,.11); --grid-2:rgba(60,60,67,.055);
+  --edge:rgba(255,255,255,.70); --spec:rgba(255,255,255,.85); --spec-2:rgba(255,255,255,.35);
+  --shadow:rgba(31,38,64,.10); --seg-on:#FFFFFF;
+  --wall-1:#B9D3FF; --wall-2:#FFC7DA; --wall-3:#FFE9A8; --wall-4:#C9F0E4;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#000000;
+    --panel:rgba(36,36,40,.52); --panel-2:rgba(52,52,58,.42); --solid:#1C1C1E;
+    --field:rgba(118,118,128,.24); --field-2:rgba(118,118,128,.34);
+    --rule:rgba(84,84,88,.55); --rule-soft:rgba(84,84,88,.32);
+    --ink:#F5F5F7; --ink-2:rgba(235,235,245,.72); --ink-3:rgba(235,235,245,.46);
+    --tint:#0A84FF; --on-tint:#FFFFFF;
+    --cold:#FFD60A; --cold-dim:rgba(255,214,10,.14);
+    --hot:#FF375F;  --hot-dim:rgba(255,55,95,.14);
+    --acc:#0A84FF;
+    --ok:#30D158; --warn:#FF9F0A; --bad:#FF453A;
+    --grid:rgba(235,235,245,.10); --grid-2:rgba(235,235,245,.05);
+    --edge:rgba(255,255,255,.14); --spec:rgba(255,255,255,.22); --spec-2:rgba(255,255,255,.06);
+    --shadow:rgba(0,0,0,.45); --seg-on:rgba(255,255,255,.20);
+    --wall-1:#1B2F66; --wall-2:#5A1840; --wall-3:#4A3A0C; --wall-4:#0E4A44;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#000000;
+  --panel:rgba(36,36,40,.52); --panel-2:rgba(52,52,58,.42); --solid:#1C1C1E;
+  --field:rgba(118,118,128,.24); --field-2:rgba(118,118,128,.34);
+  --rule:rgba(84,84,88,.55); --rule-soft:rgba(84,84,88,.32);
+  --ink:#F5F5F7; --ink-2:rgba(235,235,245,.72); --ink-3:rgba(235,235,245,.46);
+  --tint:#0A84FF; --on-tint:#FFFFFF;
+  --cold:#FFD60A; --cold-dim:rgba(255,214,10,.14);
+  --hot:#FF375F;  --hot-dim:rgba(255,55,95,.14);
+  --acc:#0A84FF;
+  --ok:#30D158; --warn:#FF9F0A; --bad:#FF453A;
+  --grid:rgba(235,235,245,.10); --grid-2:rgba(235,235,245,.05);
+  --edge:rgba(255,255,255,.14); --spec:rgba(255,255,255,.22); --spec-2:rgba(255,255,255,.06);
+  --shadow:rgba(0,0,0,.45); --seg-on:rgba(255,255,255,.20);
+  --wall-1:#1B2F66; --wall-2:#5A1840; --wall-3:#4A3A0C; --wall-4:#0E4A44;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font:400 13px/1.4 var(--font); letter-spacing:-.005em;
+  -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+/* wallpaper the glass refracts */
+body::before{
+  content:"";position:fixed;inset:-10%;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(42% 38% at 12% 18%,var(--wall-1),transparent 70%),
+    radial-gradient(38% 40% at 88% 12%,var(--wall-2),transparent 70%),
+    radial-gradient(45% 42% at 78% 88%,var(--wall-3),transparent 72%),
+    radial-gradient(40% 40% at 20% 92%,var(--wall-4),transparent 70%),
+    var(--ground);
+  opacity:.45;
+}
+
+/* ---------- liquid glass surface ---------- */
+.toolbar,.side,.panel,.cell{
+  position:relative;
+  background:var(--panel);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);backdrop-filter:blur(30px) saturate(190%);
+  border:1px solid var(--edge);
+  box-shadow:inset 0 1px 0 var(--spec),inset 0 -1px 0 var(--spec-2),0 12px 36px -8px var(--shadow),0 1px 2px var(--shadow);
+}
+.toolbar::after,.side::after,.panel::after,.cell::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(160deg,var(--spec-2) 0%,transparent 38%,transparent 72%,var(--spec-2) 100%);
+}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:340px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
+  gap:14px;height:100vh;padding:max(14px,env(safe-area-inset-top,0px)) max(14px,env(safe-area-inset-right,0px)) max(14px,env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px))}
+.toolbar{grid-column:1/-1;display:flex;align-items:center;gap:18px;height:60px;padding:0 10px 0 16px;border-radius:30px;z-index:2}
+.brand{display:flex;align-items:center;gap:11px;flex:none;min-width:0}
+.brand .mark{width:30px;height:30px;flex:none;border-radius:8px;background:var(--solid);padding:4px;box-shadow:0 1px 3px var(--shadow)}
+.brand h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.brand .sub{font-size:11.5px;color:var(--ink-3);white-space:nowrap}
+.sweep{flex:1;display:flex;align-items:center;gap:14px;min-width:0;max-width:640px;margin-left:auto;
+  height:40px;padding:0 16px;background:var(--field);border-radius:20px}
+.sweep label{font-size:12px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.sweep output{font-size:15px;font-weight:600;min-width:84px;text-align:right;white-space:nowrap}
+.sweep output small{font-size:11px;color:var(--ink-3);font-weight:500;margin-left:3px}
+.tbtns{display:flex;gap:8px;flex:none}
+
+.side{border-radius:28px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.main{overflow:auto;min-width:0;display:flex;flex-direction:column;gap:14px;padding:2px 2px 30px;margin:-2px;border-radius:24px}
+.main > *{flex:none}
+
+@media (max-width:980px){
+  .app{display:flex;flex-direction:column;height:auto}
+  .toolbar{flex-wrap:wrap;height:auto;padding:10px 10px 10px 14px;gap:10px 14px;border-radius:24px}
+  .sweep{order:3;flex-basis:100%;max-width:none;margin-left:0}
+  .tbtns{margin-left:auto}
+  .side{max-height:none}
+  .main{overflow:visible}
+}
+@media (max-width:520px){.brand .sub{display:none}}
+@media (max-width:420px){
+  .tabs{margin-inline:10px}
+  .tabs{grid-template-columns:repeat(5,auto)}
+  .tabs button{font-size:11px;padding:0 6px}
+  .pane{padding-inline:10px}
+  .btn{padding:0 12px}
+  .cell .v{font-size:19px}
+}
+
+/* ---------- segmented control ---------- */
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin:14px 14px 4px;padding:3px;background:var(--field);border-radius:11px;flex:none;z-index:1}
+.tabs button{
+  appearance:none;border:0;background:transparent;color:var(--ink);cursor:pointer;
+  height:30px;padding:0 2px;border-radius:8px;font:500 11.5px var(--font);letter-spacing:-.01em;
+  display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;transition:background .2s,box-shadow .2s;
+}
+.tabs button:hover:not([aria-selected="true"]){background:var(--field)}
+.tabs button[aria-selected="true"]{background:var(--seg-on);font-weight:600;box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.tabs .sw{display:none}
+.panes{flex:1;overflow:auto;min-height:0;z-index:1}
+.pane{padding:6px 14px 18px}
+/* inset grouped list */
+.grp{margin-top:12px;display:flex;flex-direction:column;gap:12px;background:var(--panel-2);border-radius:16px;padding:12px 14px 14px;box-shadow:inset 0 0 0 .5px var(--rule-soft)}
+.grp h4{margin:0;display:flex;align-items:baseline;gap:8px;font-size:12px;font-weight:400;color:var(--ink-3);text-transform:uppercase;letter-spacing:.02em}
+.grp h4 .r{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--hot);font-weight:500}
+.side-ft{flex:none;padding:10px 18px 14px;font-size:11px;color:var(--ink-3);z-index:1}
+
+/* ---------- controls ---------- */
+label.fl,.slide .top span{font-size:13px;color:var(--ink)}
+label.fl{display:block;margin-bottom:6px;font-size:12px;color:var(--ink-2)}
+select,input[type=number]{
+  width:100%;height:34px;background:var(--field);color:var(--ink);border:0;border-radius:9px;
+  padding:0 10px;font:500 13.5px var(--font);font-variant-numeric:tabular-nums;
+}
+select{appearance:none;-webkit-appearance:none;padding-right:28px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 15px,calc(100% - 10px) 15px;background-size:5px 5px;background-repeat:no-repeat;background-color:var(--field)}
+select:focus-visible,input:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid color-mix(in srgb,var(--tint) 55%,transparent);outline-offset:1px}
+optgroup{color:var(--ink-3);font-style:normal}
+option{color:var(--ink);background:var(--solid)}
+.fields{display:flex;flex-direction:column;gap:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.slide{display:flex;flex-direction:column;gap:8px}
+.slide .top{display:flex;justify-content:space-between;align-items:baseline}
+.slide .top b{font-size:13px;font-weight:600;color:var(--ink-2)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;margin:0;cursor:pointer;--fill:50%;--tr:var(--tint)}
+input.hotrange{--tr:var(--hot)}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--tr) var(--fill),var(--field-2) var(--fill))}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--field-2)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--tr)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-11px;border-radius:50%;background:#fff;border:0;
+  box-shadow:0 3px 8px rgba(0,0,0,.16),0 1px 1px rgba(0,0,0,.10),0 0 0 .5px rgba(0,0,0,.06)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:0;box-shadow:0 3px 8px rgba(0,0,0,.16),0 0 0 .5px rgba(0,0,0,.06)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.08)}
+
+/* calculated values as list rows */
+.geo{display:flex;flex-direction:column;margin:-4px 0 -8px}
+.geo div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 0;border-bottom:.5px solid var(--rule)}
+.geo div:last-child{border-bottom:0}
+.geo span{font-size:13px;color:var(--ink)}
+.geo b{font-size:13px;font-weight:500;color:var(--ink-3)}
+
+/* ---------- buttons ---------- */
+.btn{
+  height:36px;padding:0 16px;border-radius:18px;border:0;cursor:pointer;white-space:nowrap;
+  background:var(--field);color:var(--ink);font:600 13px var(--font);letter-spacing:-.01em;
+}
+.btn:hover{background:var(--field-2)}
+.btn.on{background:var(--tint);color:var(--on-tint);box-shadow:0 4px 14px -4px color-mix(in srgb,var(--tint) 70%,transparent)}
+.btn.icon{width:36px;padding:0;display:grid;place-items:center}
+.btn.icon svg{width:17px;height:17px}
+
+/* ---------- live channels ---------- */
+.strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+@media (max-width:1180px) and (min-width:981px),(max-width:760px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cell{border-radius:18px;padding:10px 12px 11px;min-width:0}
+.cell .k{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:capitalize}
+.cell .k::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink-3);opacity:.5;flex:none}
+.cell.cold .k::before{background:var(--cold);opacity:1} .cell.hot .k::before{background:var(--hot);opacity:1}
+.cell .v{font-size:21px;font-weight:600;letter-spacing:-.02em;line-height:1.15;margin-top:4px;white-space:nowrap}
+.cell .u{font-size:11px;font-weight:500;color:var(--ink-3);margin-left:4px;letter-spacing:0}
+
+/* ---------- cards ---------- */
+.panel{border-radius:24px;overflow:hidden;min-width:0}
+.panel > *{position:relative;z-index:1}
+.panel > .hd{display:flex;align-items:center;gap:8px;padding:14px 18px 6px;font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.hd .tag{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3);opacity:.5}
+.tag.c{background:var(--cold);opacity:1} .tag.t{background:var(--hot);opacity:1}
+.hd .r{margin-left:auto;color:var(--ink-3);font-size:12px;font-weight:500;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.work{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:14px;align-items:start}
+@media (max-width:1280px){.work{grid-template-columns:1fr}}
+
+.mapwrap{position:relative;width:100%;aspect-ratio:16/10;min-height:320px;max-width:100%;padding:0 6px}
+@media (max-width:640px){.mapwrap{aspect-ratio:4/3.4;min-height:0}}
+canvas{display:block;width:100%;height:100%}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.chartbox{height:156px;position:relative;margin:0 8px 10px}
+.sect{font-size:20px;font-weight:700;letter-spacing:-.02em;color:var(--ink);margin:8px 4px -2px}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 18px 14px;font-size:11.5px;color:var(--ink-3)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+/* ---------- scorecard ---------- */
+.score{display:flex;flex-direction:column;margin:4px 12px 0;background:var(--panel-2);border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 .5px var(--rule-soft)}
+.row{padding:10px 14px;display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:baseline;border-bottom:.5px solid var(--rule)}
+.row:last-child{border-bottom:0}
+.row .n{font-size:13px;color:var(--ink);font-weight:500}
+.row .n em{display:block;font-style:normal;font-size:11.5px;font-weight:400;color:var(--ink-3);margin-top:1px}
+.row .val{font-size:14px;font-weight:600;text-align:right;white-space:nowrap}
+.bar{grid-column:1/-1;height:4px;background:var(--field);border-radius:2px;margin-top:4px;position:relative;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;display:block;border-radius:2px}
+.pill{display:inline-block;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600;margin-left:8px;vertical-align:3px;background:var(--field);color:var(--ink-2);letter-spacing:0}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+.verdict{padding:14px 18px 18px}
+.verdict .g{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.verdict p{margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+
+/* ---------- reference notes ---------- */
+.notes details{border-top:.5px solid var(--rule)}
+.notes details:first-of-type{border-top:0}
+.notes summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:15px 18px;font-size:15px;font-weight:600;color:var(--ink)}
+.notes summary::-webkit-details-marker{display:none}
+.notes summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);transform:rotate(-45deg);transition:transform .2s}
+.notes details[open] summary::after{transform:rotate(45deg)}
+.notes .body{padding:0 18px 18px}
+.notes p{margin:0 0 10px;font-size:13.5px;line-height:1.55;color:var(--ink-2);max-width:78ch}
+.notes p:last-child{margin-bottom:0}
+.notes b{color:var(--ink);font-weight:600}
+.est{color:var(--warn)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .toolbar,.side,.panel,.cell{background:var(--solid)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-transparency:reduce){.toolbar,.side,.panel,.cell{background:var(--solid);-webkit-backdrop-filter:none;backdrop-filter:none}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="toolbar">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" fill="none" stroke="var(--ink-3)" stroke-width="1.5"/>
+      <path d="M12 12 L12 3 A9 9 0 0 1 20.2 8.3 Z" fill="var(--cold)"/>
+      <path d="M12 12 L20.2 15.7 A9 9 0 0 1 12 21 Z" fill="var(--hot)"/>
+      <circle cx="12" cy="12" r="2" fill="var(--ink)"/>
+    </svg>
+    <div>
+      <h1>Turbo Match Bench</h1>
+      <div class="sub">Compressor &amp; turbine matching &middot; Garrett G-series / Xona Rotor</div>
+    </div>
+  </div>
+  <div class="sweep">
+    <label for="rpm">Engine speed</label>
+    <input type="range" id="rpm" min="1200" max="7500" step="25" value="4000">
+    <output for="rpm"><span id="rpmV">4000</span><small>rpm</small></output>
+  </div>
+  <div class="tbtns">
+    <button class="btn on" id="playBtn">&#9646;&#9646; Pause sweep</button>
+    <button class="btn icon" id="themeBtn" title="Switch light / dark" aria-label="Switch light or dark theme">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8 A6.2 6.2 0 0 1 8 14.2 Z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ============ SIDEBAR: all inputs ============ -->
+<aside class="side">
+  <div class="tabs" role="tablist" aria-label="Inputs">
+    <button role="tab" id="tab-comp" data-tab="comp" aria-controls="pane-comp" aria-selected="true"><i class="sw c"></i>Compressor</button>
+    <button role="tab" id="tab-turb" data-tab="turb" aria-controls="pane-turb" aria-selected="false" tabindex="-1"><i class="sw t"></i>Turbine</button>
+    <button role="tab" id="tab-eng" data-tab="eng" aria-controls="pane-eng" aria-selected="false" tabindex="-1"><i class="sw"></i>Engine</button>
+    <button role="tab" id="tab-tgt" data-tab="tgt" aria-controls="pane-tgt" aria-selected="false" tabindex="-1"><i class="sw"></i>Targets</button>
+    <button role="tab" id="tab-fuel" data-tab="fuel" aria-controls="pane-fuel" aria-selected="false" tabindex="-1"><i class="sw"></i>Fuel</button>
+  </div>
+
+  <div class="panes">
+    <section class="pane" id="pane-comp" role="tabpanel" aria-labelledby="tab-comp">
+      <div class="grp">
+        <h4>Wheel</h4>
+        <div><label class="fl" for="comp">Compressor wheel</label><select id="comp"></select></div>
+        <div class="slide">
+          <div class="top"><span>Inducer</span><b><span id="indV">54</span> mm</b></div>
+          <input type="range" id="ind" min="46" max="72" step="0.5" value="54">
+        </div>
+        <div class="two">
+          <div><label class="fl" for="exd">Exducer (mm)</label><input type="number" id="exd" step="0.5" value="67"></div>
+          <div><label class="fl" for="cnmax">Max shaft (krpm)</label><input type="number" id="cnmax" step="1" value="165"></div>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Calculated</h4>
+        <div class="geo">
+          <div><span>Trim</span><b id="gTrim">65</b></div>
+          <div><span>Tip speed</span><b id="gTip">&mdash;</b></div>
+          <div><span>Choke flow</span><b id="gChoke">&mdash;</b></div>
+          <div><span>Peak efficiency</span><b id="gEta">&mdash;</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-turb" role="tabpanel" aria-labelledby="tab-turb" hidden>
+      <div class="grp">
+        <h4>Wheel <span class="r" id="turbAero"></span></h4>
+        <div><label class="fl" for="turb">Turbine wheel</label><select id="turb"></select></div>
+        <div class="two">
+          <div><label class="fl" for="tind">Inducer (mm)</label><input type="number" id="tind" step="0.5" value="54"></div>
+          <div><label class="fl" for="texd">Exducer (mm)</label><input type="number" id="texd" step="0.5" value="49"></div>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Housing &amp; gate</h4>
+        <div class="slide">
+          <div class="top"><span>Housing A/R</span><b id="arV">0.72</b></div>
+          <input type="range" class="hotrange" id="ar" min="0.35" max="1.45" step="0.01" value="0.72">
+        </div>
+        <div class="slide">
+          <div class="top"><span>Wastegate port</span><b><span id="wgV">32</span> mm</b></div>
+          <input type="range" class="hotrange" id="wg" min="18" max="60" step="1" value="32">
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Calculated</h4>
+        <div class="geo">
+          <div><span>Turbine trim</span><b id="gTtrim">84</b></div>
+          <div><span>Blade speed</span><b id="gBsr">&mdash;</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-eng" role="tabpanel" aria-labelledby="tab-eng" hidden>
+      <div class="grp">
+        <h4>Engine</h4>
+        <div class="two">
+          <div><label class="fl" for="disp">Displacement (L)</label><input type="number" id="disp" step="0.1" value="2.0"></div>
+          <div><label class="fl" for="rl">Redline (rpm)</label><input type="number" id="rl" step="100" value="7500"></div>
+        </div>
+        <div class="two">
+          <div><label class="fl" for="cyl">Cylinders</label><select id="cyl">
+            <option>3</option><option selected>4</option><option>5</option><option>6</option>
+            <option>8</option><option>10</option><option>12</option></select></div>
+          <div><label class="fl" for="cr">Compression ratio</label><input type="number" id="cr" step="0.1" value="9.5"></div>
+        </div>
+        <div class="slide">
+          <div class="top"><span>Volumetric efficiency</span><b><span id="veV">95</span> %</b></div>
+          <input type="range" id="ve" min="70" max="115" step="1" value="95">
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Turbo layout</h4>
+        <div><label class="fl" for="arr">Arrangement</label><select id="arr">
+          <option value="1">Single turbo</option>
+          <option value="2">Parallel twin, bank split</option>
+        </select></div>
+        <div><label class="fl" for="scr">Turbine feed</label><select id="scr">
+          <option value="1">Single scroll, open</option>
+          <option value="2">Twin scroll, divided</option>
+        </select></div>
+        <div class="geo">
+          <div><span>Per turbo</span><b id="gPerT">&mdash;</b></div>
+          <div><span>Firing gap</span><b id="gFire">&mdash;</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-tgt" role="tabpanel" aria-labelledby="tab-tgt" hidden>
+      <div class="grp">
+        <h4>Boost &amp; exhaust</h4>
+        <div class="slide">
+          <div class="top"><span>Target boost</span><b><span id="boostV">1.50</span> bar</b></div>
+          <input type="range" id="boost" min="0.2" max="4.2" step="0.05" value="1.5">
+        </div>
+        <div class="slide">
+          <div class="top"><span>Peak EGT, pre-turbine</span><b><span id="egtV">900</span> &deg;C</b></div>
+          <input type="range" class="hotrange" id="egt" min="700" max="1050" step="10" value="900">
+        </div>
+        <div class="slide">
+          <div class="top"><span>Intercooler effectiveness</span><b><span id="iceV">75</span> %</b></div>
+          <input type="range" id="ice" min="0" max="95" step="1" value="75">
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Ambient</h4>
+        <div class="two">
+          <div><label class="fl" for="amb">Air temp (&deg;C)</label><input type="number" id="amb" step="1" value="20"></div>
+          <div><label class="fl" for="alt">Baro (kPa)</label><input type="number" id="alt" step="1" value="101"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-fuel" role="tabpanel" aria-labelledby="tab-fuel" hidden>
+      <div class="grp">
+        <h4>Fuel</h4>
+        <div><label class="fl" for="fuelBase">Fuel type</label><select id="fuelBase">
+          <option value="gas" selected>Gasoline, pump</option>
+          <option value="race">Race fuel, leaded</option>
+          <option value="eth">Ethanol blend</option>
+          <option value="meth">Methanol blend</option>
+        </select></div>
+        <div class="slide" id="blendRow">
+          <div class="top"><span>Alcohol by volume</span><b id="blendV">E85</b></div>
+          <input type="range" id="blend" min="0" max="100" step="1" value="85">
+        </div>
+        <div class="slide">
+          <div class="top"><span>Lambda</span><b><span id="lamV">0.80</span></b></div>
+          <input type="range" id="lam" min="0.65" max="1.10" step="0.01" value="0.80">
+        </div>
+        <div class="two">
+          <div><label class="fl" for="ron">Octane (RON)</label><input type="number" id="ron" step="0.5" value="98"></div>
+          <div><label class="fl" for="evap">Evap in charge (%)</label><input type="number" id="evap" step="5" value="60"></div>
+        </div>
+      </div>
+      <div class="grp">
+        <h4>Calculated</h4>
+        <div class="geo">
+          <div><span>Stoich AFR</span><b id="gStoich">&mdash;</b></div>
+          <div><span>Target AFR</span><b id="gAfr">&mdash;</b></div>
+          <div><span>Charge cooling</span><b id="gCool">&mdash;</b></div>
+          <div><span>Energy</span><b id="gLhv">&mdash;</b></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="side-ft">1-D steady-state match &middot; 46&ndash;72 mm inducer range</div>
+</aside>
+
+<!-- ============ WORKSPACE ============ -->
+<main class="main">
+  <div class="strip" id="strip"></div>
+
+  <div class="work">
+    <div class="panel">
+      <div class="hd"><span class="tag c"></span>Compressor map <span class="r" id="mapTitle"></span></div>
+      <div class="mapwrap"><canvas id="map"></canvas></div>
+      <div class="legend">
+        <span><i style="background:var(--ink-3)"></i>speed lines (% of max shaft rpm)</span>
+        <span><i style="background:var(--cold)"></i>efficiency islands</span>
+        <span><i style="background:var(--bad)"></i>surge line</span>
+        <span><i style="background:var(--hot)"></i>engine operating line</span>
+        <span>&#9673; live point</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="hd">Match assessment <span class="r" id="matchNote"></span></div>
+      <div class="score" id="score"></div>
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </div>
+
+  <div class="sect">Sweep traces &middot; idle to redline</div>
+  <div class="charts">
+    <div class="panel"><div class="hd"><span class="tag c"></span>Pressure ratio</div><div class="chartbox"><canvas data-ch="pr"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag c"></span>Mass flow <span class="r">lb/min</span></div><div class="chartbox"><canvas data-ch="mdot"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag"></span>Shaft speed <span class="r">krpm</span></div><div class="chartbox"><canvas data-ch="shaft"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag c"></span>Discharge pressure <span class="r">bar g</span></div><div class="chartbox"><canvas data-ch="press"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag c"></span>Discharge temp <span class="r">&deg;C</span></div><div class="chartbox"><canvas data-ch="temp"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag t"></span>Turbine wheel flow <span class="r">lb/min</span></div><div class="chartbox"><canvas data-ch="turb"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag t"></span>Wastegate position <span class="r">% open</span></div><div class="chartbox"><canvas data-ch="wg"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag t"></span>Backpressure ratio <span class="r">turbine inlet / boost</span></div><div class="chartbox"><canvas data-ch="bp"></canvas></div></div>
+    <div class="panel"><div class="hd"><span class="tag"></span>Crank power <span class="r">hp</span></div><div class="chartbox"><canvas data-ch="hp"></canvas></div></div>
+  </div>
+
+  <div class="panel notes">
+    <details>
+      <summary>How to read this</summary>
+      <div class="body">
+      <p><b>The operating line is the answer.</b> It is where your engine actually sits on the map, swept from idle to redline. A good match keeps that line inside the efficiency islands, off the surge line at low rpm, and short of the choke wall at redline. Drag the boost, VE and A/R controls and watch it move.</p>
+      <p><b>Compressor sizing</b> is set by inducer diameter &mdash; choke flow scales with inducer area, so a 54 mm wheel walls out near 62 lb/min and a 71 mm near 107 lb/min. Exducer diameter sets tip speed and therefore how much pressure ratio the wheel can make before it hits its shaft speed limit.</p>
+      <p><b>Turbine sizing</b> is set by wheel exducer and housing A/R together &mdash; they set swallowing capacity, which sets turbine inlet pressure P3. Watch the backpressure trace, turbine inlet pressure divided by boost pressure, both as gauge readings: 1:1 is ideal, below about 1.5 the turbine is comfortable, above roughly 2.0 the engine is pumping against itself, scavenging suffers and knock margin drops even though the compressor looks fine. That is the single most common mismatch: right compressor, undersized turbine.</p>
+      <p><b>Wastegate position</b> tells you whether the turbine has authority. A gate pinned shut at redline means the turbine is out of capacity and boost is falling off; a gate more than about 70% open at low rpm means the turbine is oversized for the housing and you have thrown away response.</p>
+      <p><b>Arrangement changes the sizing problem, not just the total.</b> A parallel twin splits the engine between two turbos, so each one is matched to half the displacement &mdash; the map and every per-turbo readout show one turbo's share, while power and total flow are for the whole engine. That is why a parallel-twin 4.0 V8 puts each turbo at exactly the same point on the map as a single-turbo 2.0.</p>
+      <p><b>Cylinder count and scroll type set pulse separation.</b> Each scroll is fed by cylinders &divide; (turbos &times; scrolls), so pulses arrive every 720&deg; divided by that. Blowdown lasts roughly 240&deg;, so once the firing gap drops inside that figure the pulses run into one another: the turbine sees flattened, less useful energy and the manifold fights itself. Eight cylinders into one open scroll fire every 90&deg;; the same engine twin-scrolled or split across two turbos fires every 180&deg;. The model applies this as a turbine-efficiency multiplier and a manifold interference term, both deliberately conservative &mdash; real divided-housing gains depend heavily on manifold design.</p>
+      <p><b>Fuel is modelled by chemistry, not by a power multiplier.</b> Blends are specified by volume the way pump E-numbers are, converted to mass fraction by density, and stoichiometric ratio, energy content and latent heat all blend from there &mdash; E85 lands at 9.81:1 and 29.2&nbsp;MJ/kg against published 9.76 and 29.2. Set mixture with <b>lambda</b> so it stays comparable across fuels. Crucially, evaporative charge cooling is <em>not</em> applied to manifold density: fuel evaporates in the port and cylinder, downstream of where manifold air density is set. It buys knock resistance and a modest trapped-mass gain instead. That is why swapping to E85 at fixed boost barely moves power here &mdash; the real gain is that it lets you run more boost, which you can see by raising the boost slider and watching the knock row.</p>
+      <p><b>The knock row is indicative only.</b> It is a simple octane-requirement correlation in boost, charge temperature and compression ratio. It knows nothing about your timing, cam profile, chamber design, coolant temperature or fuel distribution, and it credits only the first 45&nbsp;K of evaporative cooling because past that the correlation is extrapolating. Use it to compare fuels against each other, never as a calibration target.</p>
+      </div>
+    </details>
+    <details>
+      <summary>Model &amp; data provenance</summary>
+      <div class="body">
+      <p>Wheel geometry, shaft speed limits and peak efficiencies come from published Garrett G-series catalogue pages and Xona Rotor / dealer spec sheets. Entries marked <span class="est">(est)</span> are interpolated within a frame family where the manufacturer does not publish inducer/exducer dimensions &mdash; treat those as indicative, not as datasheet values.</p>
+      <p><b>Xona's UHF turbine wheels carry a distinct aero credit</b>, not just different dimensions: Xona markets the UHF generation specifically on flowing more for a given physical size and holding efficiency over a wider speed range than the wheel it replaced. That is a directional, published characteristic rather than a reverse-engineered coefficient, so it is modelled as a deliberately modest +6% swallowing capacity and a 15% flatter blade-speed-ratio efficiency curve versus the Garrett-calibrated baseline &mdash; shown as "UHF aero" in the turbine panel whenever a Xona wheel is selected. It is not modelled as faster spool: that would be an inertia effect, and this is a steady-state solver with no rotating inertia in it at all.</p>
+      <p>Housing A/R and wastegate port size are treated as your own hardware choices, independent of which wheel is selected &mdash; swapping the turbine wheel (Garrett &harr; Xona, or between frame sizes) keeps your current A/R and gate size rather than resetting to a "typical" value, so you can compare wheel technology at a fixed housing. A/R is clamped to the newly selected wheel's available housing range if your current value falls outside it.</p>
+      <p>The physics is a steady-state 1-D match: a backswept-impeller Euler head model (&psi; = &sigma; &minus; k&middot;&phi;) with an asymmetric off-design efficiency penalty and an inducer-area choke limit, closed against a turbine swallowing-capacity curve and a blade-speed-ratio efficiency curve, balanced on shaft power with a wastegate bypass orifice. It reproduces published map shape and flow capacity well and is meant for comparing candidates against each other. It is not a substitute for the manufacturer's measured map, and it models no transient inertia &mdash; spool-up rate is inferred from turbine capacity, not simulated.</p>
+      </div>
+    </details>
+  </div>
+</main>
+</div>
+
+<script>
+const MONO="-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif";
+/* iOS-style filled slider tracks */
+function syncFills(){ document.querySelectorAll('input[type=range]').forEach(r=>
+  r.style.setProperty('--fill',((r.value-r.min)/(r.max-r.min)*100)+'%')); }
+"use strict";
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+const CP=1005, GAM=1.4, RG=287, CPE=1150, GAME=1.33;
+const EXP_A=(GAM-1)/GAM;            // 0.2857
+const EXP_E=(GAME-1)/GAME;          // 0.2481
+const KGS_TO_LBMIN=132.277;
+const BAR=1e5;                        // Pa per bar
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+
+/* ============================================================
+   HARDWARE CATALOGUE
+   ind/exd in mm. nmax in rpm. est=true \u2192 dimensions interpolated.
+   ============================================================ */
+const COMPS=[
+ {g:"Garrett G-Series", n:"G25-550",  ind:49.6, exd:64,  nmax:180000, eta:.78, est:true},
+ {g:"Garrett G-Series", n:"G25-660",  ind:54,   exd:67,  nmax:165000, eta:.79},
+ {g:"Garrett G-Series", n:"G30-660",  ind:54,   exd:67,  nmax:165000, eta:.78},
+ {g:"Garrett G-Series", n:"G30-770",  ind:58,   exd:71,  nmax:150000, eta:.76},
+ {g:"Garrett G-Series", n:"G30-900",  ind:62,   exd:76,  nmax:145000, eta:.77, est:true},
+ {g:"Garrett G-Series", n:"G35-900",  ind:62,   exd:76,  nmax:140000, eta:.77, est:true},
+ {g:"Garrett G-Series", n:"G35-1050", ind:68,   exd:84,  nmax:130000, eta:.78},
+ {g:"Garrett G-Series", n:"G40-900",  ind:62,   exd:78,  nmax:138000, eta:.77, est:true},
+ {g:"Garrett G-Series", n:"G40-1150", ind:71,   exd:88,  nmax:125000, eta:.78},
+ {g:"Garrett G-Series", n:"G42-1200", ind:72,   exd:90,  nmax:122000, eta:.79, est:true},
+ {g:"Xona Rotor",       n:"XR 4757S", ind:47,   exd:66,  nmax:180000, eta:.77, est:true},
+ {g:"Xona Rotor",       n:"XR 5157S", ind:51,   exd:71,  nmax:172000, eta:.77, est:true},
+ {g:"Xona Rotor",       n:"XR 5757S", ind:53,   exd:73,  nmax:168000, eta:.78},
+ {g:"Xona Rotor",       n:"XR 6157S", ind:55,   exd:76,  nmax:162000, eta:.78},
+ {g:"Xona Rotor",       n:"XR 6557S", ind:57,   exd:78,  nmax:158000, eta:.78, est:true},
+ {g:"Xona Rotor",       n:"XR 6964S", ind:59,   exd:81,  nmax:150000, eta:.78, est:true},
+ {g:"Xona Rotor",       n:"XR 7864S", ind:62,   exd:85,  nmax:145000, eta:.78, est:true},
+ {g:"Xona Rotor",       n:"XR 8264S", ind:64,   exd:88,  nmax:140000, eta:.78},
+ {g:"Xona Rotor",       n:"XR 8869S", ind:66,   exd:91,  nmax:134000, eta:.78, est:true},
+ {g:"Xona Rotor",       n:"XR 9569S", ind:68,   exd:94,  nmax:130000, eta:.79},
+ {g:"Xona Rotor",       n:"XR 10569S",ind:70.9, exd:92,  nmax:132000, eta:.79},
+];
+/* flowMul scales swallowing capacity (K in turbFlow) relative to the Garrett
+   baseline TK is calibrated against; bsrWidth scales the blade-speed-ratio
+   mismatch penalty in turbPower, <1 = flatter/more forgiving efficiency curve.
+   Xona markets the UHF wheel specifically on flowing more for a given physical
+   size and holding efficiency over a wider speed range than the wheel it
+   replaced; that is a directional, published characteristic, not a reverse-
+   engineered coefficient, so the numbers here are a deliberately modest
+   +6% flow / 15% wider curve, not a precision match to an unpublished map. */
+const TURBS=[
+ {g:"Garrett G-Series", n:"G25 turbine  54/49", ind:54, exd:49, ars:[.49,.72,.92],          eta:.74, frames:["G25"], flowMul:1.00, bsrWidth:1.00},
+ {g:"Garrett G-Series", n:"G30 turbine  60/55", ind:60, exd:55, ars:[.61,.83,1.01,1.21],    eta:.74, frames:["G30"], flowMul:1.00, bsrWidth:1.00},
+ {g:"Garrett G-Series", n:"G35 turbine  68/62", ind:68, exd:62, ars:[.61,.83,1.06,1.21],    eta:.74, frames:["G35"], flowMul:1.00, bsrWidth:1.00},
+ {g:"Garrett G-Series", n:"G40 turbine  77/70", ind:77, exd:70, ars:[.85,.95,1.06,1.19],    eta:.74, frames:["G40"], flowMul:1.00, bsrWidth:1.00},
+ {g:"Garrett G-Series", n:"G42 turbine  84/76", ind:84, exd:76, ars:[1.01,1.15,1.28],       eta:.74, frames:["G42"], est:true, flowMul:1.00, bsrWidth:1.00},
+ {g:"Xona Rotor UHF",   n:"XR 47S  53/47",      ind:53, exd:47, ars:[.45,.57,.72,.86],      eta:.76, frames:["47S"], est:true, flowMul:1.06, bsrWidth:0.85},
+ {g:"Xona Rotor UHF",   n:"XR 57S  62/57",      ind:62, exd:57, ars:[.57,.72,.86,1.01],     eta:.76, frames:["57S"], flowMul:1.06, bsrWidth:0.85},
+ {g:"Xona Rotor UHF",   n:"XR 64S  72/64",      ind:72, exd:64, ars:[.72,.86,1.01,1.15],    eta:.76, frames:["64S"], flowMul:1.06, bsrWidth:0.85},
+ {g:"Xona Rotor UHF",   n:"XR 69S  78/69",      ind:78, exd:69, ars:[.83,1.01,1.15,1.32],   eta:.76, frames:["69S"], flowMul:1.06, bsrWidth:0.85},
+];
+/* ============================================================
+   FUELS
+   afr = stoichiometric air/fuel by mass, lhv J/kg, lv latent heat of
+   vaporisation J/kg, rho kg/m3 (blends are specified by VOLUME, as pump
+   E-numbers are), egt = flame-temperature offset in K vs gasoline.
+   ============================================================ */
+const FUELS={
+  gas :{label:"Gasoline",   afr:14.7, lhv:43.5e6, lv:350e3,  rho:745, ron:98,  egt:0},
+  race:{label:"Race fuel",  afr:14.6, lhv:42.5e6, lv:340e3,  rho:735, ron:112, egt:10},
+  eth :{label:"Ethanol",    afr:9.0,  lhv:26.8e6, lv:900e3,  rho:789, ron:109, egt:-70},
+  meth:{label:"Methanol",   afr:6.45, lhv:19.9e6, lv:1100e3, rho:792, ron:109, egt:-130}
+};
+function blendFuel(baseKey,vol){
+  const G=FUELS.gas;
+  if(baseKey==="gas")  return {...G, tag:"Pump gasoline"};
+  if(baseKey==="race") return {...FUELS.race, tag:"Race fuel"};
+  const A=FUELS[baseKey], v=clamp(vol,0,1);
+  const mf=(v*A.rho)/(v*A.rho+(1-v)*G.rho);      // volume -> mass fraction
+  return {
+    tag:(baseKey==="eth"?"E":"M")+Math.round(v*100),
+    label:A.label+" blend",
+    afr: mf*A.afr+(1-mf)*G.afr,
+    lhv: mf*A.lhv+(1-mf)*G.lhv,
+    lv:  mf*A.lv +(1-mf)*G.lv,
+    rho: v*A.rho +(1-v)*G.rho,        // volumes are additive, so density blends by volume too
+    egt: mf*A.egt,
+    /* octane blends non-linearly - a splash of alcohol buys more than its share */
+    ron: G.ron+(A.ron-G.ron)*Math.pow(v,0.7),
+    mf
+  };
+}
+
+/* which turbine a given compressor normally ships with */
+const NATIVE={"G25-550":0,"G25-660":0,"G30-660":1,"G30-770":1,"G30-900":1,"G35-900":2,"G35-1050":2,
+ "G40-900":3,"G40-1150":3,"G42-1200":4,"XR 4757S":5,"XR 5157S":6,"XR 5757S":6,"XR 6157S":6,"XR 6557S":6,
+ "XR 6964S":7,"XR 7864S":7,"XR 8264S":7,"XR 8869S":8,"XR 9569S":8,"XR 10569S":8};
+
+/* ============================================================
+   COMPRESSOR AERO
+   ============================================================ */
+const PHI_OPT=0.30, SIGMA=0.86, BACKSWEEP=0.82;
+const chokeX = u => Math.min(1.0, 0.35 + 0.68*Math.pow(Math.max(u,0),0.9));
+/* Surge flow as a fraction of the choke flow *at that same speed*. Published maps put
+   that fraction near 0.42 at full shaft speed and near 0.23 at half speed, i.e. the
+   surge line closes on the origin at low speed rather than staying proportional. */
+const surgeX = u => chokeX(u)*(0.04+0.38*clamp(u,0,1.1));
+const chokeKgs = indMM => 1.6027e-4*indMM*indMM;   // corrected kg/s at the choke wall
+
+function compStage(w,N,mdot,T01,P01){
+  const D2=w.exd/1000;
+  const U2=Math.PI*D2*N/60, U2max=Math.PI*D2*w.nmax/60;
+  const u=U2/U2max;
+  const theta=T01/298.15, delta=P01/101325;
+  const mcorr=mdot*Math.sqrt(theta)/delta;
+  const mc=chokeKgs(w.ind);
+  const x=mcorr/mc;
+  const phi=0.42*x/Math.max(u,0.04);
+  const psi=Math.max(0.02, SIGMA-BACKSWEEP*phi);
+  /* Off-design loss in flow coefficient, sharpened with speed: at high tip Mach the
+     incidence and shock losses grow, which is what closes the efficiency islands at
+     the top of the map instead of leaving them as open arcs. */
+  const d=(phi-PHI_OPT)/PHI_OPT, u2=u*u;
+  const a=(d<0? 0.55*(1+0.90*u2) : 1.30*(1+1.10*u2));
+  let eta=w.eta*(1-a*d*d);
+  /* Peak efficiency sits near 72% of rated shaft speed on real maps, not at the top. */
+  const du=u-0.72;
+  eta*= (1-(du<0?0.45:1.15)*du*du);
+  eta=clamp(eta,0.12,0.90);
+  const PR=Math.pow(1+eta*psi*U2*U2/(CP*T01), 1/EXP_A);
+  return {u,x,phi,psi,eta,PR,U2,mcorr,mc,
+          surge:x<surgeX(u), choke:x>chokeX(u)};
+}
+/* Find the shaft speed that produces PRt at this flow.
+   PR is NOT monotonic in N: at low flow coefficient the efficiency term collapses
+   faster than tip speed grows, so PR peaks and then falls away again. Locate that
+   peak first and bisect only on the rising branch - otherwise the search runs off to
+   the top of the range and the entire spool solution goes non-monotonic. */
+function solveN(w,PRt,mdot,T01,P01){
+  const lo0=2000, hi0=w.nmax*1.15, NS=26;
+  let bestN=lo0, bestPR=-1;
+  for(let i=0;i<=NS;i++){
+    const N=lo0+(hi0-lo0)*i/NS;
+    const pr=compStage(w,N,mdot,T01,P01).PR;
+    if(pr>bestPR){bestPR=pr; bestN=N;}
+  }
+  if(PRt>=bestPR) return bestN;          // unattainable at this flow: sit at the peak
+  let lo=lo0, hi=bestN;
+  for(let i=0;i<34;i++){
+    const m=(lo+hi)/2;
+    if(compStage(w,m,mdot,T01,P01).PR<PRt) lo=m; else hi=m;
+  }
+  return (lo+hi)/2;
+}
+
+/* ============================================================
+   TURBINE
+   ============================================================ */
+/* Swallowing-capacity constant. Calibrated so a G25 turbine (49 mm exducer) in a
+   0.72 A/R housing sits at ~2.6 bar P3 passing 0.19 kg/s at 1000 K \u2014 i.e. a G25-660
+   holding 1.5 bar on a 2.0 L from just over 3000 rpm, which is what the real pairing does. */
+const TK=0.0146;
+const ER_SAT=3.6, F_SAT=Math.sqrt(1-Math.pow(ER_SAT,-1.9));
+const swallow=er=>Math.sqrt(Math.max(0,1-Math.pow(Math.max(er,1.0001),-1.9)));
+
+function turbFlow(t,ar,P3,T3,P4){
+  const K=TK*(t.flowMul||1)*ar*Math.pow(t.exd/1000,2);
+  return K*Math.min(swallow(P3/P4),F_SAT)*P3/Math.sqrt(T3);
+}
+function turbPower(t,N,mdot,P3,T3,P4,etaMul){
+  const er=Math.max(1.0001,P3/P4);
+  const dh=CPE*T3*(1-Math.pow(er,-EXP_E));
+  const Cs=Math.sqrt(2*Math.max(dh,1));
+  const Ut=Math.PI*(t.ind/1000)*N/60;
+  const bsr=Ut/Cs;
+  const curve=1.35*(t.bsrWidth||1);
+  let eta=t.eta*(1-curve*Math.pow(bsr/0.68-1,2))*(etaMul==null?1:etaMul);
+  eta=clamp(eta,0.05,0.82);
+  return {P:mdot*dh*eta, eta, bsr, er, dh};
+}
+/* Exhaust pulse separation.
+   Each turbine scroll is fed by cyl/(turbos*scrolls) cylinders, so pulses arrive
+   every 720/that crank degrees. Blowdown lasts roughly 240 deg, so once the firing
+   gap falls inside that the pulses run into each other: the turbine sees a flatter,
+   less energetic flow and the manifold fights itself. An 8-cylinder into one open
+   scroll fires every 90 deg; the same engine twin-scrolled fires every 180 deg. */
+const BLOWDOWN=240;
+function pulse(cyl,turbos,scrolls){
+  const perScroll=Math.max(1,cyl/(turbos*scrolls));
+  const gap=720/perScroll;
+  const q=clamp(gap/BLOWDOWN,0.35,1.25);
+  return {gap, perScroll, q,
+          etaMul: clamp(0.93+0.09*q, 0.94, 1.04),   // pulse energy recovered
+          bpMul:  1+0.45*(1-q)};                     // manifold interference
+}
+
+/* wastegate bypass, choked-orifice style */
+const KWG=0.0358;
+const wgCap=(dmm,P3,T3,P4)=>{
+  const A=Math.PI*Math.pow(dmm/2000,2);
+  return KWG*A*Math.min(swallow(P3/P4),F_SAT)*P3/Math.sqrt(T3);
+};
+
+/* ============================================================
+   OPERATING POINT SOLVER
+   ============================================================ */
+function solvePoint(rpm,c){
+  const P0=c.baro*1000, T0=c.amb+273.15;
+  const P01=P0*0.985, T01=T0+4;                 // filter loss + underhood soak
+  const AFR=c.fuel.afr*c.lambda;
+  /* Fuel evaporation pulls heat out of the charge, but it happens in the port and
+     cylinder - downstream of where manifold air density is set - so it must NOT be
+     subtracted from the manifold temperature. What it actually buys is knock
+     resistance, plus a modest trapped-mass gain for whatever evaporates before IVC.
+     That split is the whole story of why alcohol fuels make more power. */
+  const dTevap=c.fuel.lv/(AFR*CP)*c.evap;
+  const veEff=c.ve*(1+0.00035*dTevap);
+  /* Alcohols burn cooler, and so does a richer mixture. */
+  const egtPeak=c.egt+273.15+c.fuel.egt+260*(c.lambda-0.85);
+  const T3=T0+(egtPeak-T0)*(0.58+0.42*clamp(rpm/c.redline,0,1));
+  const pu=c.pulse;
+  /* Displacement each turbo has to feed: a parallel twin sees half the engine. */
+  const dispPerTurbo=c.disp/c.turbos;
+
+  function run(MAP){
+    const P2=MAP+c.icDrop*1000;
+    const PR=Math.max(1.001,P2/P01);
+    let Tim=T01+40, mdot=0, N=0, cs=null, T2=0;
+    for(let i=0;i<10;i++){
+      const rho=MAP/(RG*Tim);
+      mdot=Math.max(1e-4, veEff*(dispPerTurbo/1000)*(rpm/120)*rho);
+      N=solveN(c.comp,PR,mdot,T01,P01);
+      cs=compStage(c.comp,N,mdot,T01,P01);
+      T2=T01*(1+(Math.pow(PR,EXP_A)-1)/Math.max(cs.eta,.20));
+      Tim=T2-c.icEff*(T2-T0);
+    }
+    const Pc=mdot*CP*T01*(Math.pow(PR,EXP_A)-1)/Math.max(cs.eta,.20);
+    const me=mdot*(1+1/AFR);
+    const P4=P0+c.expK*pu.bpMul*me*me;
+    // wastegate shut: P3 set by swallowing capacity
+    let lo=P4*1.0001, hi=P4*12;
+    for(let i=0;i<48;i++){const m=(lo+hi)/2; turbFlow(c.turb,c.ar,m,T3,P4)<me?lo=m:hi=m;}
+    const P3shut=(lo+hi)/2;
+    const shut=turbPower(c.turb,N,me,P3shut,T3,P4,pu.etaMul);
+    return {MAP,P2,PR,mdot,me,N,cs,T2,Tim,Pc,P4,P3shut,shutP:shut.P*c.mech,T3,surplus:shut.P*c.mech-Pc};
+  }
+
+  const target=P0+c.boost*BAR;
+  let s=run(target), limited=false;
+  if(s.surplus<0){                                    // turbine can't hold target
+    limited=true;
+    let lo=P01*1.002, hi=target;
+    for(let i=0;i<26;i++){const m=(lo+hi)/2; run(m).surplus>0?lo=m:hi=m;}
+    s=run((lo+hi)/2);
+  }
+  // find P3 with gate cracked so shaft power balances
+  let P3=s.P3shut, mturb=s.me, wgFlow=0;
+  if(!limited){
+    let lo=s.P4*1.0001, hi=s.P3shut;
+    for(let i=0;i<46;i++){
+      const m=(lo+hi)/2, mt=Math.min(turbFlow(c.turb,c.ar,m,s.T3,s.P4),s.me);
+      turbPower(c.turb,s.N,mt,m,s.T3,s.P4,pu.etaMul).P*c.mech < s.Pc ? lo=m : hi=m;
+    }
+    P3=(lo+hi)/2;
+    mturb=Math.min(turbFlow(c.turb,c.ar,P3,s.T3,s.P4),s.me);
+    wgFlow=Math.max(0,s.me-mturb);
+  }
+  const tp=turbPower(c.turb,s.N,mturb,P3,s.T3,s.P4,pu.etaMul);
+  const cap=wgCap(c.wgD,P3,s.T3,s.P4);
+  const wgPct=clamp(cap>0? wgFlow/cap*100:0, 0, 100);
+
+  /* Power from fuel energy actually burned, not a fixed BSFC. Below stoich the extra
+     fuel is cooling the charge rather than releasing heat, so indicated efficiency
+     tracks lambda - which is why the same airflow makes near-identical power on
+     gasoline and on E85, and why the alcohol's real gain is the charge cooling above. */
+  const lam=c.lambda;
+  const util=Math.min(lam,1);                              // rich: surplus fuel cannot burn
+  const shape=clamp(1-1.6*Math.pow(lam-0.88,2),0.5,1);     // best-power mixture near 0.88
+  const etaTh=0.34*util*shape;
+  const mFuelTot=s.mdot*c.turbos/AFR;
+  const hp=mFuelTot*c.fuel.lhv*etaTh/745.7;
+  const boostBar=(s.MAP-P0)/BAR;
+  /* Indicative octane requirement only - ignores timing, cam, chamber and coolant.
+     Uses post-evaporation charge temperature, which is where the alcohol pays off. */
+  const Tchg=s.Tim-dTevap;
+  /* Credit only the first ~45 K of evaporative cooling to knock: past that the
+     correlation is extrapolating, and the fuel's own octane rating already carries
+     most of the alcohol benefit, so the two would double-count.
+     8.0 ON/bar is the same slope as the earlier 0.55 ON/psi calibration. */
+  const onReq=78+8.0*boostBar+0.30*(s.Tim-Math.min(dTevap,45)-273.15-25)+3.0*(c.cr-9);
+  /* Volumetric fuel rate per cylinder - the number an injector is actually sized to. */
+  const fuelCCminCyl=mFuelTot/c.fuel.rho*1e6*60/c.cyl;
+  return {
+    rpm, MAP:s.MAP, PR:s.PR, boostBar,
+    mdotLb:s.mdot*KGS_TO_LBMIN, mcorrLb:s.cs.mcorr*KGS_TO_LBMIN,
+    mdotTotLb:s.mdot*c.turbos*KGS_TO_LBMIN,
+    N:s.N, nPct:s.N/c.comp.nmax*100, ceta:s.cs.eta,
+    T2c:s.T2-273.15, Timc:s.Tim-273.15, Tchgc:Tchg-273.15, dTevap,
+    P2bar:(s.P2-P0)/BAR, P3bar:(P3-P0)/BAR, P3, P4:s.P4,
+    turbLb:mturb*KGS_TO_LBMIN, wgLb:wgFlow*KGS_TO_LBMIN, exhLb:s.me*KGS_TO_LBMIN,
+    wgPct, teta:tp.eta, bsr:tp.bsr, er:tp.er, bp:(s.MAP-P0)>0.05*BAR? Math.max(0,(P3-P0)/(s.MAP-P0)) : 0,   // gauge turbine inlet / gauge boost
+    egtC:s.T3-273.15, hp, limited, AFR,
+    fuelCCminCyl, knock:c.fuel.ron-onReq, onReq,
+    surge:s.cs.surge, choke:s.cs.choke, x:s.cs.x, u:s.cs.u,
+    /* both margins are referenced to the limit line, not to the operating point,
+       so "+20%" means "20% more flow than the surge line at this shaft speed" */
+    surgeMargin:Math.max(-100,(s.cs.x-surgeX(s.cs.u))/Math.max(surgeX(s.cs.u),1e-6)*100),
+    chokeMargin:(chokeX(s.cs.u)-s.cs.x)/Math.max(chokeX(s.cs.u),1e-6)*100
+  };
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const $=s=>document.querySelector(s);
+const state={ compIdx:1, turbIdx:0, sweep:[], cfg:null, rpm:4000, playing:true, dir:1 };
+
+function buildSelects(){
+  const cs=$("#comp"); let g=null;
+  COMPS.forEach((w,i)=>{
+    if(w.g!==g){g=w.g; cs.appendChild(Object.assign(document.createElement("optgroup"),{label:g}));}
+    const o=document.createElement("option");
+    o.value=i; o.textContent=`${w.n}  \u00b7  ${w.ind}/${w.exd} mm${w.est?"  (est)":""}`;
+    cs.lastElementChild.appendChild(o);
+  });
+  const ts=$("#turb"); g=null;
+  TURBS.forEach((t,i)=>{
+    if(t.g!==g){g=t.g; ts.appendChild(Object.assign(document.createElement("optgroup"),{label:g}));}
+    const o=document.createElement("option");
+    o.value=i; o.textContent=`${t.n}${t.est?"  (est)":""}`;
+    ts.lastElementChild.appendChild(o);
+  });
+  cs.value=state.compIdx; ts.value=state.turbIdx;
+}
+
+function applyComp(i){
+  const w=COMPS[i]; state.compIdx=i;
+  $("#ind").value=w.ind; $("#indV").textContent=w.ind;
+  $("#exd").value=w.exd; $("#cnmax").value=Math.round(w.nmax/1000);
+  const ti=NATIVE[w.n]; if(ti!=null){ state.turbIdx=ti; $("#turb").value=ti; applyTurb(ti); }
+}
+function applyTurb(i){
+  const t=TURBS[i]; state.turbIdx=i;
+  $("#tind").value=t.ind; $("#texd").value=t.exd;
+  /* A/R and wastegate port are the user's own hardware picks, not properties of the
+     wheel - keep them fixed across a turbine swap so different wheels compare
+     like-for-like at the same housing and gate. Only clamp A/R into the new
+     turbine's housing range if the current value falls outside it. */
+  $("#ar").min=t.ars[0]; $("#ar").max=t.ars[t.ars.length-1];
+  $("#ar").value=clamp(+$("#ar").value,t.ars[0],t.ars[t.ars.length-1]);
+  $("#arV").textContent=(+$("#ar").value).toFixed(2);
+  $("#wgV").textContent=$("#wg").value;
+}
+
+function readCfg(){
+  const base=COMPS[state.compIdx], tb=TURBS[state.turbIdx];
+  const comp={...base, ind:+$("#ind").value, exd:+$("#exd").value, nmax:+$("#cnmax").value*1000};
+  const turb={...tb, ind:+$("#tind").value, exd:+$("#texd").value};
+  const turbos=+$("#arr").value, scrolls=+$("#scr").value, cyl=+$("#cyl").value;
+  const fuel=blendFuel($("#fuelBase").value, +$("#blend").value/100);
+  fuel.ron=+$("#ron").value;                       // user may override the octane
+  return {
+    comp, turb, ar:+$("#ar").value, wgD:+$("#wg").value,
+    disp:+$("#disp").value, redline:+$("#rl").value, boost:+$("#boost").value,
+    ve:+$("#ve").value/100, egt:+$("#egt").value, icEff:+$("#ice").value/100,
+    amb:+$("#amb").value, baro:+$("#alt").value,
+    cyl, turbos, scrolls, cr:+$("#cr").value, pulse:pulse(cyl,turbos,scrolls),
+    fuel, lambda:+$("#lam").value, evap:+$("#evap").value/100,
+    icDrop:8, expK:60000, mech:0.97
+  };
+}
+
+function recompute(){
+  const c=readCfg(); state.cfg=c;
+  const n=104, lo=1000, hi=c.redline;
+  const out=[];
+  for(let i=0;i<n;i++) out.push(solvePoint(lo+(hi-lo)*i/(n-1), c));
+  state.sweep=out;
+  $("#rpm").min=lo; $("#rpm").max=hi;
+  state.rpm=clamp(state.rpm,lo,hi);
+  $("#rpm").value=state.rpm; $("#rpmV").textContent=Math.round(state.rpm);
+  computeMapField(c);
+  updateGeo(c);
+  drawAll();
+}
+const atRpm=r=>{
+  const s=state.sweep; if(!s.length) return null;
+  const t=clamp((r-s[0].rpm)/(s[s.length-1].rpm-s[0].rpm),0,1)*(s.length-1);
+  return s[Math.round(t)];
+};
+
+function updateGeo(c){
+  const U2=Math.PI*(c.comp.exd/1000)*c.comp.nmax/60;
+  $("#gTrim").textContent=Math.round(Math.pow(c.comp.ind/c.comp.exd,2)*100);
+  $("#gTip").textContent=Math.round(U2)+" m/s";
+  $("#gChoke").textContent=(chokeKgs(c.comp.ind)*KGS_TO_LBMIN).toFixed(0)+" lb/min";
+  $("#gEta").textContent=(c.comp.eta*100).toFixed(0)+" %";
+  $("#gTtrim").textContent=Math.round(Math.pow(c.turb.exd/c.turb.ind,2)*100);
+  $("#turbAero").textContent=(c.turb.flowMul&&c.turb.flowMul!==1)
+    ? `UHF aero - +${Math.round((c.turb.flowMul-1)*100)}% flow, wider eta band` : "";
+  const p=atRpm(c.redline)||state.sweep[state.sweep.length-1];
+  $("#gBsr").textContent=p?("U/C "+p.bsr.toFixed(2)):"\u2014";
+  $("#gPerT").textContent=(c.disp/c.turbos).toFixed(2)+" L";
+  $("#gFire").textContent=Math.round(c.pulse.gap)+"\u00b0";
+  const AFR=c.fuel.afr*c.lambda;
+  $("#gStoich").textContent=c.fuel.afr.toFixed(2)+":1";
+  $("#gAfr").textContent=AFR.toFixed(2)+":1";
+  $("#gCool").textContent="\u2212"+(c.fuel.lv/(AFR*CP)*c.evap).toFixed(0)+" K";
+  $("#gLhv").textContent=(c.fuel.lhv/1e6).toFixed(1)+" MJ/kg";
+  $("#blendRow").style.display=/eth|meth/.test($("#fuelBase").value)?"":"none";
+  $("#mapTitle").textContent=`${COMPS[state.compIdx].n} \u00b7 ${c.comp.ind}/${c.comp.exd} mm \u00b7 ${Math.round(c.comp.nmax/1000)} krpm`;
+  $("#matchNote").textContent=`${COMPS[state.compIdx].n} + ${TURBS[state.turbIdx].n.split("  ")[0]} @ ${c.ar.toFixed(2)} A/R`;
+}
+
+/* ============================================================
+   CANVAS PLUMBING
+   ============================================================ */
+/* palette is read once per theme change, not once per draw call */
+let PAL=null;
+const PALKEYS=["--ink","--ink-2","--ink-3","--cold","--hot","--bad","--warn","--ok",
+               "--grid","--grid-2","--rule","--panel","--ground"];
+function refreshPal(){
+  const cs=getComputedStyle(document.documentElement); PAL={};
+  PALKEYS.forEach(k=>PAL[k]=cs.getPropertyValue(k).trim());
+}
+function css(v){ if(!PAL) refreshPal(); return PAL[v]; }
+function fit(cv){
+  const r=cv.getBoundingClientRect(), d=Math.min(devicePixelRatio||1,2);
+  if(cv.width!==Math.round(r.width*d)||cv.height!==Math.round(r.height*d)){
+    cv.width=Math.round(r.width*d); cv.height=Math.round(r.height*d);
+  }
+  const g=cv.getContext("2d"); g.setTransform(d,0,0,d,0,0);
+  return {g,w:r.width,h:r.height};
+}
+
+/* ---------- map field (efficiency islands via marching squares in (u,x) space) ---------- */
+let FIELD=null;
+const ETA_LEVELS=[0.55,0.60,0.65,0.68,0.70,0.72,0.74,0.76,0.78];
+function computeMapField(c){
+  const NU=64, NX=96, uLo=0.14, uHi=1.05, xLo=0.06, xHi=1.06;
+  const P0=c.baro*1000, T01=c.amb+273.15+4, P01=P0*0.985;
+  const mc=chokeKgs(c.comp.ind);
+  const eta=new Float32Array(NU*NX), mm=new Float32Array(NU*NX),
+        pp=new Float32Array(NU*NX), ok=new Uint8Array(NU*NX);
+  for(let j=0;j<NU;j++){
+    const u=uLo+(uHi-uLo)*j/(NU-1), N=u*c.comp.nmax;
+    for(let i=0;i<NX;i++){
+      const x=xLo+(xHi-xLo)*i/(NX-1);
+      const md=x*mc*P01/101325/Math.sqrt(T01/298.15);
+      const s=compStage(c.comp,N,md,T01,P01);
+      const k=j*NX+i;
+      eta[k]=s.eta; mm[k]=x*mc*KGS_TO_LBMIN; pp[k]=s.PR;
+      ok[k]=(x>=surgeX(u)&&x<=chokeX(u)&&s.PR>1.02)?1:0;
+    }
+  }
+  // speed lines / surge / choke as polylines in (flow, PR)
+  const lines=[];
+  for(const u of [0.25,0.35,0.45,0.55,0.65,0.75,0.85,0.95,1.0]){
+    const N=u*c.comp.nmax, pts=[];
+    const a=surgeX(u), b=chokeX(u);
+    for(let i=0;i<=60;i++){
+      const x=a+(b-a)*i/60;
+      const md=x*mc*P01/101325/Math.sqrt(T01/298.15);
+      pts.push([x*mc*KGS_TO_LBMIN, compStage(c.comp,N,md,T01,P01).PR]);
+    }
+    lines.push({u,pts});
+  }
+  const surge=[], choke=[];
+  for(let i=0;i<=70;i++){
+    const u=0.18+(1.03-0.18)*i/70, N=u*c.comp.nmax;
+    for(const [arr,fx] of [[surge,surgeX],[choke,chokeX]]){
+      const x=fx(u), md=x*mc*P01/101325/Math.sqrt(T01/298.15);
+      arr.push([x*mc*KGS_TO_LBMIN, compStage(c.comp,N,md,T01,P01).PR]);
+    }
+  }
+  const maxPR=Math.max(...lines[lines.length-1].pts.map(p=>p[1]));
+  FIELD={NU,NX,eta,mm,pp,ok,lines,surge,choke,
+         xMax:mc*KGS_TO_LBMIN*1.10, yMax:Math.max(2.2,maxPR*1.08)};
+  // contours depend only on the hardware, so build them once here
+  FIELD.islands=ETA_LEVELS.filter(L=>L<=c.comp.eta).map(L=>({L,segs:contour(L)}));
+}
+function contour(level){
+  const {NU,NX,eta,mm,pp,ok}=FIELD, segs=[];
+  const at=(i,j)=>j*NX+i;
+  const interp=(ka,kb)=>{
+    const t=(level-eta[ka])/(eta[kb]-eta[ka]||1e-9);
+    return [mm[ka]+(mm[kb]-mm[ka])*t, pp[ka]+(pp[kb]-pp[ka])*t];
+  };
+  for(let j=0;j<NU-1;j++)for(let i=0;i<NX-1;i++){
+    const k00=at(i,j),k10=at(i+1,j),k11=at(i+1,j+1),k01=at(i,j+1);
+    if(!(ok[k00]&&ok[k10]&&ok[k11]&&ok[k01])) continue;
+    let idx=0;
+    if(eta[k00]>level)idx|=1; if(eta[k10]>level)idx|=2;
+    if(eta[k11]>level)idx|=4; if(eta[k01]>level)idx|=8;
+    if(idx===0||idx===15) continue;
+    const B=()=>interp(k00,k10), R=()=>interp(k10,k11), T=()=>interp(k01,k11), L=()=>interp(k00,k01);
+    const push=(a,b)=>segs.push([a,b]);
+    switch(idx){
+      case 1: case 14: push(L(),B()); break;
+      case 2: case 13: push(B(),R()); break;
+      case 3: case 12: push(L(),R()); break;
+      case 4: case 11: push(R(),T()); break;
+      case 5: push(L(),T()); push(B(),R()); break;
+      case 6: case 9: push(B(),T()); break;
+      case 7: case 8: push(L(),T()); break;
+      case 10: push(L(),B()); push(R(),T()); break;
+    }
+  }
+  return segs;
+}
+
+/* ---------- draw compressor map ---------- */
+function drawMap(){
+  const cv=$("#map"); if(!cv||!FIELD) return;
+  const {g,w,h}=fit(cv);
+  g.clearRect(0,0,w,h);
+  const P={l:52,r:16,t:14,b:34};
+  const X=v=>P.l+(w-P.l-P.r)*clamp(v/FIELD.xMax,0,1.06);
+  const Y=v=>h-P.b-(h-P.t-P.b)*clamp((v-1)/(FIELD.yMax-1),0,1.06);
+  const ink=css("--ink"), ink2=css("--ink-2"), ink3=css("--ink-3");
+  const cold=css("--cold"), hot=css("--hot"), bad=css("--bad");
+
+  // grid
+  g.lineWidth=1; g.font="10px "+MONO; g.textBaseline="middle";
+  const xStep=FIELD.xMax>90?20:(FIELD.xMax>45?10:5);
+  g.strokeStyle=css("--grid-2");
+  for(let v=0;v<=FIELD.xMax;v+=xStep){g.beginPath();g.moveTo(X(v),P.t);g.lineTo(X(v),h-P.b);g.stroke();}
+  for(let v=1.5;v<=FIELD.yMax;v+=0.5){g.beginPath();g.moveTo(P.l,Y(v));g.lineTo(w-P.r,Y(v));g.stroke();}
+  g.strokeStyle=css("--rule"); g.beginPath();
+  g.moveTo(P.l,P.t); g.lineTo(P.l,h-P.b); g.lineTo(w-P.r,h-P.b); g.stroke();
+  g.fillStyle=ink3; g.textAlign="center";
+  for(let v=0;v<=FIELD.xMax;v+=xStep) g.fillText(v,X(v),h-P.b+13);
+  g.fillText("corrected mass flow  lb/min",(P.l+w-P.r)/2,h-P.b+27);
+  g.textAlign="right";
+  for(let v=1.5;v<=FIELD.yMax;v+=0.5) g.fillText(v.toFixed(1),P.l-7,Y(v));
+  g.save(); g.translate(13,(P.t+h-P.b)/2); g.rotate(-Math.PI/2);
+  g.textAlign="center"; g.fillText("pressure ratio",0,0); g.restore();
+
+  // efficiency islands (segments precomputed with the field)
+  const peak=state.cfg.comp.eta;
+  FIELD.islands.forEach(({L,segs})=>{
+    const near=L/peak;
+    g.strokeStyle=cold; g.globalAlpha=0.16+0.62*Math.pow(near,4); g.lineWidth=near>0.985?1.6:1;
+    g.beginPath();
+    segs.forEach(([a,b])=>{g.moveTo(X(a[0]),Y(a[1])); g.lineTo(X(b[0]),Y(b[1]));});
+    g.stroke(); g.globalAlpha=1;
+  });
+  // label the two tightest islands, at their high-flow edge
+  let labelled=0;
+  for(let li=FIELD.islands.length-1;li>=0&&labelled<2;li--){
+    const {L,segs}=FIELD.islands[li]; if(segs.length<8) continue;
+    let best=null;
+    segs.forEach(([a])=>{ if(!best||a[0]>best[0]) best=a; });
+    if(best){ g.fillStyle=cold; g.globalAlpha=.85; g.textAlign="left";
+      g.fillText((L*100).toFixed(0)+"%", X(best[0])+4, Y(best[1])); g.globalAlpha=1; labelled++; }
+  }
+
+  // speed lines
+  g.strokeStyle=ink3; g.lineWidth=1;
+  FIELD.lines.forEach(l=>{
+    g.globalAlpha=l.u>=0.999?0.85:0.45;
+    g.beginPath(); l.pts.forEach((p,i)=> i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1]))); g.stroke();
+    const e=l.pts[l.pts.length-1];
+    g.globalAlpha=0.8; g.fillStyle=ink3; g.textAlign="left";
+    if(X(e[0])<w-P.r-24) g.fillText(Math.round(l.u*100), X(e[0])+3, Y(e[1])-2);
+  });
+  g.globalAlpha=1;
+
+  // surge + choke
+  g.strokeStyle=bad; g.lineWidth=1.6; g.setLineDash([4,3]);
+  g.beginPath(); FIELD.surge.forEach((p,i)=> i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1]))); g.stroke();
+  g.setLineDash([]);
+  g.strokeStyle=ink3; g.globalAlpha=.5; g.lineWidth=1.2;
+  g.beginPath(); FIELD.choke.forEach((p,i)=> i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1]))); g.stroke();
+  g.globalAlpha=1;
+
+  // operating line
+  const s=state.sweep;
+  g.strokeStyle=hot; g.lineWidth=2.2; g.beginPath();
+  s.forEach((p,i)=> i?g.lineTo(X(p.mcorrLb),Y(p.PR)):g.moveTo(X(p.mcorrLb),Y(p.PR)));
+  g.stroke();
+  g.fillStyle=hot;
+  [0,s.length-1].forEach(i=>{ g.beginPath(); g.arc(X(s[i].mcorrLb),Y(s[i].PR),2.6,0,7); g.fill(); });
+
+  // live point
+  const p=atRpm(state.rpm);
+  if(p){
+    const px=X(p.mcorrLb), py=Y(p.PR);
+    g.strokeStyle=hot; g.lineWidth=1; g.globalAlpha=.35;
+    g.beginPath(); g.moveTo(P.l,py); g.lineTo(px,py); g.moveTo(px,h-P.b); g.lineTo(px,py); g.stroke();
+    g.globalAlpha=1;
+    g.beginPath(); g.arc(px,py,7.5,0,7); g.strokeStyle=hot; g.lineWidth=2; g.stroke();
+    g.fillStyle=css("--ground"); g.beginPath(); g.arc(px,py,4.5,0,7); g.fill();
+    g.fillStyle=hot; g.beginPath(); g.arc(px,py,2.6,0,7); g.fill();
+    // callout
+    const txt=`${Math.round(p.rpm)} rpm \u00b7 PR ${p.PR.toFixed(2)} \u00b7 ${p.mcorrLb.toFixed(1)} lb/min \u00b7 \u03b7 ${(p.ceta*100).toFixed(0)}%`;
+    g.font="10.5px "+MONO; g.textAlign="left";
+    const tw=g.measureText(txt).width+12;
+    let bx=px+12, by=py-26; if(bx+tw>w-P.r) bx=px-12-tw; if(by<P.t) by=py+12;
+    g.fillStyle=css("--panel"); g.globalAlpha=.94; g.fillRect(bx,by,tw,18); g.globalAlpha=1;
+    g.strokeStyle=css("--rule"); g.lineWidth=1; g.strokeRect(bx,by,tw,18);
+    g.fillStyle=ink; g.fillText(txt,bx+6,by+9);
+  }
+}
+
+/* ---------- trace charts ---------- */
+const CHARTS={
+  pr:   {series:[{k:"PR",c:"cold",lab:"PR"}], fmt:v=>v.toFixed(2), zero:1},
+  mdot: {series:[{k:"mdotLb",c:"cold",lab:"compressor"},{k:"exhLb",c:"hot",lab:"exhaust"}], fmt:v=>v.toFixed(0)},
+  shaft:{series:[{k:"N",c:"ink",lab:"shaft",scale:1e-3}], fmt:v=>v.toFixed(0), redline:true},
+  press:{series:[{k:"P2bar",c:"cold",lab:"compressor out"},{k:"boostBar",c:"cold2",lab:"manifold"},{k:"P3bar",c:"hot",lab:"turbine in"}], fmt:v=>v.toFixed(2)},
+  temp: {series:[{k:"T2c",c:"hot",lab:"compressor out"},{k:"Timc",c:"cold",lab:"post-intercooler"},{k:"Tchgc",c:"cold2",lab:"after fuel evap"}], fmt:v=>v.toFixed(0)},
+  turb: {series:[{k:"turbLb",c:"hot",lab:"through wheel"},{k:"wgLb",c:"warn",lab:"wastegate"}], fmt:v=>v.toFixed(0)},
+  wg:   {series:[{k:"wgPct",c:"hot",lab:"open"}], fmt:v=>v.toFixed(0), fixed:[0,100]},
+  bp:   {series:[{k:"bp",c:"hot",lab:"P3/boost"}], fmt:v=>v.toFixed(2), zero:0, band:[1,1.5,2.0]},
+  hp:   {series:[{k:"hp",c:"ink",lab:"hp"}], fmt:v=>v.toFixed(0)}
+};
+const COLK={cold:"--cold",hot:"--hot",ink:"--ink-2",warn:"--warn",cold2:"--ink-3"};
+
+function drawChart(cv,key){
+  const spec=CHARTS[key], s=state.sweep; if(!s.length) return;
+  const {g,w,h}=fit(cv); g.clearRect(0,0,w,h);
+  const P={l:40,r:8,t:10,b:20};
+  let lo=spec.zero!=null?spec.zero:0, hi=-Infinity;
+  if(spec.fixed){lo=spec.fixed[0];hi=spec.fixed[1];}
+  else s.forEach(p=>spec.series.forEach(se=>{const v=p[se.k]*(se.scale||1); if(v>hi)hi=v; if(spec.zero==null&&v<lo)lo=Math.min(lo,v);}));
+  if(spec.redline) hi=Math.max(hi, state.cfg.comp.nmax/1000);
+  if(!isFinite(hi)||hi<=lo) hi=lo+1;
+  hi=lo+(hi-lo)*1.12;
+  const X=r=>P.l+(w-P.l-P.r)*(r-s[0].rpm)/(s[s.length-1].rpm-s[0].rpm);
+  const Y=v=>h-P.b-(h-P.t-P.b)*clamp((v-lo)/(hi-lo),0,1);
+
+  g.font="9.5px "+MONO; g.textBaseline="middle";
+  g.strokeStyle=css("--grid-2"); g.lineWidth=1;
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4; g.beginPath();g.moveTo(P.l,Y(v));g.lineTo(w-P.r,Y(v));g.stroke();}
+  g.fillStyle=css("--ink-3"); g.textAlign="right";
+  for(let i=0;i<=4;i+=2){const v=lo+(hi-lo)*i/4; g.fillText(spec.fmt(v),P.l-5,Y(v));}
+  g.textAlign="center";
+  [s[0].rpm,(s[0].rpm+s[s.length-1].rpm)/2,s[s.length-1].rpm].forEach(r=>
+    g.fillText((r/1000).toFixed(1)+"k",clamp(X(r),P.l+12,w-P.r-12),h-P.b+10));
+
+  if(spec.band){
+    const [a,b,c2]=spec.band;
+    g.fillStyle=css("--warn"); g.globalAlpha=.09; g.fillRect(P.l,Y(c2),w-P.l-P.r,Y(b)-Y(c2));
+    g.fillStyle=css("--bad"); g.globalAlpha=.10; g.fillRect(P.l,P.t,w-P.l-P.r,Math.max(0,Y(c2)-P.t));
+    g.globalAlpha=1;
+  }
+  if(spec.redline){
+    const rl=state.cfg.comp.nmax/1000;
+    g.strokeStyle=css("--bad"); g.setLineDash([3,3]); g.lineWidth=1;
+    g.beginPath();g.moveTo(P.l,Y(rl));g.lineTo(w-P.r,Y(rl));g.stroke(); g.setLineDash([]);
+    g.fillStyle=css("--bad"); g.textAlign="left"; g.fillText("max "+rl.toFixed(0),P.l+4,Y(rl)-6);
+  }
+
+  spec.series.forEach((se,si)=>{
+    const col=css(COLK[se.c]);
+    if(si===0&&spec.series.length===1){
+      const grd=g.createLinearGradient(0,P.t,0,h-P.b);
+      grd.addColorStop(0,col); grd.addColorStop(1,"transparent");
+      g.globalAlpha=.13; g.fillStyle=grd; g.beginPath(); g.moveTo(X(s[0].rpm),h-P.b);
+      s.forEach(p=>g.lineTo(X(p.rpm),Y(p[se.k]*(se.scale||1))));
+      g.lineTo(X(s[s.length-1].rpm),h-P.b); g.closePath(); g.fill(); g.globalAlpha=1;
+    }
+    g.strokeStyle=col; g.lineWidth=si===0?1.9:1.3;
+    if(si===2) g.setLineDash([4,2]);
+    g.beginPath(); s.forEach((p,i)=>{const y=Y(p[se.k]*(se.scale||1)); i?g.lineTo(X(p.rpm),y):g.moveTo(X(p.rpm),y);});
+    g.stroke(); g.setLineDash([]);
+  });
+
+  const p=atRpm(state.rpm);
+  if(p){
+    g.strokeStyle=css("--ink-3"); g.globalAlpha=.45; g.lineWidth=1;
+    g.beginPath(); g.moveTo(X(p.rpm),P.t); g.lineTo(X(p.rpm),h-P.b); g.stroke(); g.globalAlpha=1;
+    spec.series.forEach(se=>{
+      g.fillStyle=css(COLK[se.c]);
+      g.beginPath(); g.arc(X(p.rpm),Y(p[se.k]*(se.scale||1)),3,0,7); g.fill();
+    });
+    const se=spec.series[0], v=p[se.k]*(se.scale||1);
+    g.fillStyle=css("--ink"); g.textAlign="left"; g.font="600 11px "+MONO;
+    const tx=clamp(X(p.rpm)+6,P.l,w-P.r-44);
+    g.fillText(spec.fmt(v),tx,P.t+6);
+  }
+  // series legend
+  g.font="9px "+MONO; g.textAlign="right";
+  spec.series.forEach((se,i)=>{ g.fillStyle=css(COLK[se.c]); g.fillText(se.lab,w-P.r,P.t+6+i*11); });
+}
+
+/* ============================================================
+   READOUT + SCORECARD
+   ============================================================ */
+const STRIP=[
+  ["engine","rpm",p=>Math.round(p.rpm),""],
+  ["boost","bar",p=>p.boostBar.toFixed(2),"cold"],
+  ["pressure ratio","",p=>p.PR.toFixed(2),"cold"],
+  ["flow / turbo","lb/min",p=>p.mdotLb.toFixed(1),"cold"],
+  ["shaft speed","krpm",p=>(p.N/1000).toFixed(0),""],
+  ["comp eff","%",p=>(p.ceta*100).toFixed(0),"cold"],
+  ["charge temp","\u00b0C",p=>p.Timc.toFixed(0),"cold"],
+  ["turbine in","bar",p=>p.P3bar.toFixed(2),"hot"],
+  ["turbine flow","lb/min",p=>p.turbLb.toFixed(1),"hot"],
+  ["wastegate","% open",p=>p.wgPct.toFixed(0),"hot"],
+  ["backpressure","P3/boost",p=>p.bp.toFixed(2),"hot"],
+  ["EGT","\u00b0C",p=>Math.round(p.egtC),"hot"],
+  ["fuel / cyl","cc/min",p=>Math.round(p.fuelCCminCyl),""],
+  ["crank power","hp",p=>Math.round(p.hp),""]
+];
+function drawStrip(){
+  const p=atRpm(state.rpm); if(!p) return;
+  const el=$("#strip");
+  if(el.children.length!==STRIP.length){
+    el.innerHTML=STRIP.map(([k,u,,c])=>`<div class="cell ${c||""}"><div class="k">${k}</div><div class="v"><span class="n"></span><span class="u">${u}</span></div></div>`).join("");
+  }
+  STRIP.forEach(([k,u,f,c],i)=>{
+    const v=el.children[i].querySelector(".v");
+    v.className="v"+(c?" "+c:"");
+    v.querySelector(".n").textContent=f(p);
+  });
+}
+
+function grade(v,good,bad,invert){
+  const g=invert? v<=good : v>=good, b=invert? v>=bad : v<=bad;
+  return g?"ok":(b?"bad":"warn");
+}
+function drawScore(){
+  const s=state.sweep, c=state.cfg; if(!s.length) return;
+  /* Matching is judged on the boost plateau, not on the spool ramp: during spool the
+     gate is shut and the turbo is still accelerating, so surge/backpressure/gate
+     numbers taken there describe a transient, not the match. */
+  let boosted=s.filter(p=>p.boostBar>=c.boost*0.85 && !p.limited);
+  if(boosted.length<3) boosted=s.filter(p=>p.boostBar>0.15);
+  if(boosted.length<3) boosted=s.slice(-Math.max(3,Math.round(s.length*0.25)));
+  const lowP=boosted[0]||s[0];
+  const top=s[s.length-1];
+  let peakEta=0, peakN=0, peakBp=0, wgMin=100, minSurge=Infinity;
+  boosted.forEach(p=>{ if(p.ceta>peakEta)peakEta=p.ceta; if(p.nPct>peakN)peakN=p.nPct;
+    if(p.bp>peakBp)peakBp=p.bp; if(p.wgPct<wgMin)wgMin=p.wgPct; if(p.surgeMargin<minSurge)minSurge=p.surgeMargin; });
+  if(!isFinite(minSurge)) minSurge=0;
+  const spool=(s.find(p=>p.boostBar>=c.boost*0.9)||{rpm:c.redline}).rpm;
+  /* "limited" only counts at the top of the rev range - a point still climbing onto
+     boost during spool is not a mismatch, it is spool. */
+  const anyLimited=s.slice(-Math.ceil(s.length*0.15)).some(p=>p.limited);
+  const chokeM=top.chokeMargin;
+  const wgTop=top.wgPct;
+  /* when boost falls short, say which end actually ran out */
+  const compCapped = peakN>96 || chokeM<8;
+  const wgGrade = anyLimited?"bad" : (wgTop<6?"warn" : (wgTop>85?"warn":"ok"));
+
+  const rows=[
+    {n:"Surge margin",e:"tightest point on the boost plateau",v:(minSurge>0?"+":"")+minSurge.toFixed(0)+"%",
+     g:grade(minSurge,15,0),bar:clamp(minSurge/60,0,1)},
+    {n:"Choke margin",e:"at redline \u2014 headroom before the flow wall",v:chokeM.toFixed(0)+"%",
+     g:grade(chokeM,12,3),bar:clamp(chokeM/35,0,1)},
+    {n:"Peak compressor efficiency",e:"best point on the operating line",v:(peakEta*100).toFixed(0)+"%",
+     g:grade(peakEta*100,72,66),bar:clamp((peakEta-.55)/.28,0,1)},
+    {n:"Shaft speed used",e:"peak, as % of rated max",v:peakN.toFixed(0)+"%",
+     g:grade(peakN,98,105,true),bar:clamp(peakN/110,0,1)},
+    {n:"Backpressure ratio",e:"worst-case turbine inlet / boost pressure",v:peakBp.toFixed(2),
+     g:grade(peakBp,1.5,2.0,true),bar:clamp(peakBp/2.6,0,1)},
+    {n:"Wastegate at redline",e:"travel left in hand at peak flow",v:anyLimited?"pinned shut":wgTop.toFixed(0)+"% open",
+     g: wgGrade,bar:clamp(wgTop/100,0,1)},
+    {n:"Boost onset",e:"90% of target boost reached at",v:anyLimited?"not reached":Math.round(spool)+" rpm",
+     g: anyLimited?"bad":grade(spool,4200,5600,true),bar:clamp(1-(spool-1500)/5000,0,1)},
+    {n:"Knock margin on "+c.fuel.tag,e:"indicative octane headroom at redline",
+     v:(top.knock>0?"+":"")+top.knock.toFixed(1)+" RON",
+     g:grade(top.knock,3,0),bar:clamp((top.knock+6)/18,0,1)},
+    {n:"Estimated crank power",e:`whole engine at redline, lambda ${c.lambda.toFixed(2)} on ${c.fuel.tag}`,
+     v:Math.round(top.hp)+" hp",g:"",bar:0}
+  ];
+  $("#score").innerHTML=rows.map(r=>`
+    <div class="row">
+      <div class="n">${r.n}<em>${r.e}</em></div>
+      <div class="val ${r.g}">${r.v}</div>
+      ${r.bar?`<div class="bar"><i class="${r.g}" style="width:${(r.bar*100).toFixed(0)}%;background:currentColor"></i></div>`:""}
+    </div>`).join("");
+
+  // verdict
+  const flags=[];
+  if(minSurge<0) flags.push({s:2,t:`The operating line crosses the surge line on the plateau (${minSurge.toFixed(0)}%) \u2014 this wheel is too large for the boost you are asking for down there, or the engine is too small to feed it. Step down an inducer size or bring low-rpm boost back.`});
+  else if(minSurge<15) flags.push({s:1,t:`Surge margin is only +${minSurge.toFixed(0)}% where boost first comes in \u2014 it will drive fine at full throttle but expect chuffing on lift and part-throttle transitions.`});
+  if(chokeM<3) flags.push({s:2,t:"The operating line runs into the choke wall before redline \u2014 the compressor is out of flow and power will flatten. Go up an inducer size."});
+  else if(chokeM<12) flags.push({s:1,t:"Very little choke margin at redline; the wheel is working right at its limit."});
+  if(peakN>105) flags.push({s:2,t:`Shaft speed peaks at ${peakN.toFixed(0)}% of rated \u2014 over-speeding the wheel. Reduce boost or move to a larger frame.`});
+  else if(peakN>98) flags.push({s:1,t:"Shaft speed is at the rated ceiling; no margin for a hot day or a restricted intake."});
+  else if(peakN<70) flags.push({s:1,t:`Only ${peakN.toFixed(0)}% of rated shaft speed is used \u2014 the compressor is loafing and you are carrying rotating mass you never spin.`});
+  if(peakBp>2.0) flags.push({s:2,t:`Backpressure hits ${peakBp.toFixed(2)}:1 \u2014 the turbine stage is undersized. Open the A/R or move to the next turbine wheel up; the compressor side is not the problem.`});
+  else if(peakBp>1.5) flags.push({s:1,t:`Backpressure of ${peakBp.toFixed(2)}:1 is workable but is costing you scavenging and knock margin.`});
+  if(anyLimited) flags.push({s:2,t: compCapped
+    ? `Boost falls short of target before redline, and it is the compressor that ran out \u2014 ${peakN.toFixed(0)}% of rated shaft speed with ${chokeM.toFixed(0)}% choke margin left. A bigger housing will not fix this; you need more wheel.`
+    : "The turbine runs out of authority before redline \u2014 boost falls away from target. This turbine wheel or A/R cannot hold the compressor at that pressure ratio. Close the A/R down or step up a turbine wheel."});
+  else if(wgTop>85) flags.push({s:1,t:`The gate is still ${wgTop.toFixed(0)}% open at redline \u2014 the turbine housing is far larger than this engine needs, and a smaller A/R would buy response for nothing.`});
+  else if(wgTop<6) flags.push({s:1,t:"The gate is all but shut at redline: the turbine is holding target boost with nothing in reserve, so a hot day or a little more restriction will cost you boost up top."});
+  if(peakEta<0.66) flags.push({s:1,t:"The operating line sits outside the efficiency islands \u2014 charge temps will be high and the intercooler will be working hard."});
+  if(top.knock<0) flags.push({s:2,t:`${c.fuel.tag} is ${(-top.knock).toFixed(0)} RON short of what ${top.boostBar.toFixed(2)} bar at ${top.Timc.toFixed(0)} \u00b0C charge and ${c.cr.toFixed(1)}:1 compression indicatively asks for. More alcohol, less boost, or more intercooler.`});
+  else if(top.knock<3) flags.push({s:1,t:`Only ${top.knock.toFixed(1)} RON of indicative knock headroom on ${c.fuel.tag} \u2014 very little room for a hot day or a bad tank.`});
+  if(c.pulse.q<0.6) flags.push({s:1,t:`${c.cyl} cylinders feeding ${c.turbos*c.scrolls} scroll${c.turbos*c.scrolls>1?"s":""} fire every ${Math.round(c.pulse.gap)}\u00b0 \u2014 well inside blowdown, so the pulses interfere and the turbine sees flattened, less useful energy. A divided housing or a second turbo would separate them.`});
+
+  const worst=flags.reduce((a,f)=>Math.max(a,f.s),0);
+  const good=flags.length===0;
+  const label= good?"Well matched" : (worst===2?"Mismatched":"Workable");
+  const cls  = good?"ok" : (worst===2?"bad":"warn");
+  const body = good
+    ? `<p>The operating line stays inside the efficiency islands from ${Math.round(lowP.rpm)} rpm to redline, clear of both surge and choke, with the turbine holding target boost on a gate that still has travel left. Peak compressor efficiency on the line is ${(peakEta*100).toFixed(0)}% and worst-case backpressure (turbine inlet / boost) is ${peakBp.toFixed(2)}:1.</p>`
+    : `<p>${flags.sort((a,b)=>b.s-a.s).map(f=>f.t).join(" ")}</p>`;
+  $("#verdict").innerHTML=`<div class="g ${cls}">${label}<span class="pill ${cls}">${
+    COMPS[state.compIdx].n} + ${TURBS[state.turbIdx].n.split("  ")[0]}</span></div>${body}`;
+}
+
+/* ============================================================
+   DRAW / LOOP
+   ============================================================ */
+function drawAll(){
+  drawStrip(); drawMap(); drawScore();
+  document.querySelectorAll("canvas[data-ch]").forEach(cv=>drawChart(cv,cv.dataset.ch));
+}
+function drawLive(){
+  drawStrip(); drawMap();
+  document.querySelectorAll("canvas[data-ch]").forEach(cv=>drawChart(cv,cv.dataset.ch));
+}
+
+let last=performance.now();
+function loop(t){
+  syncFills();
+  const dt=Math.min((t-last)/1000,0.1); last=t;
+  if(state.playing&&state.cfg){
+    const lo=1000, hi=state.cfg.redline;
+    state.rpm+=state.dir*(hi-lo)*dt/5.5;
+    if(state.rpm>=hi){state.rpm=hi;state.dir=-1;}
+    if(state.rpm<=lo){state.rpm=lo;state.dir=1;}
+    $("#rpm").value=state.rpm; $("#rpmV").textContent=Math.round(state.rpm);
+    drawLive();
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ============================================================
+   WIRING
+   ============================================================ */
+buildSelects();
+applyComp(state.compIdx);
+
+$("#comp").addEventListener("change",e=>{applyComp(+e.target.value); recompute();});
+$("#turb").addEventListener("change",e=>{applyTurb(+e.target.value); recompute();});
+
+const live=[["ind","indV",v=>v],["ar","arV",v=>(+v).toFixed(2)],["wg","wgV",v=>v],
+  ["boost","boostV",v=>(+v).toFixed(2)],["ve","veV",v=>v],["egt","egtV",v=>v],["ice","iceV",v=>v],
+  ["lam","lamV",v=>(+v).toFixed(2)]];
+live.forEach(([id,out,f])=>{
+  const el=$("#"+id);
+  el.addEventListener("input",()=>{ $("#"+out).textContent=f(el.value); recompute(); });
+});
+["exd","cnmax","tind","texd","disp","rl","amb","alt","cr","ron","evap"].forEach(id=>
+  $("#"+id).addEventListener("input",recompute));
+["cyl","arr","scr"].forEach(id=>$("#"+id).addEventListener("change",recompute));
+
+/* fuel: keep the blend label and the suggested octane in step with the choice */
+function syncFuel(){
+  const f=blendFuel($("#fuelBase").value, +$("#blend").value/100);
+  $("#blendV").textContent=f.tag;
+  $("#ron").value=f.ron.toFixed(1);
+  recompute();
+}
+$("#fuelBase").addEventListener("change",syncFuel);
+$("#blend").addEventListener("input",syncFuel);
+
+$("#rpm").addEventListener("input",e=>{
+  state.rpm=+e.target.value; $("#rpmV").textContent=Math.round(state.rpm);
+  state.playing=false; setPlay(); drawLive();
+});
+function setPlay(){
+  const b=$("#playBtn");
+  b.classList.toggle("on",state.playing);
+  b.textContent=state.playing?"\u25ae\u25ae Pause sweep":"\u25b6 Run sweep";
+}
+$("#playBtn").addEventListener("click",()=>{state.playing=!state.playing; setPlay();});
+$("#themeBtn").addEventListener("click",()=>{
+  const cur=document.documentElement.getAttribute("data-theme");
+  const sysDark=matchMedia("(prefers-color-scheme: dark)").matches;
+  const next=cur? (cur==="dark"?"light":"dark") : (sysDark?"light":"dark");
+  document.documentElement.setAttribute("data-theme",next);
+  requestAnimationFrame(()=>{refreshPal(); drawAll();});
+});
+addEventListener("resize",()=>{ if(state.cfg) drawAll(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",
+  ()=>requestAnimationFrame(()=>{refreshPal(); drawAll();}));
+
+/* sidebar tabs: arrow keys move between them, the open tab is remembered per browser */
+const TABS=[...document.querySelectorAll('[role="tab"]')];
+function openTab(name,focus){
+  TABS.forEach(t=>{
+    const on=t.dataset.tab===name;
+    t.setAttribute("aria-selected",on); t.tabIndex=on?0:-1;
+    $("#"+t.getAttribute("aria-controls")).hidden=!on;
+    if(on&&focus) t.focus();
+  });
+  try{ localStorage.setItem("tmb-tab",name); }catch(e){}
+}
+TABS.forEach((t,i)=>{
+  t.addEventListener("click",()=>openTab(t.dataset.tab));
+  t.addEventListener("keydown",e=>{
+    const d=e.key==="ArrowRight"?1:e.key==="ArrowLeft"?-1:0; if(!d) return;
+    e.preventDefault(); openTab(TABS[(i+d+TABS.length)%TABS.length].dataset.tab,true);
+  });
+});
+try{ const t=localStorage.getItem("tmb-tab"); if(t&&TABS.some(b=>b.dataset.tab===t)) openTab(t); }catch(e){}
+if(document.fonts) document.fonts.ready.then(()=>{ if(state.cfg) drawAll(); });
+
+recompute();
+setPlay();
+requestAnimationFrame(loop);
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("../sw.js", { scope: "../" }).catch(() => {}));
+  }
+</script>
+</body>
+</html>
