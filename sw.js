@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v8";
+const VERSION = "tools-v9";
 const FILES = [
   "./",
   "index.html",
@@ -15,18 +15,10 @@ const FILES = [
   "ev-charge/index.html",
   "ev-charge/manifest.webmanifest",
   "icons/ev-charge-180.png", "icons/ev-charge-192.png", "icons/ev-charge-512.png",
-  "periodic/",
-  "periodic/index.html",
-  "periodic/manifest.webmanifest",
-  "icons/periodic-180.png", "icons/periodic-192.png", "icons/periodic-512.png",
   "gem-blend/",
   "gem-blend/index.html",
   "gem-blend/manifest.webmanifest",
   "icons/gem-blend-180.png", "icons/gem-blend-192.png", "icons/gem-blend-512.png",
-  "engine-sim/",
-  "engine-sim/index.html",
-  "engine-sim/manifest.webmanifest",
-  "icons/engine-sim-180.png", "icons/engine-sim-192.png", "icons/engine-sim-512.png",
   "turbo-toolkit/",
   "turbo-toolkit/index.html",
   "turbo-toolkit/manifest.webmanifest",

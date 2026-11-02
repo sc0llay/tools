@@ -10,8 +10,6 @@ Each tool is a single HTML page that runs entirely in the browser: no server, no
 | EV Charge Planner | https://sc0llay.github.io/tools/ev-charge/ |
 | GEM Blend Calculator | https://sc0llay.github.io/tools/gem-blend/ |
 | Turbo Match Bench | https://sc0llay.github.io/tools/turbo-toolkit/ |
-| Engine Simulator | https://sc0llay.github.io/tools/engine-sim/ |
-| Elements Explorer | https://sc0llay.github.io/tools/periodic/ |
 
 ## Adding a tool
 
