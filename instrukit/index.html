@@ -121,7 +121,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .chev{color:var(--label3); flex:none;}
 .row .sfx{flex:none; min-width:34px; color:var(--label2); font-size:15px;}
 .row input.f[data-u]{flex:1 1 30%;}
-#page-level [hidden], #page-flow [hidden]{display:none !important;}
+#page-level [hidden], #page-flow [hidden], #page-interp [hidden]{display:none !important;}
 input.sw{-webkit-appearance:none; appearance:none; flex:none; width:51px; height:31px; border-radius:16px; background:var(--fill); position:relative; cursor:pointer; transition:background .2s; margin:0;}
 input.sw::after{content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,.25); transition:transform .2s;}
 input.sw:checked{background:var(--green,#34C759);}
@@ -261,6 +261,7 @@ td input:focus{background:var(--fill2); color:var(--blue);}
 .tabbar button.on{color:var(--blue);}
 .tabbar svg{width:25px;height:25px;}
 .tabbar .x{display:none;}
+textarea.intbl{display:block; width:100%; min-height:150px; border:none; background:transparent; padding:12px 16px; font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; outline:none; resize:vertical; font-variant-numeric:tabular-nums;}
 
 /* ---------- Desktop: sidebar, two-column layouts, pointer affordances ---------- */
 .sidebar{display:none;}
@@ -688,6 +689,77 @@ td input:focus{background:var(--fill2); color:var(--blue);}
   </div></div>
 </section>
 
+<!-- ============================ INTERPOLATE ============================ -->
+<section class="page" id="page-interp">
+  <div class="navbar"><span class="compact-title">Interpolate</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Interpolate</div>
+  <div class="seg" id="inModeSeg">
+    <button class="on" data-m="two" onclick="inMode('two',this)">Two points</button>
+    <button data-m="tbl" onclick="inMode('tbl',this)">Table</button>
+    <button data-m="cal" onclick="inMode('cal',this)">2-pt cal sheet</button>
+  </div>
+
+  <div class="cols"><div class="col stick">
+  <div class="gtitle">Unit labels</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Input unit</span><input class="f" id="inUx" value="bar" autocapitalize="off" autocomplete="off" oninput="inCalc()"></div>
+    <div class="row"><span class="lbl">Output unit</span><input class="f" id="inUy" value="V" autocapitalize="off" autocomplete="off" oninput="inCalc()"></div>
+  </div>
+
+  <div id="in-pts">
+  <div class="gtitle">Known points</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Point 1 input</span><input class="f" id="inX1" inputmode="decimal" value="0" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
+    <div class="row"><span class="lbl">Point 1 output</span><input class="f" id="inY1" inputmode="decimal" value="0.5" oninput="inInput(this)"><span class="sfx" data-k="y"></span></div>
+    <div class="row"><span class="lbl">Point 2 input</span><input class="f" id="inX2" inputmode="decimal" value="2.1" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
+    <div class="row"><span class="lbl">Point 2 output</span><input class="f" id="inY2" inputmode="decimal" value="0.899" oninput="inInput(this)"><span class="sfx" data-k="y"></span></div>
+  </div>
+  </div>
+
+  <div id="in-tbl" hidden>
+  <div class="gtitle">Table (input, output per line)</div>
+  <div class="group"><textarea id="inTbl" class="intbl" spellcheck="false" oninput="inCalc()">0 0.5
+2.1 0.899
+10 2.4
+25 5.25</textarea></div>
+  </div>
+
+  <div id="in-q">
+  <div class="gtitle">Look up</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Input<small>edit either field to solve for the other</small></span><input class="f" id="inQx" inputmode="decimal" value="1" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
+    <div class="row"><span class="lbl">Output</span><input class="f" id="inQy" inputmode="decimal" value="" oninput="inInput(this)"><span class="sfx" data-k="y"></span></div>
+  </div>
+  </div>
+
+  <div id="in-rng" hidden>
+  <div class="gtitle">Calibration range</div>
+  <div class="group">
+    <div class="row"><span class="lbl">0 % input</span><input class="f" id="inLo" inputmode="decimal" value="0" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
+    <div class="row"><span class="lbl">100 % input<small>can be beyond the measured points</small></span><input class="f" id="inHi" inputmode="decimal" value="25" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
+    <div class="row"><span class="lbl">Number of points<small>spread evenly 0 % to 100 %</small></span><select class="f" id="inN" onchange="inCalc()"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option></select></div>
+  </div>
+  </div>
+
+  <div class="result" onclick="copyText(document.getElementById('inNum').textContent)">
+    <span class="copyhint">tap to copy</span>
+    <div class="cap" id="inCap">Result</div>
+    <div class="num" id="inNum">—</div><div class="unit" id="inUnit"></div><div class="sub" id="inSub"></div>
+  </div>
+  <div class="warn" id="inWarn"></div>
+  <div class="group" id="inDetail"></div>
+  </div><div class="col">
+  <div class="gtitle" id="inTitle">Table</div>
+  <div class="tablewrap"><table id="inTable"></table></div>
+  <div class="btnrow" style="margin-top:12px"><button class="btn tinted" id="inCopyBtn" onclick="inCopy()" hidden>Copy table</button></div>
+  <div class="gfoot" id="inFoot"></div>
+  </div></div>
+</section>
+
 <!-- ============================ CAL SHEET ============================ -->
 <section class="page" id="page-cal">
   <div class="navbar"><span class="compact-title">Calibration</span>
@@ -861,17 +933,19 @@ td input:focus{background:var(--fill2); color:var(--blue);}
   <button data-page="signal" onclick="showPage('signal')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 14c2.5 0 2.5-8 5-8s2.5 12 5 12 2.5-8 5-8 2.5 4 5 4"/></svg>Signal</button>
   <button data-page="sensor" onclick="showPage('sensor')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.8V4.5a2 2 0 1 1 4 0v10.3a4 4 0 1 1-4 0z"/><path d="M8 6H4M8 10H4M8 14H4"/></svg>Temperature</button>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.8V4.5a2 2 0 1 1 4 0v10.3a4 4 0 1 1-4 0z"/><path d="M8 6H4M8 10H4M8 14H4"/></svg>Temp<span class="x">erature</span></button>
   <button data-page="level" onclick="showPage('level')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 13c2 0 2-1.5 3.5-1.5S10.5 13 12 13s2-1.5 3.5-1.5S17 13 19 13"/></svg>Level</button>
   <button data-page="flow" onclick="showPage('flow')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 18h18M12 6v4M12 18v-4M4 12h4.5M15.5 12H20M18 10l2 2-2 2"/></svg>Flow</button>
+  <button data-page="interp" onclick="showPage('interp')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4"/><circle cx="7" cy="17" r="1.6"/><circle cx="17" cy="7" r="1.6"/><path d="M4 4v16h16" opacity=".5"/></svg>Interp</button>
   <button data-page="cal" onclick="showPage('cal')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M5 20V9M10 20V5M15 20v-7M20 20V3"/></svg>Cal<span class="x"> sheet</span></button>
   <button data-page="flange" onclick="showPage('flange')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="5.8" r=".9"/><circle cx="12" cy="18.2" r=".9"/><circle cx="5.8" cy="12" r=".9"/><circle cx="18.2" cy="12" r=".9"/></svg>Flanges</button>
   <button data-page="ref" onclick="showPage('ref')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>Reference</button>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>Ref<span class="x">erence</span></button>
 </nav>
 <div class="menu" id="snTypeMenu" role="listbox"></div>
 <div class="toast" id="toast"></div>
@@ -2615,8 +2689,164 @@ function fwCalc(){
   fwSave();
 }
 
+/* ============================ INTERPOLATE / 2-POINT CAL ============================ */
+let inM = 'two', inLast = 'x';
+const inV = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : NaN; };
+const inNum = (v, s) => fmt(v, s || 6);
+
+function inBuild(){
+  try{
+    const st = JSON.parse(localStorage.getItem('ik-interp') || 'null');
+    if(st){
+      Object.entries(st.vals || {}).forEach(([id,v]) => { if($(id)) $(id).value = v; });
+      inM = st.mode || inM; inLast = st.last || inLast;
+    }
+  }catch(e){}
+  [...$('inModeSeg').children].forEach(b => b.classList.toggle('on', b.dataset.m === inM));
+  inCalc();
+}
+function inSave(){
+  const vals = {};
+  document.querySelectorAll('#page-interp input.f, #page-interp textarea, #page-interp select.f').forEach(i => vals[i.id] = i.value);
+  try{ localStorage.setItem('ik-interp', JSON.stringify({vals, mode:inM, last:inLast})); }catch(e){}
+}
+function inMode(m, btn){ inM = m; segPick(btn); inCalc(); }
+function inInput(el){
+  if(el.id === 'inQx') inLast = 'x'; else if(el.id === 'inQy') inLast = 'y';
+  inCalc();
+}
+let inCopyText = '';
+function inCopy(){
+  const s = inCopyText; if(!s) return;
+  const done = () => toast('Table copied');
+  if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(s).then(done, () => toast('Copy failed'));
+  else { const ta = document.createElement('textarea'); ta.value = s; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done(); }catch(e){ toast('Copy failed'); } document.body.removeChild(ta); }
+}
+function inParseTable(){
+  const pts = [];
+  $('inTbl').value.split(/\n/).forEach(l => {
+    const m = l.trim().split(/[\s,;\t]+/).map(parseFloat).filter(isFinite);
+    if(m.length >= 2) pts.push([m[0], m[1]]);
+  });
+  return pts;
+}
+/* piecewise-linear lookup; returns {v, lo, hi, out} for the segment used (extrapolates from the end segment) */
+function inLookup(pts, q, fromIdx, toIdx){
+  const s = pts.map(p => [p[fromIdx], p[toIdx]]).sort((a,b) => a[0]-b[0]);
+  if(s.length < 2) return null;
+  let i = 0;
+  while(i < s.length-2 && q > s[i+1][0]) i++;
+  const [a, b] = [s[i], s[i+1]];
+  if(b[0] === a[0]) return null;
+  const v = a[1] + (b[1]-a[1])*(q-a[0])/(b[0]-a[0]);
+  return {v, a, b, out: q < s[0][0] || q > s[s.length-1][0]};
+}
+
+function inCalc(){
+  const M = inM;
+  $('in-pts').hidden = M === 'tbl';
+  $('in-tbl').hidden = M !== 'tbl';
+  $('in-q').hidden = M === 'cal';
+  $('in-rng').hidden = M !== 'cal';
+  const ux = $('inUx').value.trim(), uy = $('inUy').value.trim();
+  document.querySelectorAll('#page-interp .sfx').forEach(s => s.textContent = s.dataset.k === 'x' ? ux : uy);
+  const warns = [], row = (l,v,sm) => `<div class="row"><span class="lbl">${l}${sm ? `<small>${sm}</small>` : ''}</span><span class="val">${v}</span></div>`;
+  let cap = '', num = '—', unit = '', sub = '', det = '', tbl = '', foot = '';
+  inCopyText = ''; $('inCopyBtn').hidden = true;
+
+  if(M === 'tbl'){
+    const pts = inParseTable();
+    const qx = inV('inQx'), qy = inV('inQy');
+    if(pts.length < 2) warns.push('Enter at least two lines of “input output” pairs.');
+    else {
+      const useX = inLast === 'x';
+      const r = inLookup(pts, useX ? qx : qy, useX ? 0 : 1, useX ? 1 : 0);
+      if(!r || !isFinite(useX ? qx : qy)) warns.push('Enter a value to look up.');
+      else {
+        if(useX) $('inQy').value = inNum(r.v); else $('inQx').value = inNum(r.v);
+        cap = useX ? 'Output' : 'Input'; num = inNum(r.v, 6); unit = useX ? uy : ux;
+        sub = `between ${inNum(r.a[0],5)} → ${inNum(r.a[1],5)} and ${inNum(r.b[0],5)} → ${inNum(r.b[1],5)}`;
+        if(r.out) warns.push('Value is outside the table: this is extrapolated from the end segment.');
+        const mono = pts.every((p,i) => i === 0 || (p[1] - pts[i-1][1]) * (pts[1][1] - pts[0][1]) >= 0);
+        if(!useX && !mono) warns.push('Output column is not monotonic, so an input found from an output may be ambiguous.');
+        det = row('Segment slope', `${inNum((r.b[1]-r.a[1])/(r.b[0]-r.a[0]),6)} ${uy}/${ux}`, 'output per unit input in this segment') + row('Table points', pts.length);
+      }
+    }
+    tbl = '<thead><tr><th>#</th><th>Input (' + ux + ')</th><th>Output (' + uy + ')</th></tr></thead><tbody>' +
+      pts.map((p,i) => `<tr><td>${i+1}</td><td>${inNum(p[0])}</td><td>${inNum(p[1])}</td></tr>`).join('') + '</tbody>';
+    $('inTitle').textContent = 'Table';
+    foot = 'Paste two columns from a datasheet (space, comma or tab separated). Values between rows are joined by straight lines. Edit either the input or the output to look up the other.';
+  } else {
+    const x1 = inV('inX1'), y1 = inV('inY1'), x2 = inV('inX2'), y2 = inV('inY2');
+    if(![x1,y1,x2,y2].every(isFinite)) warns.push('Enter both known points.');
+    else if(x1 === x2) warns.push('The two input values must be different.');
+    else {
+      const m = (y2-y1)/(x2-x1), c = y1 - m*x1;
+      const y = x => m*x + c;
+      const xmin = Math.min(x1,x2), xmax = Math.max(x1,x2);
+      det = row('Equation', `y = ${inNum(m,6)} × x ${c < 0 ? '−' : '+'} ${inNum(Math.abs(c),6)}`);
+      det += row('Slope', `${inNum(m,6)} ${uy}/${ux}`, 'sensitivity');
+      det += row('Offset', `${inNum(c,6)} ${uy}`, `output at 0 ${ux}`);
+      if(m !== 0) det += row('Input at 0 output', `${inNum(-c/m,6)} ${ux}`);
+      if(M === 'two'){
+        const qx = inV('inQx'), qy = inV('inQy'), useX = inLast === 'x';
+        let q = useX ? qx : qy;
+        if(!isFinite(q)) warns.push('Enter a value to look up.');
+        else if(!useX && m === 0) warns.push('The line is flat, so an input cannot be found from an output.');
+        else {
+          const r = useX ? y(q) : (q - c)/m;
+          if(useX) $('inQy').value = inNum(r); else $('inQx').value = inNum(r);
+          cap = useX ? 'Output' : 'Input'; num = inNum(r, 6); unit = useX ? uy : ux;
+          const xin = useX ? q : r;
+          sub = `${inNum(xin,5)} ${ux} ↔ ${inNum(y(xin),5)} ${uy}`;
+          if(xin < xmin || xin > xmax) warns.push(`Outside the two known points (${inNum(xmin,5)} to ${inNum(xmax,5)} ${ux}): this is extrapolated, assuming the response stays linear.`);
+          det += row('Position between points', `${inNum((xin - x1)/(x2 - x1)*100, 5)} %`, 'from point 1 (0 %) to point 2 (100 %)');
+        }
+        tbl = '<thead><tr><th>Between points</th><th>Input (' + ux + ')</th><th>Output (' + uy + ')</th></tr></thead><tbody>' +
+          [0,25,50,75,100].map(p => { const x = x1 + (x2-x1)*p/100; return `<tr><td>${p} %</td><td>${inNum(x)}</td><td>${inNum(y(x))}</td></tr>`; }).join('') + '</tbody>';
+        $('inTitle').textContent = 'Between the two points';
+        foot = 'The line is drawn through the two known points: y = m·x + c. Edit either the input or the output to solve for the other.';
+      } else {
+        const lo = inV('inLo'), hi = inV('inHi'), n = Math.max(2, Math.min(21, Math.round(inV('inN')) || 4));
+        if(!isFinite(lo) || !isFinite(hi) || lo === hi) warns.push('Enter different 0 % and 100 % input values.');
+        else {
+          const rows = [];
+          for(let i = 0; i < n; i++){
+            const p = 100*i/(n-1), x = lo + (hi-lo)*i/(n-1);
+            rows.push({i:i+1, p, x, y:y(x)});
+          }
+          cap = 'Output at 100 %'; num = inNum(y(hi), 6); unit = uy;
+          sub = `0 %: ${inNum(y(lo),5)} ${uy} · span ${inNum(y(hi)-y(lo),5)} ${uy}`;
+          [['0 %', lo], ['100 %', hi]].forEach(([n_, v]) => {
+            if(v < xmin || v > xmax){
+              const far = Math.max(xmin - v, v - xmax) / (xmax - xmin);
+              warns.push(`${n_} (${inNum(v,5)} ${ux}) is outside the measured points (${inNum(xmin,5)} to ${inNum(xmax,5)} ${ux}), ${inNum(far,3)}× the measured span past the nearest point: linearity is assumed, not verified.`);
+            }
+          });
+          det += row('Output at 0 %', `${inNum(y(lo),6)} ${uy}`, `at ${inNum(lo,6)} ${ux}`);
+          det += row('Output at 100 %', `${inNum(y(hi),6)} ${uy}`, `at ${inNum(hi,6)} ${ux}`);
+          det += row('Output span', `${inNum(y(hi)-y(lo),6)} ${uy}`);
+          det += row('Input span', `${inNum(hi-lo,6)} ${ux}`);
+          tbl = `<thead><tr><th>Point</th><th>%</th><th>Input (${ux})</th><th>Output (${uy})</th></tr></thead><tbody>` +
+            rows.map(r => `<tr${r.i === 1 || r.i === n ? ' class="hi"' : ''}><td>${r.i}</td><td>${inNum(r.p,4)}</td><td>${inNum(r.x,6)}</td><td>${inNum(r.y,6)}</td></tr>`).join('') + '</tbody>';
+          inCopyText = ['Point\t%\tInput (' + ux + ')\tOutput (' + uy + ')'].concat(rows.map(r => `${r.i}\t${inNum(r.p,4)}\t${inNum(r.x,6)}\t${inNum(r.y,6)}`)).join('\n');
+          $('inCopyBtn').hidden = false;
+          $('inTitle').textContent = 'Calibration points';
+          foot = `Two measured points fix the line y = ${inNum(m,5)}·x ${c < 0 ? '−' : '+'} ${inNum(Math.abs(c),5)}; the calibration points are then spread evenly from 0 % to 100 % of the input range. Use the Cal sheet tab to record readings against these.`;
+        }
+      }
+    }
+  }
+  $('inCap').textContent = cap || 'Result';
+  $('inNum').textContent = num; $('inUnit').textContent = unit; $('inSub').textContent = sub;
+  $('inWarn').innerHTML = warns.join('<br>');
+  $('inDetail').innerHTML = det; $('inDetail').hidden = !det;
+  $('inTable').innerHTML = tbl; $('inFoot').textContent = foot;
+  inSave();
+}
+
 /* ---- desktop sidebar (iPadOS / macOS pattern; the tab bar takes over under 900 px) ---- */
-const PAGES = ['convert','signal','sensor','level','flow','cal','flange','ref'];
+const PAGES = ['convert','signal','sensor','level','flow','interp','cal','flange','ref'];
 function buildSidebar(){
   const bar = document.createElement('aside');
   bar.className = 'sidebar'; bar.id = 'sidebar';
@@ -2666,6 +2896,7 @@ document.addEventListener('keydown', e=>{
   flBuild();
   lvBuild();
   fwBuild();
+  inBuild();
 
   try{
     const p = localStorage.getItem('ik-page');
