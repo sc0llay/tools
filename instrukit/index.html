@@ -118,6 +118,10 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .row .sfx{flex:none; min-width:34px; color:var(--label2); font-size:15px;}
 .row input.f[data-u]{flex:1 1 30%;}
 #page-level [hidden], #page-flow [hidden]{display:none !important;}
+input.sw{-webkit-appearance:none; appearance:none; flex:none; width:51px; height:31px; border-radius:16px; background:var(--fill); position:relative; cursor:pointer; transition:background .2s; margin:0;}
+input.sw::after{content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,.25); transition:transform .2s;}
+input.sw:checked{background:var(--green,#34C759);}
+input.sw:checked::after{transform:translateX(20px);}
 
 
 /* inputs inside rows */
@@ -559,6 +563,7 @@ td input:focus{background:var(--fill2); color:var(--blue);}
     </div>
     <div class="dp-wet">
     <div class="row"><span class="lbl">Wet leg fill SG<small>LP leg / LP capillary fill</small></span><input class="f" id="dpSGw" inputmode="decimal" value="1.000" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+    <label class="row tap"><span class="lbl">Zero with LP leg filled<small>transmitter is zeroed after the leg is filled, so the leg head is not in the range</small></span><input type="checkbox" class="sw" id="dpZeroLeg" onchange="lvCalc()"></label>
     </div>
     <div class="dp-seal">
     <div class="row"><span class="lbl">HP capillary fill SG<small>silicone DC200 ≈ 0.934</small></span><input class="f" id="dpSGh" inputmode="decimal" value="0.934" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
@@ -2159,7 +2164,7 @@ function lvBuild(){
     const st = JSON.parse(localStorage.getItem('ik-level') || 'null');
     if(st){
       Object.assign(lvCur, st.units || {});
-      Object.entries(st.vals || {}).forEach(([id, v]) => { if($(id)) $(id).value = v; });
+      Object.entries(st.vals || {}).forEach(([id, v]) => { if(id === 'dpZeroLeg') $(id).checked = !!v; else if($(id)) $(id).value = v; });
       lvT = st.tool || lvT; lvDpM = st.dpm || lvDpM; lvHyLast = st.hyLast || lvHyLast;
     }
   }catch(e){}
@@ -2171,6 +2176,7 @@ function lvBuild(){
 function lvSave(){
   const vals = {};
   document.querySelectorAll('#page-level input.f').forEach(i => vals[i.id] = i.value);
+  vals.dpZeroLeg = $('dpZeroLeg').checked;
   try{ localStorage.setItem('ik-level', JSON.stringify({units:lvCur, vals, tool:lvT, dpm:lvDpM, hyLast:lvHyLast})); }catch(e){}
 }
 function lvTool(t, btn){ lvT = t; segPick(btn); lvCalc(); }
@@ -2233,14 +2239,16 @@ function dpCalc(){
   document.querySelectorAll('#page-level .dp-seal').forEach(e => e.hidden = !seal);
   const S = lvSI('dpSpan'), z = lvSI('dpZero'), d = lvSI('dpD'), H = leg ? lvSI('dpH') : 0;
   const rp = lvV('dpSGp') * 1000, rh = seal ? lvV('dpSGh') * 1000 : rp, rw = wet ? lvV('dpSGw') * 1000 : 0;
-  const dp = x => LV_G * (rp * (z + x) + rh * d - rw * (H + d));
+  const zl = wet && $('dpZeroLeg').checked;                 /* leg head trimmed out at the zero */
+  const dp = x => LV_G * (rp * (z + x) + rh * d - (zl ? 0 : rw * (H + d)));
   const lrv = dp(0), urv = dp(S);
   const warns = [];
   if(!(S > 0)) warns.push('Level span must be greater than zero.');
   if(z < 0) warns.push('0 % level is below the lower tap — the transmitter cannot see level below the tap.');
   if(leg && z + S > H + 1e-9) warns.push('100 % level is above the upper tap / LP seal.');
   if(!seal && d < 0) warns.push('Transmitter above the lower tap: the HP impulse line must stay liquid-full.');
-  if(m === 'wet') warns.push('Wet leg must be kept full; loss of fill shifts the zero by the wet leg head.');
+  if(m === 'wet') warns.push(zl ? `Range assumes the zero was trimmed with the LP leg full: if the leg loses fill the output shifts by ${lvF(LV_G * rw * (H + d),'p')} ${lvCur.p}.`
+                                : 'Wet leg must be kept full; loss of fill shifts the zero by the wet leg head.');
   $('dpWarn').innerHTML = warns.join('<br>');
 
   const U = lvCur.p;
