@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v10";
+const VERSION = "tools-v11";
 const FILES = [
   "./",
   "index.html",
