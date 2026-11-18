@@ -700,7 +700,6 @@ textarea.intbl{display:block; width:100%; min-height:150px; border:none; backgro
   <div class="seg" id="inModeSeg">
     <button class="on" data-m="two" onclick="inMode('two',this)">Two points</button>
     <button data-m="tbl" onclick="inMode('tbl',this)">Table</button>
-    <button data-m="cal" onclick="inMode('cal',this)">2-pt cal sheet</button>
   </div>
 
   <div class="cols"><div class="col stick">
@@ -728,20 +727,24 @@ textarea.intbl{display:block; width:100%; min-height:150px; border:none; backgro
 25 5.25</textarea></div>
   </div>
 
-  <div id="in-q">
-  <div class="gtitle">Look up</div>
+  <div id="in-rng">
+  <div class="gtitle">Calibration range</div>
+  <div class="seg" id="inKnownSeg">
+    <button class="on" data-k="x" onclick="inKnown('x',this)">Input range known</button>
+    <button data-k="y" onclick="inKnown('y',this)">Output range known</button>
+  </div>
   <div class="group">
-    <div class="row"><span class="lbl">Input<small>edit either field to solve for the other</small></span><input class="f" id="inQx" inputmode="decimal" value="1" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
-    <div class="row"><span class="lbl">Output</span><input class="f" id="inQy" inputmode="decimal" value="" oninput="inInput(this)"><span class="sfx" data-k="y"></span></div>
+    <div class="row"><span class="lbl"><span id="inLoLbl">0 % input</span></span><input class="f" id="inLo" inputmode="decimal" value="0" oninput="inCalc()"><span class="sfx" id="inLoU" data-k="x"></span></div>
+    <div class="row"><span class="lbl"><span id="inHiLbl">100 % input</span><small>can be beyond the measured points</small></span><input class="f" id="inHi" inputmode="decimal" value="25" oninput="inCalc()"><span class="sfx" id="inHiU" data-k="x"></span></div>
+    <div class="row"><span class="lbl">Number of points<small>spread evenly 0 % to 100 %</small></span><select class="f" id="inN" onchange="inCalc()"><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option></select></div>
   </div>
   </div>
 
-  <div id="in-rng" hidden>
-  <div class="gtitle">Calibration range</div>
+  <div id="in-q">
+  <div class="gtitle">Look up a single value</div>
   <div class="group">
-    <div class="row"><span class="lbl">0 % input</span><input class="f" id="inLo" inputmode="decimal" value="0" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
-    <div class="row"><span class="lbl">100 % input<small>can be beyond the measured points</small></span><input class="f" id="inHi" inputmode="decimal" value="25" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
-    <div class="row"><span class="lbl">Number of points<small>spread evenly 0 % to 100 %</small></span><select class="f" id="inN" onchange="inCalc()"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option></select></div>
+    <div class="row"><span class="lbl">Input<small>edit either field to solve for the other</small></span><input class="f" id="inQx" inputmode="decimal" value="1" oninput="inInput(this)"><span class="sfx" data-k="x"></span></div>
+    <div class="row"><span class="lbl">Output</span><input class="f" id="inQy" inputmode="decimal" value="" oninput="inInput(this)"><span class="sfx" data-k="y"></span></div>
   </div>
   </div>
 
@@ -2690,7 +2693,7 @@ function fwCalc(){
 }
 
 /* ============================ INTERPOLATE / 2-POINT CAL ============================ */
-let inM = 'two', inLast = 'x';
+let inM = 'two', inLast = 'x', inKnownSide = 'x';
 const inV = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : NaN; };
 const inNum = (v, s) => fmt(v, s || 6);
 
@@ -2699,16 +2702,26 @@ function inBuild(){
     const st = JSON.parse(localStorage.getItem('ik-interp') || 'null');
     if(st){
       Object.entries(st.vals || {}).forEach(([id,v]) => { if($(id)) $(id).value = v; });
-      inM = st.mode || inM; inLast = st.last || inLast;
+      inM = st.mode === 'tbl' ? 'tbl' : 'two'; inLast = st.last || inLast; inKnownSide = st.known === 'y' ? 'y' : 'x';
     }
   }catch(e){}
   [...$('inModeSeg').children].forEach(b => b.classList.toggle('on', b.dataset.m === inM));
+  [...$('inKnownSeg').children].forEach(b => b.classList.toggle('on', b.dataset.k === inKnownSide));
   inCalc();
 }
 function inSave(){
   const vals = {};
   document.querySelectorAll('#page-interp input.f, #page-interp textarea, #page-interp select.f').forEach(i => vals[i.id] = i.value);
-  try{ localStorage.setItem('ik-interp', JSON.stringify({vals, mode:inM, last:inLast})); }catch(e){}
+  try{ localStorage.setItem('ik-interp', JSON.stringify({vals, mode:inM, last:inLast, known:inKnownSide})); }catch(e){}
+}
+function inKnown(k, btn){
+  if(k === inKnownSide) return;
+  const x1 = inV('inX1'), y1 = inV('inY1'), x2 = inV('inX2'), y2 = inV('inY2');
+  if([x1,y1,x2,y2].every(isFinite) && x1 !== x2 && y1 !== y2){          /* carry the range across so the table stays the same */
+    const m = (y2-y1)/(x2-x1), c = y1 - m*x1;
+    ['inLo','inHi'].forEach(id => { const v = inV(id); if(isFinite(v)) $(id).value = inNum(k === 'y' ? m*v + c : (v - c)/m); });
+  }
+  inKnownSide = k; segPick(btn); inCalc();
 }
 function inMode(m, btn){ inM = m; segPick(btn); inCalc(); }
 function inInput(el){
@@ -2746,10 +2759,12 @@ function inCalc(){
   const M = inM;
   $('in-pts').hidden = M === 'tbl';
   $('in-tbl').hidden = M !== 'tbl';
-  $('in-q').hidden = M === 'cal';
-  $('in-rng').hidden = M !== 'cal';
+  $('in-rng').hidden = M !== 'two';
   const ux = $('inUx').value.trim(), uy = $('inUy').value.trim();
   document.querySelectorAll('#page-interp .sfx').forEach(s => s.textContent = s.dataset.k === 'x' ? ux : uy);
+  const kn = inKnownSide === 'x' ? 'input' : 'output';
+  $('inLoLbl').textContent = '0 % ' + kn; $('inHiLbl').textContent = '100 % ' + kn;
+  $('inLoU').textContent = $('inHiU').textContent = inKnownSide === 'x' ? ux : uy;
   const warns = [], row = (l,v,sm) => `<div class="row"><span class="lbl">${l}${sm ? `<small>${sm}</small>` : ''}</span><span class="val">${v}</span></div>`;
   let cap = '', num = '—', unit = '', sub = '', det = '', tbl = '', foot = '';
   inCopyText = ''; $('inCopyBtn').hidden = true;
@@ -2788,51 +2803,40 @@ function inCalc(){
       det += row('Slope', `${inNum(m,6)} ${uy}/${ux}`, 'sensitivity');
       det += row('Offset', `${inNum(c,6)} ${uy}`, `output at 0 ${ux}`);
       if(m !== 0) det += row('Input at 0 output', `${inNum(-c/m,6)} ${ux}`);
-      if(M === 'two'){
-        const qx = inV('inQx'), qy = inV('inQy'), useX = inLast === 'x';
-        let q = useX ? qx : qy;
-        if(!isFinite(q)) warns.push('Enter a value to look up.');
-        else if(!useX && m === 0) warns.push('The line is flat, so an input cannot be found from an output.');
+      {
+        const known = inKnownSide, kU = known === 'x' ? ux : uy, oU = known === 'x' ? uy : ux;
+        const lo = inV('inLo'), hi = inV('inHi'), n = Math.max(2, Math.min(21, Math.round(inV('inN')) || 5));
+        /* optional single-value lookup, both ways */
+        const qx = inV('inQx'), qy = inV('inQy');
+        if(inLast === 'x' && isFinite(qx)) $('inQy').value = inNum(y(qx));
+        else if(inLast === 'y' && isFinite(qy) && m !== 0) $('inQx').value = inNum((qy - c)/m);
+        if(!isFinite(lo) || !isFinite(hi) || lo === hi) warns.push('Enter different 0 % and 100 % values.');
+        else if(known === 'y' && m === 0) warns.push('The line is flat, so inputs cannot be found from outputs.');
         else {
-          const r = useX ? y(q) : (q - c)/m;
-          if(useX) $('inQy').value = inNum(r); else $('inQx').value = inNum(r);
-          cap = useX ? 'Output' : 'Input'; num = inNum(r, 6); unit = useX ? uy : ux;
-          const xin = useX ? q : r;
-          sub = `${inNum(xin,5)} ${ux} ↔ ${inNum(y(xin),5)} ${uy}`;
-          if(xin < xmin || xin > xmax) warns.push(`Outside the two known points (${inNum(xmin,5)} to ${inNum(xmax,5)} ${ux}): this is extrapolated, assuming the response stays linear.`);
-          det += row('Position between points', `${inNum((xin - x1)/(x2 - x1)*100, 5)} %`, 'from point 1 (0 %) to point 2 (100 %)');
-        }
-        tbl = '<thead><tr><th>Between points</th><th>Input (' + ux + ')</th><th>Output (' + uy + ')</th></tr></thead><tbody>' +
-          [0,25,50,75,100].map(p => { const x = x1 + (x2-x1)*p/100; return `<tr><td>${p} %</td><td>${inNum(x)}</td><td>${inNum(y(x))}</td></tr>`; }).join('') + '</tbody>';
-        $('inTitle').textContent = 'Between the two points';
-        foot = 'The line is drawn through the two known points: y = m·x + c. Edit either the input or the output to solve for the other.';
-      } else {
-        const lo = inV('inLo'), hi = inV('inHi'), n = Math.max(2, Math.min(21, Math.round(inV('inN')) || 4));
-        if(!isFinite(lo) || !isFinite(hi) || lo === hi) warns.push('Enter different 0 % and 100 % input values.');
-        else {
+          const f = known === 'x' ? y : (v => (v - c)/m);          /* known side -> the other side */
           const rows = [];
           for(let i = 0; i < n; i++){
-            const p = 100*i/(n-1), x = lo + (hi-lo)*i/(n-1);
-            rows.push({i:i+1, p, x, y:y(x)});
+            const k = lo + (hi-lo)*i/(n-1);
+            rows.push({i:i+1, p:100*i/(n-1), k, o:f(k)});
           }
-          cap = 'Output at 100 %'; num = inNum(y(hi), 6); unit = uy;
-          sub = `0 %: ${inNum(y(lo),5)} ${uy} · span ${inNum(y(hi)-y(lo),5)} ${uy}`;
-          [['0 %', lo], ['100 %', hi]].forEach(([n_, v]) => {
+          const xa = known === 'x' ? lo : f(lo), xb = known === 'x' ? hi : f(hi);
+          cap = (known === 'x' ? 'Output' : 'Input') + ' at 100 %'; num = inNum(f(hi), 6); unit = oU;
+          sub = `0 %: ${inNum(f(lo),5)} ${oU} · span ${inNum(f(hi)-f(lo),5)} ${oU}`;
+          [['0 %', xa], ['100 %', xb]].forEach(([nm, v]) => {
             if(v < xmin || v > xmax){
               const far = Math.max(xmin - v, v - xmax) / (xmax - xmin);
-              warns.push(`${n_} (${inNum(v,5)} ${ux}) is outside the measured points (${inNum(xmin,5)} to ${inNum(xmax,5)} ${ux}), ${inNum(far,3)}× the measured span past the nearest point: linearity is assumed, not verified.`);
+              warns.push(`${nm} (input ${inNum(v,5)} ${ux}) is outside the measured points (${inNum(xmin,5)} to ${inNum(xmax,5)} ${ux}), ${inNum(far,3)}× the measured span past the nearest point: linearity is assumed, not verified.`);
             }
           });
-          det += row('Output at 0 %', `${inNum(y(lo),6)} ${uy}`, `at ${inNum(lo,6)} ${ux}`);
-          det += row('Output at 100 %', `${inNum(y(hi),6)} ${uy}`, `at ${inNum(hi,6)} ${ux}`);
-          det += row('Output span', `${inNum(y(hi)-y(lo),6)} ${uy}`);
-          det += row('Input span', `${inNum(hi-lo,6)} ${ux}`);
-          tbl = `<thead><tr><th>Point</th><th>%</th><th>Input (${ux})</th><th>Output (${uy})</th></tr></thead><tbody>` +
-            rows.map(r => `<tr${r.i === 1 || r.i === n ? ' class="hi"' : ''}><td>${r.i}</td><td>${inNum(r.p,4)}</td><td>${inNum(r.x,6)}</td><td>${inNum(r.y,6)}</td></tr>`).join('') + '</tbody>';
-          inCopyText = ['Point\t%\tInput (' + ux + ')\tOutput (' + uy + ')'].concat(rows.map(r => `${r.i}\t${inNum(r.p,4)}\t${inNum(r.x,6)}\t${inNum(r.y,6)}`)).join('\n');
+          det += row('0 % → 100 %', `${inNum(f(lo),6)} → ${inNum(f(hi),6)} ${oU}`, `${known === 'x' ? 'output' : 'input'} for the ${known === 'x' ? 'input' : 'output'} range ${inNum(lo,6)} → ${inNum(hi,6)} ${kU}`);
+          const hd = known === 'x' ? ['Input (' + ux + ')', 'Output (' + uy + ')'] : ['Input (' + ux + ')', 'Output (' + uy + ')'];
+          const cells = r => known === 'x' ? [r.k, r.o] : [r.o, r.k];
+          tbl = `<thead><tr><th>Point</th><th>%</th><th>${hd[0]}</th><th>${hd[1]}</th></tr></thead><tbody>` +
+            rows.map(r => { const [ci, co] = cells(r); return `<tr${r.i === 1 || r.i === n ? ' class="hi"' : ''}><td>${r.i}</td><td>${inNum(r.p,4)}</td><td>${inNum(ci,6)}</td><td>${inNum(co,6)}</td></tr>`; }).join('') + '</tbody>';
+          inCopyText = ['Point\t%\tInput (' + ux + ')\tOutput (' + uy + ')'].concat(rows.map(r => { const [ci, co] = cells(r); return `${r.i}\t${inNum(r.p,4)}\t${inNum(ci,6)}\t${inNum(co,6)}`; })).join('\n');
           $('inCopyBtn').hidden = false;
           $('inTitle').textContent = 'Calibration points';
-          foot = `Two measured points fix the line y = ${inNum(m,5)}·x ${c < 0 ? '−' : '+'} ${inNum(Math.abs(c),5)}; the calibration points are then spread evenly from 0 % to 100 % of the input range. Use the Cal sheet tab to record readings against these.`;
+          foot = `The two measured points fix the line y = ${inNum(m,5)}·x ${c < 0 ? '−' : '+'} ${inNum(Math.abs(c),5)}. Choose which range you know (input or output), enter its 0 % and 100 % values, and the table is filled from 0 % to 100 %. Use the Cal sheet tab to record readings against it.`;
         }
       }
     }
