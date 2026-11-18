@@ -1,0 +1,2299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="InstruKit">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/instrukit-180.png">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>InstruKit — Instrument Tech Toolkit</title>
+<style>
+/* ============================================================
+   InstruKit — iOS (HIG / Figma iOS UI Kit) styling tokens
+   ============================================================ */
+:root{
+  --blue:#007AFF; --green:#34C759; --red:#FF3B30; --orange:#FF9500;
+  --purple:#AF52DE; --teal:#30B0C7; --yellow:#FFCC00; --gray:#8E8E93;
+
+  --bg:#F2F2F7;            /* systemGroupedBackground */
+  --card:#FFFFFF;          /* secondarySystemGroupedBackground */
+  --card-alt:#FFFFFF;
+  --sep:rgba(60,60,67,0.29);
+  --sep-opaque:#C6C6C8;
+  --label:#000000;
+  --label2:rgba(60,60,67,0.60);
+  --label3:rgba(60,60,67,0.30);
+  --fill:rgba(120,120,128,0.12);
+  --fill2:rgba(120,120,128,0.20);
+  --bar:rgba(249,249,249,0.82); --sidebar:#EAEAEF;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+  --grid:rgba(60,60,67,0.16);
+  --radius:12px;
+}
+:root[data-theme="dark"], html:not([data-theme="light"]) {}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#000000; --card:#1C1C1E; --card-alt:#2C2C2E;
+    --sep:rgba(84,84,88,0.65); --sep-opaque:#38383A;
+    --label:#FFFFFF; --label2:rgba(235,235,245,0.60); --label3:rgba(235,235,245,0.30);
+    --fill:rgba(120,120,128,0.24); --fill2:rgba(120,120,128,0.36);
+    --bar:rgba(28,28,30,0.82); --sidebar:#161618;
+    --blue:#0A84FF; --green:#30D158; --red:#FF453A; --orange:#FF9F0A;
+    --purple:#BF5AF2; --teal:#40C8E0; --yellow:#FFD60A;
+    --grid:rgba(235,235,245,0.16);
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#000000; --card:#1C1C1E; --card-alt:#2C2C2E;
+  --sep:rgba(84,84,88,0.65); --sep-opaque:#38383A;
+  --label:#FFFFFF; --label2:rgba(235,235,245,0.60); --label3:rgba(235,235,245,0.30);
+  --fill:rgba(120,120,128,0.24); --fill2:rgba(120,120,128,0.36);
+  --bar:rgba(28,28,30,0.82); --sidebar:#161618;
+  --blue:#0A84FF; --green:#30D158; --red:#FF453A; --orange:#FF9F0A;
+  --purple:#BF5AF2; --teal:#40C8E0; --yellow:#FFD60A;
+  --grid:rgba(235,235,245,0.16);
+  --shadow:none;
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;height:100%;}
+body{
+  background:var(--bg); color:var(--label);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Inter,system-ui,sans-serif;
+  font-size:17px; line-height:1.29; letter-spacing:-0.01em;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+}
+input,select,button,textarea{font-family:inherit; font-size:inherit; color:inherit;}
+input[type=number]{-moz-appearance:textfield;}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+
+/* ---------- App frame ---------- */
+.app{max-width:820px; margin:0 auto; min-height:100%; padding-bottom:calc(64px + env(safe-area-inset-bottom));}
+.page{display:none; animation:fade .18s ease;}
+.page.active{display:block;}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ---------- Nav bar / large title ---------- */
+.navbar{
+  position:sticky; top:0; z-index:40;
+  background:var(--bar); backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px);
+  padding:calc(env(safe-area-inset-top) + 6px) 16px 6px;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  border-bottom:.5px solid transparent; transition:border-color .2s;
+}
+.navbar.scrolled{border-bottom-color:var(--sep);}
+.navbar .compact-title{font-size:17px;font-weight:600;opacity:0;transition:opacity .2s;}
+.navbar.scrolled .compact-title{opacity:1;}
+.navbtn{
+  width:32px;height:32px;border:none;border-radius:50%;background:var(--fill);
+  display:grid;place-items:center;color:var(--blue);cursor:pointer;flex:none;
+}
+.navbtn:active{background:var(--fill2);}
+.large-title{padding:2px 16px 8px; font-size:34px; font-weight:700; letter-spacing:-0.028em;}
+.subtitle{padding:0 16px 12px; color:var(--label2); font-size:15px; letter-spacing:-0.01em;}
+
+/* ---------- Grouped list ---------- */
+.group{background:var(--card); border-radius:var(--radius); margin:0 16px 22px; overflow:hidden; box-shadow:var(--shadow);}
+.group.flush{margin-bottom:12px;}
+.gtitle{padding:0 32px 7px; font-size:13px; color:var(--label2); text-transform:uppercase; letter-spacing:0.03em; font-weight:500;}
+.gfoot{padding:7px 32px 20px; font-size:13px; color:var(--label2); line-height:1.35;}
+.row{
+  display:flex; align-items:center; gap:12px; min-height:44px; padding:9px 16px;
+  position:relative;
+}
+.row + .row::before{content:""; position:absolute; left:16px; right:0; top:0; height:.5px; background:var(--sep);}
+.row .lbl{flex:1 1 auto; min-width:0; font-size:17px;}
+.row .lbl small{display:block; font-size:13px; color:var(--label2); margin-top:1px;}
+.row .val{flex:0 0 auto; color:var(--label2); font-variant-numeric:tabular-nums;}
+.row.tap{cursor:pointer;}
+.row.tap:active{background:var(--fill);}
+.chev{color:var(--label3); flex:none;}
+.row .sfx{flex:none; min-width:34px; color:var(--label2); font-size:15px;}
+.row input.f[data-u]{flex:1 1 30%;}
+#page-level [hidden]{display:none !important;}
+
+
+/* inputs inside rows */
+.row input.f, .row select.f{
+  flex:1 1 40%; min-width:0; text-align:right; border:none; background:transparent;
+  font-size:17px; padding:2px 0; outline:none; font-variant-numeric:tabular-nums;
+}
+.row input.f::placeholder{color:var(--label3);}
+.row input.f:focus{color:var(--blue);}
+select.f{
+  -webkit-appearance:none; appearance:none; color:var(--blue); text-align:right;
+  padding-right:16px; cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat; background-position:right center; background-size:11px;
+  direction:rtl;
+}
+select.f option{direction:ltr; color:var(--label); background:var(--card);}
+.unitpill{
+  -webkit-appearance:none;appearance:none;border:none;
+  background:var(--fill); color:var(--label); border-radius:8px; padding:6px 22px 6px 10px;
+  font-size:15px; font-weight:500; cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat; background-position:right 7px center; background-size:10px;
+}
+
+/* ---------- Segmented control ---------- */
+.seg{display:flex; background:var(--fill); border-radius:9px; padding:2px; margin:0 16px 18px; gap:2px;}
+.seg.inline{margin:0; flex:1 1 auto;}
+.seg button{
+  flex:1 1 0; border:none; background:transparent; border-radius:7px; padding:7px 4px;
+  font-size:13px; font-weight:500; color:var(--label); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  transition:background .15s;
+}
+.seg button.on{background:var(--card); font-weight:600; box-shadow:0 3px 8px rgba(0,0,0,.10), 0 1px 1px rgba(0,0,0,.06);}
+:root[data-theme="dark"] .seg button.on{background:#636366; box-shadow:none;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .seg button.on{background:#636366; box-shadow:none;}}
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:block; width:calc(100% - 32px); margin:0 16px 12px; border:none; border-radius:12px;
+  background:var(--blue); color:#fff; font-size:17px; font-weight:600; padding:15px; cursor:pointer;
+}
+.btn:active{filter:brightness(.92);}
+.btn.tinted{background:var(--fill); color:var(--blue);}
+.btn.danger{background:var(--fill); color:var(--red);}
+.btnrow{display:flex; gap:10px; margin:0 16px 12px;}
+.btnrow .btn{width:auto; flex:1; margin:0;}
+.mini{
+  border:none;background:var(--fill);color:var(--blue);border-radius:8px;padding:6px 12px;
+  font-size:15px;font-weight:500;cursor:pointer;
+}
+.mini:active{background:var(--fill2);}
+.mini.grey{color:var(--label2);}
+
+/* ---------- Result card ---------- */
+.result{
+  margin:0 16px 22px; background:var(--card); border-radius:var(--radius); padding:16px;
+  box-shadow:var(--shadow); text-align:center; cursor:pointer; position:relative; overflow:hidden;
+}
+.result:active{background:var(--card-alt);}
+.result .cap{font-size:13px; color:var(--label2); text-transform:uppercase; letter-spacing:.04em;}
+.result .num{
+  font-size:44px; font-weight:600; letter-spacing:-0.03em; margin:6px 0 2px;
+  font-variant-numeric:tabular-nums; word-break:break-all; line-height:1.05;
+}
+.result .num.sm{font-size:34px;}
+.result .unit{font-size:19px; color:var(--label2); font-weight:500;}
+.result .sub{margin-top:8px; font-size:14px; color:var(--label2);}
+.result .copyhint{position:absolute; top:10px; right:12px; font-size:11px; color:var(--label3);}
+.warn{margin:-10px 16px 20px; padding:10px 14px; background:rgba(255,149,0,.14); color:var(--orange); border-radius:10px; font-size:13.5px;}
+.warn.err{background:rgba(255,59,48,.14); color:var(--red);}
+.warn:empty{display:none;}
+
+/* ---------- Pop-up menu with colour dots (iOS context-menu look) ---------- */
+.pick{flex:1 1 auto; min-width:0; display:flex; align-items:center; justify-content:flex-end; gap:8px;
+  border:none; background:transparent; color:var(--blue); font-size:17px; padding:2px 0; cursor:pointer;}
+.pick .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.pick .chev{color:var(--label3);}
+.dots{display:inline-flex; gap:3px; flex:none;}
+.dot{width:12px; height:12px; border-radius:50%; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.35), 0 0 0 .5px rgba(142,142,147,.55);}
+.menu{position:fixed; z-index:120; display:none; min-width:280px; max-height:70vh; overflow:auto; padding:6px 0;
+  background:var(--card-alt); border-radius:13px; box-shadow:0 12px 40px rgba(0,0,0,.28), 0 0 0 .5px var(--sep);}
+.menu.open{display:block;}
+.menu button{display:flex; align-items:center; gap:10px; width:100%; border:none; background:transparent;
+  color:var(--label); font-size:15px; padding:9px 14px; text-align:left; cursor:pointer;}
+.menu button + button{box-shadow:inset 0 .5px 0 var(--sep);}
+.menu button:hover, .menu button:focus-visible{background:var(--fill); outline:none;}
+.menu .tick{width:14px; color:var(--blue); font-weight:600; flex:none;}
+.menu .nm{flex:1 1 auto;}
+
+/* ---------- Tables ---------- */
+.tablewrap{margin:0 16px 22px; background:var(--card); border-radius:var(--radius); overflow-x:auto; box-shadow:var(--shadow); -webkit-overflow-scrolling:touch;}
+table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums;}
+th,td{padding:9px 10px; text-align:right; white-space:nowrap;}
+th{font-size:12px; color:var(--label2); font-weight:600; letter-spacing:.02em; border-bottom:.5px solid var(--sep); position:sticky; top:0; background:var(--card);}
+td{border-bottom:.5px solid var(--sep);}
+tr:last-child td{border-bottom:none;}
+th:first-child,td:first-child{text-align:left; padding-left:16px;}
+th:last-child,td:last-child{padding-right:16px;}
+tr.hi td{background:rgba(0,122,255,.10); font-weight:600;}
+table.sticky1 th:first-child, table.sticky1 td:first-child{position:sticky; left:0; background:var(--card); z-index:2;}
+table.sticky1 th:first-child{z-index:3;}
+.ccell{display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px; line-height:1.25;}
+.ccell small{font-size:11px; color:var(--label2); letter-spacing:0; white-space:nowrap;}
+.cable{display:inline-flex; gap:2px; padding:3px; border-radius:5px; border:.5px solid rgba(142,142,147,.6); box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);}
+.cable i{width:9px; height:17px; border-radius:2px; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.3), 0 0 0 .5px rgba(255,255,255,.3);}
+td.pass{color:var(--green); font-weight:600;}
+td.fail{color:var(--red); font-weight:600;}
+td input{width:100%; min-width:74px; border:none; background:var(--fill); border-radius:7px; padding:7px 8px; text-align:left; outline:none; font-size:14px; font-variant-numeric:tabular-nums;}
+td input:focus{background:var(--fill2); color:var(--blue);}
+#clTable th:nth-child(1), #clTable th:nth-child(4), #clTable th:nth-child(6){text-align:left; padding-left:16px;}
+
+/* ---------- Chart ---------- */
+.chart{margin:0 16px 22px; background:var(--card); border-radius:var(--radius); padding:14px 12px 8px; box-shadow:var(--shadow);}
+.chart h4{margin:0 4px 8px; font-size:15px; font-weight:600;}
+.chart svg{width:100%; height:auto; display:block; overflow:visible;}
+.legend{display:flex; gap:16px; justify-content:center; flex-wrap:wrap; padding:6px 0 4px; font-size:12.5px; color:var(--label2);}
+.legend i{display:inline-block; width:14px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle;}
+
+/* ---------- Tab bar ---------- */
+.tabbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:50;
+  display:flex; background:var(--bar);
+  backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-top:.5px solid var(--sep);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.tabbar button{
+  flex:1; border:none; background:transparent; padding:7px 2px 5px; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  color:var(--gray); font-size:10px; font-weight:500; letter-spacing:0;
+}
+.tabbar button.on{color:var(--blue);}
+.tabbar svg{width:25px;height:25px;}
+
+/* ---------- Desktop: sidebar, two-column layouts, pointer affordances ---------- */
+.sidebar{display:none;}
+.cols{display:contents;}
+.col{display:contents;}
+
+@media (min-width:900px){
+  .tabbar{display:none;}
+  .navbar{display:none;}
+  .app{
+    margin-left:264px; max-width:1120px; padding-bottom:56px;
+    padding-top:8px;
+  }
+  .sidebar{
+    display:flex; flex-direction:column; gap:2px;
+    position:fixed; top:0; left:0; bottom:0; width:264px; z-index:60;
+    padding:22px 12px 14px; overflow-y:auto;
+    background:var(--sidebar); border-right:.5px solid var(--sep);
+  }
+  .sidebar .brand{padding:2px 12px 4px; font-size:20px; font-weight:700; letter-spacing:-0.024em;}
+  .sidebar .brandsub{padding:0 12px 18px; font-size:12.5px; color:var(--label2);}
+  .sidebar button{
+    display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+    border:none; background:transparent; color:var(--label);
+    padding:9px 12px; border-radius:8px; font-size:15px; font-weight:500; cursor:pointer;
+  }
+  .sidebar button svg{width:20px; height:20px; color:var(--gray); flex:none;}
+  .sidebar button:hover{background:var(--fill);}
+  .sidebar button.on{background:var(--blue); color:#fff;}
+  .sidebar button.on svg{color:#fff;}
+  .sidebar .kbd{
+    margin-left:auto; font-size:11px; color:var(--label3);
+    border:.5px solid var(--sep); border-radius:4px; padding:0 4px; line-height:15px;
+  }
+  .sidebar button.on .kbd{color:rgba(255,255,255,.75); border-color:rgba(255,255,255,.35);}
+  .sidebar .sbfoot{margin-top:auto; padding-top:12px;}
+  .sidebar .sbfoot button{font-size:13.5px; color:var(--label2); font-weight:400;}
+
+  .large-title{padding-top:24px; font-size:32px;}
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:0 8px; align-items:start;}
+  .col{display:block;}
+  .cols .group, .cols .chart, .cols .tablewrap, .cols .result, .cols .seg, .cols .warn, .cols .btnrow{margin-left:16px; margin-right:16px;}
+
+  .pillbar{flex-wrap:wrap; overflow:visible; gap:8px 8px;}
+  .col.stick{position:sticky; top:16px;}
+
+  /* pointer affordances */
+  .row.tap:hover{background:var(--fill);}
+  .btn:hover{filter:brightness(1.06);}
+  .mini:hover{background:var(--fill2);}
+  .pillbar button:hover{background:var(--fill2);}
+  .pillbar button.on:hover{background:var(--blue);}
+  .seg button:hover:not(.on){background:var(--fill);}
+  .result{cursor:pointer;}
+  .result:hover{outline:1.5px solid var(--fill2);}
+  tbody tr:hover td, table tr:hover td{background:var(--fill);}
+  tr.hi:hover td{background:rgba(0,122,255,.14);}
+  .tablewrap{overflow-x:auto;}
+  input.f:hover, td input:hover{background:var(--fill);}
+  .row input.f:hover{border-radius:6px;}
+}
+@media (min-width:1280px){
+  .app{max-width:1240px;}
+}
+
+/* ---------- Toast ---------- */
+.toast{
+  position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom)); transform:translate(-50%,14px);
+  background:rgba(0,0,0,.82); color:#fff; padding:10px 18px; border-radius:20px; font-size:14px; font-weight:500;
+  opacity:0; pointer-events:none; transition:.22s; z-index:100; backdrop-filter:blur(10px);
+}
+.toast.show{opacity:1; transform:translate(-50%,0);}
+
+/* ---------- misc ---------- */
+.badge{display:inline-block; padding:2px 8px; border-radius:20px; font-size:12px; font-weight:600;}
+.badge.ok{background:rgba(52,199,89,.16); color:var(--green);}
+.badge.no{background:rgba(255,59,48,.16); color:var(--red);}
+.pillbar{display:flex; gap:8px; overflow-x:auto; padding:0 16px 16px; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+.pillbar::-webkit-scrollbar{display:none;}
+.pillbar button{
+  border:none; background:var(--fill); color:var(--label); border-radius:18px; padding:8px 15px;
+  font-size:15px; white-space:nowrap; cursor:pointer; flex:none; font-weight:500;
+}
+.pillbar button.on{background:var(--blue); color:#fff;}
+.spacer{height:8px;}
+.mono{font-variant-numeric:tabular-nums;}
+.hidden{display:none !important;}
+
+@media print{
+  .tabbar,.navbar,.sidebar,.btn,.btnrow,.seg,.pillbar,.toast,.noprint{display:none !important;}
+  .app{margin-left:0 !important;}
+  .cols{display:block !important;}
+  body{background:#fff;color:#000;font-size:11px;}
+  .app{padding:0;max-width:none;}
+  .page{display:none !important;}
+  .page.active{display:block !important;}
+  .group,.chart,.tablewrap,.result{box-shadow:none;border:1px solid #ccc;break-inside:avoid;margin:0 0 10px;}
+  .large-title{padding:0 0 6px;font-size:20px;}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+<!-- ============================ CONVERT ============================ -->
+<section class="page active" id="page-convert">
+  <div class="navbar"><span class="compact-title">Convert</span>
+    <button class="navbtn" onclick="cycleTheme()" title="Appearance" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Convert</div>
+  <div class="pillbar" id="cvCats"></div>
+
+  <div class="cols"><div class="col stick">
+  <div class="group flush">
+    <div class="row">
+      <input class="f" id="cvIn" inputmode="decimal" value="1" oninput="cvCalc()" style="flex:1 1 60%;text-align:left;font-size:22px;font-weight:600">
+      <select class="unitpill" id="cvFrom" onchange="cvCalc()"></select>
+    </div>
+    <div class="row">
+      <span class="lbl" id="cvOutTxt" style="font-size:22px;font-weight:600;color:var(--blue)">1</span>
+      <select class="unitpill" id="cvTo" onchange="cvCalc()"></select>
+    </div>
+  </div>
+  <div class="btnrow">
+    <button class="btn tinted" onclick="cvSwap()">⇅  Swap</button>
+    <button class="btn tinted" onclick="copyText(document.getElementById('cvOutTxt').textContent)">Copy result</button>
+  </div>
+  </div><div class="col">
+  <div class="gtitle" style="padding-top:8px">All units in this category</div>
+  <div class="tablewrap"><table id="cvAll"></table></div>
+  <div class="gfoot" id="cvNote"></div>
+  </div></div>
+</section>
+
+<!-- ============================ SIGNAL ============================ -->
+<section class="page" id="page-signal">
+  <div class="navbar"><span class="compact-title">Signal</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Signal</div>
+  <div class="subtitle">Bidirectional % ↔ mA / V / psi / bar ↔ process value. Edit any field.</div>
+
+  <div class="cols"><div class="col">
+  <div class="gtitle">Signal range</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Type</span><select class="f" id="sgType" onchange="sgTypeChange()"></select></div>
+    <div class="row" id="sgCustomRow" style="display:none"><span class="lbl">Custom lo / hi</span>
+      <input class="f" id="sgLo" inputmode="decimal" value="0" oninput="sgFrom('pct')" style="flex:0 0 60px">
+      <input class="f" id="sgHi" inputmode="decimal" value="100" oninput="sgFrom('pct')" style="flex:0 0 60px">
+      <input class="f" id="sgUnitCustom" value="mA" oninput="sgFrom('pct')" style="flex:0 0 52px">
+    </div>
+    <div class="row"><span class="lbl">Transfer function<small id="sgXferNote">Linear — output tracks input directly</small></span></div>
+    <div class="row" style="padding-top:0"><div class="seg inline" id="sgXfer">
+      <button class="on" onclick="sgSetXfer('lin',this)">Linear</button>
+      <button onclick="sgSetXfer('sqrt',this)">√ Sq. root</button>
+      <button onclick="sgSetXfer('sq',this)">Square</button>
+    </div></div>
+  </div>
+
+  </div><div class="col">
+  <div class="gtitle">Process range</div>
+  <div class="group">
+    <div class="row"><span class="lbl">LRV — 0 %</span><input class="f" id="sgLRV" inputmode="decimal" value="0" oninput="sgFrom('pct')"></div>
+    <div class="row"><span class="lbl">URV — 100 %</span><input class="f" id="sgURV" inputmode="decimal" value="100" oninput="sgFrom('pct')"></div>
+    <div class="row"><span class="lbl">Engineering unit</span><input class="f" id="sgUnit" value="°C" oninput="sgFrom('pct')" placeholder="e.g. barg"></div>
+  </div>
+  </div></div>
+
+  <div class="gtitle">Live values</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Percent of span<small>Of the raw signal</small></span><input class="f" id="sgPct" inputmode="decimal" value="50" oninput="sgFrom('pct')"><span class="val" style="width:16px">%</span></div>
+    <div class="row"><span class="lbl">Signal</span><input class="f" id="sgSig" inputmode="decimal" oninput="sgFrom('sig')"><span class="val" id="sgSigU" style="width:36px"></span></div>
+    <div class="row"><span class="lbl">Process value</span><input class="f" id="sgPV" inputmode="decimal" oninput="sgFrom('pv')"><span class="val" id="sgPVU" style="width:36px"></span></div>
+  </div>
+
+  <div class="warn" id="sgWarn"></div>
+  <div class="cols"><div class="col">
+  <div class="gtitle">Equivalents at this percentage</div>
+  <div class="tablewrap"><table id="sgEquiv"></table></div>
+  </div><div class="col">
+  <div class="gtitle">Span table</div>
+  <div class="seg" id="sgStepSeg">
+    <button onclick="sgSetStep(25,this)">4 pt</button>
+    <button class="on" onclick="sgSetStep(20,this)">5 pt</button>
+    <button onclick="sgSetStep(10,this)">11 pt</button>
+    <button onclick="sgSetStep(5,this)">21 pt</button>
+  </div>
+  <div class="tablewrap"><table id="sgTable"></table></div>
+  </div></div>
+  <div class="gfoot">Square-root extraction: PV % = 100 × √(signal % ÷ 100) — a DP transmitter measuring flow. Square is the inverse, PV % → signal %. Percent of span always refers to the raw signal.</div>
+</section>
+
+<!-- ============================ SENSORS ============================ -->
+<section class="page" id="page-sensor">
+  <div class="navbar"><span class="compact-title">Temperature</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Temperature</div>
+  <div class="seg" id="snFamily">
+    <button class="on" onclick="snSetFamily('rtd',this)">RTD</button>
+    <button onclick="snSetFamily('tc',this)">Thermocouple</button>
+  </div>
+
+  <div class="cols"><div class="col">
+  <div class="group">
+    <div class="row"><span class="lbl" style="flex:0 0 auto">Probe type</span>
+      <select id="snType" onchange="snCalc()" hidden></select>
+      <button class="pick" id="snTypeBtn" onclick="snMenuToggle(event)" aria-haspopup="listbox"></button></div>
+    <div class="row"><span class="lbl">Temperature unit</span><select class="f" id="snUnit" onchange="snUnitChange()">
+      <option value="C">°C</option><option value="F">°F</option><option value="K">K</option></select></div>
+    <div class="row" id="snCjcRow"><span class="lbl">Cold junction<small>Reference / terminal temperature</small></span><input class="f" id="snCjc" inputmode="decimal" value="0" oninput="snCalc()"><span class="val" id="snCjcU" style="width:26px">°C</span></div>
+  </div>
+
+  <div class="seg" id="snDir">
+    <button class="on" onclick="snSetDir('fwd',this)">Temp → Output</button>
+    <button onclick="snSetDir('rev',this)">Output → Temp</button>
+  </div>
+
+  <div class="group flush">
+    <div class="row"><span class="lbl" id="snInLbl">Temperature</span>
+      <input class="f" id="snIn" inputmode="decimal" value="100" oninput="snCalc()" style="font-size:22px;font-weight:600">
+      <span class="val" id="snInU" style="width:36px"></span></div>
+  </div>
+
+  </div><div class="col">
+  <div class="result" onclick="copyText(document.getElementById('snNum').textContent)">
+    <span class="copyhint">tap to copy</span>
+    <div class="cap" id="snCap">Resistance</div>
+    <div class="num" id="snNum">138.506</div>
+    <div class="unit" id="snUnitOut">Ω</div>
+    <div class="sub" id="snSub"></div>
+  </div>
+  <div class="warn" id="snWarn"></div>
+  </div></div>
+
+  <div class="gtitle">Nearby values<span style="float:right;text-transform:none;letter-spacing:0">step
+    <input id="snStep" inputmode="decimal" value="10" oninput="snCalc()" style="width:44px;border:none;background:var(--fill);border-radius:6px;padding:2px 6px;text-align:right;font-size:12px;color:var(--label)"></span></div>
+  <div class="tablewrap"><table id="snTable"></table></div>
+  <div class="gfoot" id="snFoot"></div>
+</section>
+
+<!-- ============================ LEVEL ============================ -->
+<section class="page" id="page-level">
+  <div class="navbar"><span class="compact-title">Level</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Level</div>
+  <div class="seg" id="lvToolSeg">
+    <button class="on" data-t="hy" onclick="lvTool('hy',this)">Hydrostatic</button>
+    <button data-t="dp" onclick="lvTool('dp',this)">DP level</button>
+    <button data-t="ds" onclick="lvTool('ds',this)">Displacer</button>
+  </div>
+
+  <div class="cols"><div class="col stick">
+  <div class="gtitle">Units</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Length</span><select class="f" id="lvU-len" onchange="lvUnit('len')"></select></div>
+    <div class="row lv-p"><span class="lbl">Pressure</span><select class="f" id="lvU-p" onchange="lvUnit('p')"></select></div>
+    <div class="row lv-ds"><span class="lbl">Weight</span><select class="f" id="lvU-mass" onchange="lvUnit('mass')"></select></div>
+    <div class="row lv-ds"><span class="lbl">Volume</span><select class="f" id="lvU-vol" onchange="lvUnit('vol')"></select></div>
+  </div>
+
+  <div id="lv-hy">
+  <div class="gtitle">Liquid column</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Specific gravity<small>water at 4 °C = 1.000</small></span><input class="f" id="hyDen" inputmode="decimal" value="1.000" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+    <div class="row"><span class="lbl">Height of liquid</span><input class="f" id="hyH" inputmode="decimal" value="1000" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="row"><span class="lbl">Pressure at base<small>edit either height or pressure</small></span><input class="f" id="hyP" inputmode="decimal" value="98.0665" data-u="p" oninput="lvInput(this)"><span class="sfx" data-u="p"></span></div>
+  </div>
+  <div class="result" onclick="copyText(document.getElementById('hyNum').textContent)">
+    <span class="copyhint">tap to copy</span>
+    <div class="cap" id="hyCap">Hydrostatic head</div>
+    <div class="num" id="hyNum">—</div><div class="unit" id="hyUnit"></div><div class="sub" id="hySub"></div>
+  </div>
+  <div class="warn" id="hyWarn"></div>
+  </div>
+
+  <div id="lv-dp" hidden>
+  <div class="seg" id="dpModeSeg">
+    <button class="on" data-m="open" onclick="dpMode('open',this)">Open tank</button>
+    <button data-m="dry" onclick="dpMode('dry',this)">Dry leg</button>
+    <button data-m="wet" onclick="dpMode('wet',this)">Wet leg</button>
+    <button data-m="seal" onclick="dpMode('seal',this)">Seals</button>
+  </div>
+  <div class="gtitle">Measured range</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Level span<small>0 % to 100 % level</small></span><input class="f" id="dpSpan" inputmode="decimal" value="2000" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="row"><span class="lbl">0 % level above lower tap</span><input class="f" id="dpZero" inputmode="decimal" value="0" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="row"><span class="lbl">Process SG</span><input class="f" id="dpSGp" inputmode="decimal" value="1.000" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+  </div>
+  <div class="gtitle">Installation</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Transmitter below lower tap<small>negative if mounted above</small></span><input class="f" id="dpD" inputmode="decimal" value="500" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="dp-leg">
+    <div class="row"><span class="lbl">Tap separation<small>lower tap to upper tap (or LP seal)</small></span><input class="f" id="dpH" inputmode="decimal" value="2500" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    </div>
+    <div class="dp-wet">
+    <div class="row"><span class="lbl">Wet leg fill SG<small>LP leg / LP capillary fill</small></span><input class="f" id="dpSGw" inputmode="decimal" value="1.000" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+    </div>
+    <div class="dp-seal">
+    <div class="row"><span class="lbl">HP capillary fill SG<small>silicone DC200 ≈ 0.934</small></span><input class="f" id="dpSGh" inputmode="decimal" value="0.934" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+    </div>
+  </div>
+  <div class="result" onclick="copyText(document.getElementById('dpNum').textContent)">
+    <span class="copyhint">tap to copy</span>
+    <div class="cap">Calibrated range</div>
+    <div class="num" id="dpNum">—</div><div class="unit" id="dpUnit"></div><div class="sub" id="dpSub"></div>
+  </div>
+  <div class="warn" id="dpWarn"></div>
+  </div>
+
+  <div id="lv-ds" hidden>
+  <div class="gtitle">Displacer</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Length<small>Fisher 249: 14 in typical</small></span><input class="f" id="dsL" inputmode="decimal" value="356" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="row"><span class="lbl">Volume<small>249 standard 1622 / 1360 cm³, 249C 1016 cm³</small></span><input class="f" id="dsV" inputmode="decimal" value="1639" data-u="vol" oninput="lvInput(this)"><span class="sfx" data-u="vol"></span></div>
+    <div class="row"><span class="lbl">Weight<small>displacer + hanger as hung on the rod</small></span><input class="f" id="dsW" inputmode="decimal" value="2.18" data-u="mass" oninput="lvInput(this)"><span class="sfx" data-u="mass"></span></div>
+  </div>
+  <div class="gtitle">Fluids</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Upper fluid SG<small>0 for vapour / level service</small></span><input class="f" id="dsSGu" inputmode="decimal" value="0" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+    <div class="row"><span class="lbl">Lower fluid SG<small>process liquid, or heavy phase for interface</small></span><input class="f" id="dsSGl" inputmode="decimal" value="0.800" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+    <div class="row"><span class="lbl">Test fluid SG<small>fluid used for the wet calibration</small></span><input class="f" id="dsSGt" inputmode="decimal" value="1.000" data-u="sg" oninput="lvInput(this)"><span class="sfx" data-u="sg"></span></div>
+  </div>
+  <div class="gtitle">Cage / bridle</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Nozzle centre-to-centre</span><input class="f" id="dsCC" inputmode="decimal" value="610" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="row"><span class="lbl">Displacer bottom above lower nozzle<small>0 % level sits at the displacer bottom</small></span><input class="f" id="dsOff" inputmode="decimal" value="127" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+  </div>
+  <div class="gtitle">Fisher 249 torque tube</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Driver rod length<small>horizontal: displacer CL to torque tube CL</small></span><input class="f" id="dsR" inputmode="decimal" value="203" data-u="len" oninput="lvInput(this)"><span class="sfx" data-u="len"></span></div>
+    <div class="row"><span class="lbl">Torque tube rate<small>N·m per degree, optional</small></span><input class="f" id="dsK" inputmode="decimal" value="" placeholder="—" oninput="lvInput(this)"></div>
+  </div>
+  <div class="result" onclick="copyText(document.getElementById('dsNum').textContent)">
+    <span class="copyhint">tap to copy</span>
+    <div class="cap">Buoyancy change over range</div>
+    <div class="num" id="dsNum">—</div><div class="unit" id="dsUnit"></div><div class="sub" id="dsSub"></div>
+  </div>
+  <div class="warn" id="dsWarn"></div>
+  <div class="group" id="dsDetail"></div>
+  </div>
+  </div><div class="col">
+  <div class="gtitle" id="lvTitle">Table</div>
+  <div class="tablewrap"><table id="lvTable"></table></div>
+  <div class="gfoot" id="lvFoot"></div>
+  </div></div>
+</section>
+
+<!-- ============================ CAL SHEET ============================ -->
+<section class="page" id="page-cal">
+  <div class="navbar"><span class="compact-title">Calibration</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Calibration</div>
+
+  <div class="cols"><div class="col">
+  <div class="gtitle">Instrument</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Tag no.</span><input class="f" id="clTag" placeholder="TT-1001" oninput="clSave()"></div>
+    <div class="row"><span class="lbl">Description</span><input class="f" id="clDesc" placeholder="Reactor outlet temp" oninput="clSave()"></div>
+    <div class="row"><span class="lbl">Manufacturer / model</span><input class="f" id="clModel" placeholder="Rosemount 3144P" oninput="clSave()"></div>
+    <div class="row"><span class="lbl">Serial no.</span><input class="f" id="clSerial" placeholder="—" oninput="clSave()"></div>
+    <div class="row"><span class="lbl">Test equipment</span><input class="f" id="clStd" placeholder="Fluke 754  S/N 12345" oninput="clSave()"></div>
+    <div class="row"><span class="lbl">Technician</span><input class="f" id="clTech" placeholder="Name" oninput="clSave()"></div>
+    <div class="row"><span class="lbl">Date</span><input class="f" id="clDate" type="date" oninput="clSave()"></div>
+  </div>
+
+  </div><div class="col">
+  <div class="gtitle">Ranges</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Input LRV / URV</span>
+      <input class="f" id="clInLo" inputmode="decimal" value="0" oninput="clRefresh()" style="flex:0 0 66px">
+      <input class="f" id="clInHi" inputmode="decimal" value="100" oninput="clRefresh()" style="flex:0 0 66px">
+      <input class="f" id="clInU" value="°C" oninput="clRefresh()" style="flex:0 0 54px"></div>
+    <div class="row"><span class="lbl">Output LRV / URV</span>
+      <input class="f" id="clOutLo" inputmode="decimal" value="4" oninput="clRefresh()" style="flex:0 0 66px">
+      <input class="f" id="clOutHi" inputmode="decimal" value="20" oninput="clRefresh()" style="flex:0 0 66px">
+      <input class="f" id="clOutU" value="mA" oninput="clRefresh()" style="flex:0 0 54px"></div>
+    <div class="row"><span class="lbl">Tolerance<small>± % of full scale deflection</small></span><input class="f" id="clTol" inputmode="decimal" value="0.5" oninput="clRefresh()"><span class="val" style="width:26px">%</span></div>
+    <div class="row"><span class="lbl">Transfer</span><select class="f" id="clXfer" onchange="clCalc()">
+      <option value="lin">Linear</option><option value="sqrt">Square root</option><option value="sq">Square</option></select></div>
+  </div>
+
+  </div></div>
+  <div class="gtitle">Test points</div>
+  <div class="seg" id="clPtSeg">
+    <button onclick="clSetPoints(3,this)">3</button>
+    <button class="on" onclick="clSetPoints(5,this)">5</button>
+    <button onclick="clSetPoints(6,this)">6</button>
+    <button onclick="clSetPoints(11,this)">11</button>
+  </div>
+  <div class="tablewrap"><table id="clTable"></table></div>
+  <div class="btnrow">
+    <button class="btn tinted" onclick="clAddRow()">+ Point</button>
+    <button class="btn tinted" onclick="clFillIdeal()">Fill ideal</button>
+    <button class="btn danger" onclick="clClearData()">Clear data</button>
+  </div>
+
+  <div class="gtitle">Result</div>
+  <div class="group" id="clSummary"></div>
+
+  <div class="cols"><div class="col">
+  <div class="chart" id="chartXY">
+    <h4>Actual vs ideal</h4><div id="svgXY"></div>
+    <div class="legend"><span><i style="background:var(--label3)"></i>Ideal</span><span><i style="background:var(--blue)"></i>As found</span><span><i style="background:var(--green)"></i>As left</span></div>
+  </div>
+  </div><div class="col">
+  <div class="chart" id="chartErr">
+    <h4>Error — % of full scale</h4><div id="svgErr"></div>
+    <div class="legend"><span><i style="background:var(--orange)"></i>Tolerance band</span><span><i style="background:var(--blue)"></i>As found</span><span><i style="background:var(--green)"></i>As left</span></div>
+  </div>
+
+  </div></div>
+  <div class="btnrow">
+    <button class="btn" onclick="clExportXLSX()">Export Excel</button>
+    <button class="btn tinted" onclick="clExportCSV()">CSV</button>
+    <button class="btn tinted" onclick="window.print()">Print</button>
+  </div>
+  <div class="gfoot">Error % FSD = (as-found − ideal) ÷ output span × 100. Error % of reading = (as-found − ideal) ÷ ideal × 100. Sheets are stored on this device only.</div>
+</section>
+
+<!-- ============================ FLANGES ============================ -->
+<section class="page" id="page-flange">
+  <div class="navbar"><span class="compact-title">Flanges</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Flanges</div>
+  <div class="seg" id="flUnitSeg">
+    <button class="on" data-u="nm" onclick="flSetUnit('nm',this)">Nm</button>
+    <button data-u="ftlb" onclick="flSetUnit('ftlb',this)">ft·lb</button>
+  </div>
+
+  <div class="cols"><div class="col stick">
+  <div class="group">
+    <div class="row"><span class="lbl">Flange size</span><select class="f" id="flSize" onchange="flCalc()"></select></div>
+    <div class="row"><span class="lbl">Class</span><select class="f" id="flClass" onchange="flCalc()"></select></div>
+    <div class="row"><span class="lbl">Lubricant</span><select class="f" id="flLube" onchange="flCalc()"></select></div>
+  </div>
+
+  <div class="result" onclick="copyText(document.getElementById('flNum').textContent)">
+    <span class="copyhint">tap to copy</span>
+    <div class="cap">Bolt torque</div>
+    <div class="num" id="flNum">—</div>
+    <div class="unit" id="flUnitOut"></div>
+    <div class="sub" id="flSub"></div>
+  </div>
+  <div class="warn" id="flWarn"></div>
+
+  <div class="group" id="flDetail"></div>
+  </div><div class="col">
+  <div class="gtitle" id="flTitle">All sizes</div>
+  <div class="tablewrap"><table id="flTable"></table></div>
+  </div></div>
+
+  <div class="gfoot">ASME B16.5 flanges in ASTM A105, A182 F50/F51, A350 LF2/LF3 and A694 F52 (F60/F65 at higher classes), with
+    ASTM A193 B7/B7M or A320 L7/L7M/L43 studs, −101 to +400 °C. Torque is per bolt, applied to the nut on lubricated threads and nut face.
+    The lubricant matters: dry or wrongly lubricated studs will be badly under-loaded at these torques.<br><br>
+    Source: W. Christie (Industrial) Ltd, <i>Class Flanges Bolt Torque Loads</i>. The sheet states its data is not warranted or guaranteed —
+    always follow the site's bolted-joint procedure and the gasket manufacturer where they differ.</div>
+</section>
+
+<!-- ============================ REFERENCE ============================ -->
+<section class="page" id="page-ref">
+  <div class="navbar"><span class="compact-title">Reference</span>
+    <button class="navbtn" onclick="cycleTheme()" aria-label="Appearance">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+  <div class="large-title">Reference</div>
+
+  <div class="cols"><div class="col">
+  <div class="gtitle">Loop calculator</div>
+  <div class="group">
+    <div class="row"><span class="lbl">Current</span><input class="f" id="ohI" inputmode="decimal" value="12" oninput="ohmCalc('I')"><span class="val" style="width:26px">mA</span></div>
+    <div class="row"><span class="lbl">Resistance</span><input class="f" id="ohR" inputmode="decimal" value="250" oninput="ohmCalc('R')"><span class="val" style="width:26px">Ω</span></div>
+    <div class="row"><span class="lbl">Voltage</span><input class="f" id="ohV" inputmode="decimal" value="3" oninput="ohmCalc('V')"><span class="val" style="width:26px">V</span></div>
+    <div class="row"><span class="lbl">Power</span><span class="val" id="ohP">36 mW</span></div>
+  </div>
+  <div class="gfoot">V = I × R. A 250 Ω sense resistor turns a 4–20 mA loop into 1–5 V.</div>
+  </div><div class="col">
+  <div class="gtitle">Formulas</div>
+  <div class="group" id="refFormulas"></div>
+  </div></div>
+
+  <div class="gtitle">Thermocouple types</div>
+  <div class="tablewrap"><table id="refTC"></table></div>
+
+  <div class="gtitle">Thermocouple cable colours</div>
+  <div class="tablewrap"><table id="refColour"></table></div>
+  <div class="gfoot">
+    Identify an unknown cable by its <b>negative</b> leg: IEC 60584-3 is always white, BS 1843 always blue,
+    ANSI always red. DIN 43710 is the odd one out — there the <b>positive</b> leg is always red.<br><br>
+    BS 1843:1952 is withdrawn but still all over older UK plant; new UK and EU installations follow
+    BS EN 60584-3, which is identical to IEC 60584-3. Under IEC 60584-3 a <b>light blue sheath</b> marks
+    cable for an intrinsically safe circuit.<br><br>
+    Colours above are for extension cable (type X — same alloys as the thermocouple). Compensating cable
+    (type C, e.g. KCA / KCB, RCA / SCA) uses substitute alloys and carries the same sheath colour, so check
+    the printed legend rather than the colour alone before you trust it on a noble-metal loop.
+  </div>
+
+  <div class="gtitle">RTD standards</div>
+  <div class="tablewrap"><table id="refRTD"></table></div>
+
+  <div class="gtitle">Common signal ranges</div>
+  <div class="tablewrap"><table id="refSig"></table></div>
+
+  <div class="gfoot">Sensor outputs are computed from IEC 60751 (RTD) and NIST ITS-90 (thermocouple) polynomials, not interpolated tables — values match published tables to the last printed digit across the listed ranges. Always verify against your own certified standard before signing a certificate.</div>
+</section>
+
+</div><!-- /app -->
+
+<nav class="tabbar" id="tabbar">
+  <button class="on" data-page="convert" onclick="showPage('convert')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3"/></svg>Convert</button>
+  <button data-page="signal" onclick="showPage('signal')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 14c2.5 0 2.5-8 5-8s2.5 12 5 12 2.5-8 5-8 2.5 4 5 4"/></svg>Signal</button>
+  <button data-page="sensor" onclick="showPage('sensor')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.8V4.5a2 2 0 1 1 4 0v10.3a4 4 0 1 1-4 0z"/><path d="M8 6H4M8 10H4M8 14H4"/></svg>Temperature</button>
+  <button data-page="level" onclick="showPage('level')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 13c2 0 2-1.5 3.5-1.5S10.5 13 12 13s2-1.5 3.5-1.5S17 13 19 13"/></svg>Level</button>
+  <button data-page="cal" onclick="showPage('cal')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M5 20V9M10 20V5M15 20v-7M20 20V3"/></svg>Cal sheet</button>
+  <button data-page="flange" onclick="showPage('flange')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="5.8" r=".9"/><circle cx="12" cy="18.2" r=".9"/><circle cx="5.8" cy="12" r=".9"/><circle cx="18.2" cy="12" r=".9"/></svg>Flanges</button>
+  <button data-page="ref" onclick="showPage('ref')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2z"/><path d="M4 19a2 2 0 0 1 2-2h13"/></svg>Reference</button>
+</nav>
+<div class="menu" id="snTypeMenu" role="listbox"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   0. Core helpers
+   ========================================================================== */
+const $ = id => document.getElementById(id);
+const num = v => { const n = parseFloat(String(v).replace(/,/g,'').trim()); return isFinite(n) ? n : NaN; };
+
+/* significant-figure aware formatting, tuned for instrument work */
+function fmt(v, sig){
+  if(v === null || v === undefined || !isFinite(v)) return '—';
+  sig = sig || 6;
+  const a = Math.abs(v);
+  if(a === 0) return '0';
+  if(a >= 1e7 || a < 1e-5) return v.toExponential(Math.max(2, sig-3)).replace('e','e');
+  let s = v.toPrecision(sig);
+  if(s.indexOf('e') < 0 && s.indexOf('.') >= 0) s = s.replace(/0+$/,'').replace(/\.$/,'');
+  return s;
+}
+const fx = (v,d) => (isFinite(v) ? v.toFixed(d===undefined?3:d) : '—');
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 1500);
+}
+function copyText(s){
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(s).then(()=>toast('Copied  ' + s), ()=>toast(s));
+  } else {
+    const ta = document.createElement('textarea'); ta.value = s; document.body.appendChild(ta);
+    ta.select(); try{ document.execCommand('copy'); toast('Copied  ' + s); }catch(e){ toast(s); }
+    document.body.removeChild(ta);
+  }
+}
+function segPick(btn){ [...btn.parentNode.children].forEach(b=>b.classList.remove('on')); btn.classList.add('on'); }
+
+/* theme: auto → light → dark */
+function cycleTheme(){
+  const cur = document.documentElement.getAttribute('data-theme') || 'auto';
+  const next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+  if(next === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', next);
+  try{ localStorage.setItem('ik-theme', next); }catch(e){}
+  toast('Appearance: ' + next);
+  clCalc();
+}
+try{ const t = localStorage.getItem('ik-theme'); if(t && t!=='auto') document.documentElement.setAttribute('data-theme',t); }catch(e){}
+
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  $('page-'+name).classList.add('active');
+  document.querySelectorAll('#tabbar button, #sidebar button[data-page]')
+    .forEach(b=>b.classList.toggle('on', b.dataset.page === name));
+  window.scrollTo(0,0);
+  try{ localStorage.setItem('ik-page', name); }catch(e){}
+  if(name === 'cal') clCalc();
+}
+window.addEventListener('scroll', ()=>{
+  const s = window.scrollY > 34;
+  document.querySelectorAll('.navbar').forEach(n=>n.classList.toggle('scrolled', s));
+}, {passive:true});
+
+/* ==========================================================================
+   1. UNIT CONVERTER
+   Every category is a map unit -> factor to the SI base unit.
+   Temperature is handled separately (affine, not scalar).
+   ========================================================================== */
+const UNITS = {
+  'Pressure': { base:'Pa', u:{
+    'Pa':1, 'kPa':1e3, 'MPa':1e6, 'hPa':100, 'mbar':100, 'bar':1e5,
+    'psi':6894.757293168, 'ksi':6894757.293, 'kg/cm²':98066.5, 'atm':101325,
+    'mmHg (torr)':133.322387415, 'inHg (0 °C)':3386.389, 'inH₂O (4 °C)':249.0889083,
+    'inH₂O (60 °F)':248.84, 'ftH₂O (4 °C)':2989.0669, 'mmH₂O (4 °C)':9.80665,
+    'cmH₂O (4 °C)':98.0665, 'mH₂O (4 °C)':9806.65, 'dyn/cm²':0.1, 'lbf/ft²':47.880259
+  }},
+  'Temperature': { base:'°C', temp:true, u:{ '°C':1, '°F':1, 'K':1, '°R':1 } },
+  'Temp difference': { base:'K', u:{ 'ΔK':1, 'Δ°C':1, 'Δ°F':5/9, 'Δ°R':5/9 } },
+  'Flow (volume)': { base:'m³/s', u:{
+    'm³/s':1, 'm³/h':1/3600, 'm³/min':1/60, 'L/s':1e-3, 'L/min':1e-3/60, 'L/h':1e-3/3600,
+    'mL/min':1e-6/60, 'US gal/min':6.30901964e-5, 'US gal/h':1.05150327e-6,
+    'UK gal/min':7.57682e-5, 'ft³/min (CFM)':4.719474e-4, 'ft³/h (CFH)':1.3187e-7,
+    'bbl/day (oil)':1.8401307e-6, 'MMSCFD (std)':0.3277413
+  }},
+  'Flow (mass)': { base:'kg/s', u:{
+    'kg/s':1, 'kg/h':1/3600, 'kg/min':1/60, 'g/s':1e-3, 'g/min':1e-3/60,
+    't/h (metric)':1000/3600, 't/day':1000/86400, 'lb/s':0.45359237, 'lb/h':0.45359237/3600,
+    'lb/min':0.45359237/60, 'ton/h (US)':907.18474/3600
+  }},
+  'Level / length': { base:'m', u:{
+    'm':1, 'cm':0.01, 'mm':1e-3, 'µm':1e-6, 'km':1000,
+    'in':0.0254, 'ft':0.3048, 'yd':0.9144, 'mile':1609.344, 'mil (thou)':2.54e-5
+  }},
+  'Volume': { base:'m³', u:{
+    'm³':1, 'L':1e-3, 'mL':1e-6, 'cm³':1e-6, 'ft³':0.028316846592, 'in³':1.6387064e-5,
+    'US gal':0.003785411784, 'UK gal':0.00454609, 'bbl (oil, 42 gal)':0.158987294928,
+    'US qt':9.4635295e-4, 'US pt':4.73176473e-4, 'fl oz (US)':2.95735296e-5
+  }},
+  'Mass': { base:'kg', u:{
+    'kg':1, 'g':1e-3, 'mg':1e-6, 't (metric)':1000, 'lb':0.45359237, 'oz':0.028349523125,
+    'ton (US short)':907.18474, 'ton (UK long)':1016.0469088, 'grain':6.479891e-5, 'slug':14.593903
+  }},
+  'Force': { base:'N', u:{ 'N':1, 'kN':1000, 'daN':10, 'kgf':9.80665, 'lbf':4.4482216153, 'ozf':0.27801385, 'dyn':1e-5, 'tonf (US)':8896.443 } },
+  'Torque': { base:'N·m', u:{ 'N·m':1, 'N·cm':0.01, 'kgf·m':9.80665, 'kgf·cm':0.0980665, 'lbf·ft':1.3558179483, 'lbf·in':0.1129848290, 'ozf·in':0.00706155 } },
+  'Power': { base:'W', u:{ 'W':1, 'kW':1000, 'MW':1e6, 'mW':1e-3, 'hp (mech)':745.6998716, 'hp (metric)':735.49875, 'BTU/h':0.29307107, 'kcal/h':1.163, 'ft·lbf/s':1.3558179, 'ton refrig.':3516.8528 } },
+  'Energy': { base:'J', u:{ 'J':1, 'kJ':1000, 'MJ':1e6, 'Wh':3600, 'kWh':3.6e6, 'cal':4.184, 'kcal':4184, 'BTU':1055.05585262, 'therm':1.05505585e8, 'ft·lbf':1.35581795, 'eV':1.602176634e-19 } },
+  'Velocity': { base:'m/s', u:{ 'm/s':1, 'm/min':1/60, 'km/h':1/3.6, 'ft/s':0.3048, 'ft/min':0.00508, 'mph':0.44704, 'knot':0.514444 } },
+  'Density': { base:'kg/m³', u:{ 'kg/m³':1, 'g/cm³':1000, 'g/L':1, 'kg/L':1000, 'lb/ft³':16.018463, 'lb/in³':27679.905, 'lb/US gal':119.826427, 'SG (water=1)':1000, '°API (rel.)':NaN } },
+  'Viscosity (dyn.)': { base:'Pa·s', u:{ 'Pa·s':1, 'mPa·s':1e-3, 'cP':1e-3, 'P (poise)':0.1, 'lb/(ft·s)':1.4881639, 'lbf·s/ft²':47.880259 } },
+  'Viscosity (kin.)': { base:'m²/s', u:{ 'm²/s':1, 'cSt':1e-6, 'St (stokes)':1e-4, 'mm²/s':1e-6, 'ft²/s':0.09290304 } },
+  'Area': { base:'m²', u:{ 'm²':1, 'cm²':1e-4, 'mm²':1e-6, 'km²':1e6, 'in²':6.4516e-4, 'ft²':0.09290304, 'yd²':0.83612736, 'acre':4046.8564224, 'hectare':10000 } },
+  'Time': { base:'s', u:{ 's':1, 'ms':1e-3, 'µs':1e-6, 'min':60, 'h':3600, 'day':86400, 'week':604800, 'year (365 d)':31536000 } },
+  'Frequency': { base:'Hz', u:{ 'Hz':1, 'kHz':1000, 'MHz':1e6, 'rpm':1/60, 'rad/s':1/(2*Math.PI), 'cpm (cycles/min)':1/60 } },
+  'Current': { base:'A', u:{ 'A':1, 'mA':1e-3, 'µA':1e-6, 'kA':1000 } },
+  'Voltage': { base:'V', u:{ 'V':1, 'mV':1e-3, 'µV':1e-6, 'kV':1000 } },
+  'Resistance': { base:'Ω', u:{ 'Ω':1, 'mΩ':1e-3, 'kΩ':1000, 'MΩ':1e6 } },
+  'Conductivity': { base:'S/m', u:{ 'S/m':1, 'mS/cm':0.1, 'µS/cm':1e-4, 'S/cm':100, 'ppm NaCl (≈)':NaN } }
+};
+let cvCat = 'Pressure';
+
+function toBase(cat, unit, v){
+  const c = UNITS[cat];
+  if(c.temp){
+    if(unit === '°C') return v;
+    if(unit === '°F') return (v - 32) * 5/9;
+    if(unit === 'K')  return v - 273.15;
+    if(unit === '°R') return (v - 491.67) * 5/9;
+  }
+  return v * c.u[unit];
+}
+function fromBase(cat, unit, v){
+  const c = UNITS[cat];
+  if(c.temp){
+    if(unit === '°C') return v;
+    if(unit === '°F') return v * 9/5 + 32;
+    if(unit === 'K')  return v + 273.15;
+    if(unit === '°R') return (v + 273.15) * 9/5;
+  }
+  return v / c.u[unit];
+}
+
+function cvBuild(){
+  const bar = $('cvCats'); bar.innerHTML = '';
+  Object.keys(UNITS).forEach(k=>{
+    const b = document.createElement('button');
+    b.textContent = k; b.className = (k===cvCat ? 'on':'');
+    b.onclick = ()=>{ cvCat = k; cvBuild(); };
+    bar.appendChild(b);
+  });
+  const list = Object.keys(UNITS[cvCat].u).filter(u=>isFinite(UNITS[cvCat].u[u]) || UNITS[cvCat].temp);
+  const f = $('cvFrom'), t = $('cvTo');
+  f.innerHTML = ''; t.innerHTML = '';
+  list.forEach(u=>{
+    f.appendChild(new Option(u,u));
+    t.appendChild(new Option(u,u));
+  });
+  f.value = list[0]; t.value = list[Math.min(1, list.length-1)];
+  const pref = {'Pressure':['bar','psi'],'Temperature':['°C','°F'],'Flow (volume)':['m³/h','US gal/min'],
+                'Flow (mass)':['kg/h','lb/h'],'Level / length':['m','ft'],'Current':['mA','A'],'Voltage':['V','mV']}[cvCat];
+  if(pref){ f.value = pref[0]; t.value = pref[1]; }
+  cvCalc();
+}
+function cvSwap(){ const a = $('cvFrom').value; $('cvFrom').value = $('cvTo').value; $('cvTo').value = a; cvCalc(); }
+
+function cvCalc(){
+  const v = num($('cvIn').value);
+  const c = UNITS[cvCat];
+  if(!isFinite(v)){ $('cvOutTxt').textContent = '—'; $('cvAll').innerHTML=''; return; }
+  const base = toBase(cvCat, $('cvFrom').value, v);
+  $('cvOutTxt').textContent = fmt(fromBase(cvCat, $('cvTo').value, base), 8);
+
+  let h = '<tr><th>Unit</th><th>Value</th></tr>';
+  Object.keys(c.u).forEach(u=>{
+    if(!c.temp && !isFinite(c.u[u])) return;
+    const out = fromBase(cvCat, u, base);
+    const hi = (u === $('cvTo').value) ? ' class="hi"' : '';
+    h += `<tr${hi}><td>${u}</td><td>${fmt(out,8)}</td></tr>`;
+  });
+  $('cvAll').innerHTML = h;
+  $('cvNote').textContent = cvCat === 'Temperature'
+    ? 'Absolute temperatures. For spans and differences use the Temp difference category — 1 Δ°C = 1.8 Δ°F, not 33.8.'
+    : cvCat === 'Density' ? 'Specific gravity is referenced to water at 4 °C (1000 kg/m³).'
+    : 'Base unit: ' + c.base + '.';
+}
+
+/* ==========================================================================
+   2. SIGNAL — bidirectional % / mA / V / psi / bar / process value
+   ========================================================================== */
+const SIGTYPES = [
+  {n:'4–20 mA',     lo:4,   hi:20,  u:'mA'},
+  {n:'0–20 mA',     lo:0,   hi:20,  u:'mA'},
+  {n:'10–50 mA',    lo:10,  hi:50,  u:'mA'},
+  {n:'1–5 V',       lo:1,   hi:5,   u:'V'},
+  {n:'0–5 V',       lo:0,   hi:5,   u:'V'},
+  {n:'0–10 V',      lo:0,   hi:10,  u:'V'},
+  {n:'2–10 V',      lo:2,   hi:10,  u:'V'},
+  {n:'±10 V',       lo:-10, hi:10,  u:'V'},
+  {n:'3–15 psi',    lo:3,   hi:15,  u:'psi'},
+  {n:'0.2–1.0 bar', lo:0.2, hi:1.0, u:'bar'},
+  {n:'20–100 kPa',  lo:20,  hi:100, u:'kPa'},
+  {n:'0–100 %',     lo:0,   hi:100, u:'%'},
+  {n:'Custom…',     lo:0,   hi:100, u:'mA', custom:true}
+];
+let sgXfer = 'lin', sgStep = 20;
+
+function sgSpec(){
+  const s = SIGTYPES[+$('sgType').value];
+  if(s.custom) return {n:'Custom', lo:num($('sgLo').value), hi:num($('sgHi').value), u:$('sgUnitCustom').value || ''};
+  return s;
+}
+/* signal % → PV % */
+function pvPctFrom(sigPct){
+  if(sgXfer === 'sqrt') return 100 * Math.sqrt(Math.max(0, sigPct)/100);
+  if(sgXfer === 'sq')   return 100 * Math.pow(Math.max(0,sigPct)/100, 2);
+  return sigPct;
+}
+/* PV % → signal % */
+function sigPctFrom(pvPct){
+  if(sgXfer === 'sqrt') return 100 * Math.pow(Math.max(0,pvPct)/100, 2);
+  if(sgXfer === 'sq')   return 100 * Math.sqrt(Math.max(0,pvPct)/100);
+  return pvPct;
+}
+function sgSetXfer(m, btn){
+  sgXfer = m; segPick(btn);
+  $('sgXferNote').textContent = m === 'lin' ? 'Linear — output tracks input directly'
+    : m === 'sqrt' ? 'Square root — PV % = 100 × √(signal % ÷ 100), e.g. DP to flow'
+    : 'Square — PV % = (signal % ÷ 100)² × 100, e.g. flow to DP';
+  sgFrom('pct');
+}
+function sgSetStep(s, btn){ sgStep = s; segPick(btn); sgTable(); }
+function sgTypeChange(){
+  $('sgCustomRow').style.display = sgSpec().n === 'Custom' ? '' : 'none';
+  sgFrom('pct');
+}
+function sgFrom(src){
+  const sp = sgSpec(), lrv = num($('sgLRV').value), urv = num($('sgURV').value);
+  let sigPct;
+  if(src === 'sig'){
+    const v = num($('sgSig').value);
+    sigPct = (v - sp.lo) / (sp.hi - sp.lo) * 100;
+  } else if(src === 'pv'){
+    const v = num($('sgPV').value);
+    sigPct = sigPctFrom((v - lrv) / (urv - lrv) * 100);
+  } else {
+    sigPct = num($('sgPct').value);
+  }
+  if(!isFinite(sigPct)) sigPct = 0;
+  const pvPct = pvPctFrom(sigPct);
+  const sig = sp.lo + (sp.hi - sp.lo) * sigPct/100;
+  const pv  = lrv + (urv - lrv) * pvPct/100;
+
+  if(src !== 'pct') $('sgPct').value = fmt(sigPct, 6);
+  if(src !== 'sig') $('sgSig').value = fmt(sig, 6);
+  if(src !== 'pv')  $('sgPV').value  = fmt(pv, 6);
+  $('sgSigU').textContent = sp.u;
+  $('sgPVU').textContent  = $('sgUnit').value;
+
+  const w = $('sgWarn');
+  if(sigPct < 0 || sigPct > 100){
+    w.className = 'warn'; w.textContent = 'Outside 0–100 % of the signal range' +
+      (sp.u==='mA' && sig < 3.6 ? ' — below 3.6 mA is a NAMUR NE43 under-range / fault indication.' :
+       sp.u==='mA' && sig > 21 ? ' — above 21 mA is a NAMUR NE43 over-range / fault indication.' : '.');
+  } else w.textContent = '';
+
+  /* equivalents */
+  const eq = [
+    ['Signal %',       fmt(sigPct,6), '%'],
+    ['Process %',      fmt(pvPct,6),  '%'],
+    ['4–20 mA',        fmt(4 + 16*sigPct/100, 6), 'mA'],
+    ['0–20 mA',        fmt(20*sigPct/100, 6), 'mA'],
+    ['1–5 V (250 Ω)',  fmt(1 + 4*sigPct/100, 6), 'V'],
+    ['0–10 V',         fmt(10*sigPct/100, 6), 'V'],
+    ['3–15 psi',       fmt(3 + 12*sigPct/100, 6), 'psi'],
+    ['0.2–1.0 bar',    fmt(0.2 + 0.8*sigPct/100, 6), 'bar'],
+    ['20–100 kPa',     fmt(20 + 80*sigPct/100, 6), 'kPa'],
+    ['Process value',  fmt(pv,6), $('sgUnit').value]
+  ];
+  $('sgEquiv').innerHTML = '<tr><th>Scale</th><th>Value</th><th>Unit</th></tr>' +
+    eq.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td style="color:var(--label2)">${r[2]}</td></tr>`).join('');
+  sgTable(sigPct);
+}
+function sgTable(hiPct){
+  const sp = sgSpec(), lrv = num($('sgLRV').value), urv = num($('sgURV').value), eu = $('sgUnit').value;
+  const dupMA = sp.u === 'mA';                 /* don't repeat mA when that is already the signal */
+  let h = `<tr><th>Signal %</th><th>${sp.n === 'Custom' ? (sp.u||'signal') : sp.n}</th>`
+        + (dupMA ? '' : '<th>4–20 mA</th>') + `<th>V @250Ω</th><th>PV %</th><th>${eu||'PV'}</th></tr>`;
+  for(let p = 0; p <= 100.0001; p += sgStep){
+    const pvp = pvPctFrom(p);
+    const hi = (hiPct !== undefined && Math.abs(hiPct - p) < 1e-9) ? ' class="hi"' : '';
+    h += `<tr${hi}><td>${fx(p,p%1?1:0)}</td><td>${fmt(sp.lo+(sp.hi-sp.lo)*p/100,6)}</td>`
+      +  (dupMA ? '' : `<td>${fx(4+16*p/100,3)}</td>`) + `<td>${fx(1+4*p/100,3)}</td>`
+      +  `<td>${fx(pvp,2)}</td><td>${fmt(lrv+(urv-lrv)*pvp/100,6)}</td></tr>`;
+  }
+  $('sgTable').innerHTML = h;
+}
+
+/* ==========================================================================
+   3. SENSORS — RTD (IEC 60751 / Callendar–Van Dusen) + TC (NIST ITS-90)
+   ========================================================================== */
+/* ---- RTD ---- */
+const RTDS = {
+  'Pt100 (α=0.00385, IEC 60751)':  {r0:100,  std:'385', min:-200, max:850},
+  'Pt200 (α=0.00385)':             {r0:200,  std:'385', min:-200, max:850},
+  'Pt500 (α=0.00385)':             {r0:500,  std:'385', min:-200, max:850},
+  'Pt1000 (α=0.00385)':            {r0:1000, std:'385', min:-200, max:850},
+  'Pt100 (α=0.003916, JIS/old)':   {r0:100,  std:'392', min:-200, max:650},
+  'Pt100 (α=0.003902, US)':        {r0:100,  std:'3902',min:-200, max:650},
+  'Ni100 (DIN 43760)':             {r0:100,  std:'ni',  min:-60,  max:250},
+  'Ni120 (α=0.00672)':             {r0:120,  std:'ni672',min:-80, max:260},
+  'Ni1000 (DIN 43760)':            {r0:1000, std:'ni',  min:-60,  max:250},
+  'Cu10 (α=0.00427)':              {r0:10,   std:'cu',  min:-100, max:260},
+  'Cu50 (α=0.00428)':              {r0:50,   std:'cu',  min:-50,  max:200},
+  'Cu100 (α=0.00428)':             {r0:100,  std:'cu',  min:-50,  max:200}
+};
+const CVD = {
+  '385' : {A: 3.9083e-3, B:-5.775e-7, C:-4.183e-12},
+  '392' : {A: 3.9739e-3, B:-5.870e-7, C:-4.400e-12},
+  '3902': {A: 3.9692e-3, B:-5.8495e-7,C:-4.2325e-12}
+};
+function rtdR(name, t){
+  const s = RTDS[name];
+  if(!s) return NaN;
+  if(s.std === 'ni' || s.std === 'ni672'){
+    /* DIN 43760 nickel; Ni120 uses the same shape scaled to α = 0.00672 */
+    const A = 5.485e-3, B = 6.65e-6, C = 2.805e-11, D = -2.0e-17;
+    let r;
+    if(t >= 0) r = s.r0 * (1 + A*t + B*t*t + C*Math.pow(t,4) + D*Math.pow(t,6));
+    else       r = s.r0 * (1 + A*t + B*t*t);
+    if(s.std === 'ni672'){
+      const A2 = 5.4963e-3, B2 = 6.7556e-6, C2 = 9.2004e-10;
+      r = (t >= 0) ? s.r0*(1 + A2*t + B2*t*t + C2*Math.pow(t,3))
+                   : s.r0*(1 + A2*t + B2*t*t);
+    }
+    return r;
+  }
+  if(s.std === 'cu'){
+    /* Copper is very nearly linear over its useful range */
+    const a = 0.00427;
+    return s.r0 * (1 + a*t);
+  }
+  const k = CVD[s.std];
+  if(t >= 0) return s.r0 * (1 + k.A*t + k.B*t*t);
+  return s.r0 * (1 + k.A*t + k.B*t*t + k.C*(t-100)*t*t*t);
+}
+/* ---- Thermocouples: NIST ITS-90 direct polynomials, E in mV, t in °C ---- */
+const TCS = {
+  'Type K (NiCr–NiAl)': {min:-270, max:1372, segs:[
+    {lo:-270, hi:0, c:[0,3.9450128025e-2,2.3622373598e-5,-3.2858906784e-7,-4.9904828777e-9,
+        -6.7509059173e-11,-5.7410327428e-13,-3.1088872894e-15,-1.0451609365e-17,-1.9889266878e-20,-1.6322697486e-23]},
+    {lo:0, hi:1372, c:[-1.7600413686e-2,3.8921204975e-2,1.8558770032e-5,-9.9457592874e-8,3.1840945719e-10,
+        -5.6072844889e-13,5.6075059059e-16,-3.2020720003e-19,9.7151147152e-23,-1.2104721275e-26],
+      exp:{a0:0.118597600000, a1:-1.183432e-4, a2:1.269686e2}}
+  ]},
+  'Type J (Fe–CuNi)': {min:-210, max:1200, segs:[
+    {lo:-210, hi:760, c:[0,5.0381187815e-2,3.0475836930e-5,-8.5681065720e-8,1.3228195295e-10,
+        -1.7052958337e-13,2.0948090697e-16,-1.2538395336e-19,1.5631725697e-23]},
+    {lo:760, hi:1200, c:[2.9645625681e2,-1.4976127786,3.1787103924e-3,-3.1847686701e-6,1.5720819004e-9,-3.0691369056e-13]}
+  ]},
+  'Type T (Cu–CuNi)': {min:-270, max:400, segs:[
+    {lo:-270, hi:0, c:[0,3.8748106364e-2,4.4194434347e-5,1.1844323105e-7,2.0032973554e-8,9.0138019559e-10,
+        2.2651156593e-11,3.6071154205e-13,3.8493939883e-15,2.8213521925e-17,1.4251594779e-19,
+        4.8768662286e-22,1.0795539270e-24,1.3945027062e-27,7.9795153927e-31]},
+    {lo:0, hi:400, c:[0,3.8748106364e-2,3.3292227880e-5,2.0618243404e-7,-2.1882256846e-9,
+        1.0996880928e-11,-3.0815757720e-14,4.5479135290e-17,-2.7512901673e-20]}
+  ]},
+  'Type E (NiCr–CuNi)': {min:-270, max:1000, segs:[
+    {lo:-270, hi:0, c:[0,5.8665508708e-2,4.5410977124e-5,-7.7998048686e-7,-2.5800160843e-8,-5.9452583057e-10,
+        -9.3214058667e-12,-1.0287605534e-13,-8.0370123621e-16,-4.3979497391e-18,-1.6414776355e-20,
+        -3.9673619516e-23,-5.5827328721e-26,-3.4657842013e-29]},
+    {lo:0, hi:1000, c:[0,5.8665508710e-2,4.5032275582e-5,2.8908407212e-8,-3.3056896652e-10,6.5024403270e-13,
+        -1.9197495504e-16,-1.2536600497e-18,2.1489217569e-21,-1.4388041782e-24,3.5960899481e-28]}
+  ]},
+  'Type N (NiCrSi–NiSi)': {min:-270, max:1300, segs:[
+    {lo:-270, hi:0, c:[0,2.6159105962e-2,1.0957484228e-5,-9.3841111554e-8,-4.6412039759e-11,
+        -2.6303357716e-12,-2.2653438003e-14,-7.6089300791e-17,-9.3419667835e-20]},
+    {lo:0, hi:1300, c:[0,2.5929394601e-2,1.5710141880e-5,4.3825627237e-8,-2.5261169794e-10,6.4311819339e-13,
+        -1.0063471519e-15,9.9745338992e-19,-6.0863245607e-22,2.0849229339e-25,-3.0682196151e-29]}
+  ]},
+  'Type R (Pt13Rh–Pt)': {min:-50, max:1768, segs:[
+    {lo:-50, hi:1064.18, c:[0,5.28961729765e-3,1.39166589782e-5,-2.38855693017e-8,3.56916001063e-11,
+        -4.62347666298e-14,5.00777441034e-17,-3.73105886191e-20,1.57716482367e-23,-2.81038625251e-27]},
+    {lo:1064.18, hi:1664.5, c:[2.95157925316,-2.52061251332e-3,1.59564501865e-5,-7.64085947576e-9,
+        2.05305291024e-12,-2.93359668173e-16]},
+    {lo:1664.5, hi:1768.1, c:[1.52232118209e2,-2.68819888545e-1,1.71280280471e-4,-3.45895706453e-8,
+        -9.34633971046e-15]}
+  ]},
+  'Type S (Pt10Rh–Pt)': {min:-50, max:1768, segs:[
+    {lo:-50, hi:1064.18, c:[0,5.40313308631e-3,1.25934289740e-5,-2.32477968689e-8,3.22028823036e-11,
+        -3.31465196389e-14,2.55744251786e-17,-1.25068871393e-20,2.71443176145e-24]},
+    {lo:1064.18, hi:1664.5, c:[1.32900444085,3.34509311344e-3,6.54805192818e-6,-1.64856259209e-9,1.29989605174e-14]},
+    {lo:1664.5, hi:1768.1, c:[1.46628232636e2,-2.58430516752e-1,1.63693574641e-4,-3.30439046987e-8,-9.43223690612e-15]}
+  ]},
+  'Type B (Pt30Rh–Pt6Rh)': {min:0, max:1820, segs:[
+    {lo:0, hi:630.615, c:[0,-2.4650818346e-4,5.9040421171e-6,-1.3257931636e-9,1.5668291901e-12,
+        -1.6944529240e-15,6.2990347094e-19]},
+    {lo:630.615, hi:1820, c:[-3.8938168621,2.8571747470e-2,-8.4885104785e-5,1.5785280164e-7,-1.6835344864e-10,
+        1.1109794013e-13,-4.4515431033e-17,9.8975640821e-21,-9.3791330289e-25]}
+  ]}
+};
+function tcMV(type, t){
+  const s = TCS[type]; if(!s) return NaN;
+  let seg = s.segs.find(g => t >= g.lo && t <= g.hi) || (t < s.segs[0].lo ? s.segs[0] : s.segs[s.segs.length-1]);
+  let e = 0;
+  for(let i = seg.c.length - 1; i >= 0; i--) e = e * t + seg.c[i];
+  if(seg.exp) e += seg.exp.a0 * Math.exp(seg.exp.a1 * Math.pow(t - seg.exp.a2, 2));
+  return e;
+}
+/* Numeric inversion — bisection on a monotonic curve. Works for every type. */
+function invert(fn, target, lo, hi){
+  let flo = fn(lo) - target, fhi = fn(hi) - target;
+  if(flo * fhi > 0) return NaN;
+  for(let i = 0; i < 200; i++){
+    const mid = (lo + hi) / 2, fm = fn(mid) - target;
+    if(Math.abs(fm) < 1e-12 || (hi - lo) < 1e-10) return mid;
+    if(flo * fm <= 0){ hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+  }
+  return (lo + hi) / 2;
+}
+
+/* ---- Sensors UI ---- */
+let snFamily = 'rtd', snDir = 'fwd';
+const tC = (v,u) => u==='C' ? v : u==='F' ? (v-32)*5/9 : v-273.15;
+const cT = (v,u) => u==='C' ? v : u==='F' ? v*9/5+32 : v+273.15;
+const uSym = u => u==='C' ? '°C' : u==='F' ? '°F' : 'K';
+
+function snSetFamily(f, btn){
+  snFamily = f; segPick(btn);
+  const sel = $('snType'); sel.innerHTML = '';
+  Object.keys(f === 'rtd' ? RTDS : TCS).forEach(k => sel.appendChild(new Option(k, k)));
+  $('snCjcRow').style.display = f === 'tc' ? '' : 'none';
+  $('snIn').value = f === 'rtd' ? '100' : '100';
+  snUnitChange();
+}
+/* ---- probe picker: IEC 60584-3 + / − conductor colours as dots ---- */
+function snDots(k){
+  const c = snFamily === 'tc' && COLOURS[k.split(' ')[1]];
+  if(!c) return '';
+  const [pos, neg] = c.iec;
+  return `<span class="dots" title="IEC 60584-3: + ${pos}, − ${neg}">`
+       + `<i class="dot" style="background:${CCOL[pos]}"></i><i class="dot" style="background:${CCOL[neg]}"></i></span>`;
+}
+function snPickerSync(){
+  const k = $('snType').value;
+  $('snTypeBtn').innerHTML = `${snDots(k)}<span class="nm">${k}</span>`
+    + `<svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+}
+function snMenuClose(){ $('snTypeMenu').classList.remove('open'); }
+function snMenuToggle(e){
+  e.stopPropagation();
+  const m = $('snTypeMenu');
+  if(m.classList.contains('open')) return snMenuClose();
+  const cur = $('snType').value;
+  m.innerHTML = [...$('snType').options].map(o =>
+    `<button role="option" aria-selected="${o.value===cur}" data-k="${o.value}">`
+    + `<span class="tick">${o.value===cur?'✓':''}</span>${snDots(o.value)}<span class="nm">${o.value}</span></button>`).join('');
+  m.classList.add('open');
+  const r = $('snTypeBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  m.style.top  = (r.bottom + 6 + h > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  (m.querySelector('[aria-selected="true"]') || m.firstChild).focus({preventScroll:true});
+}
+$('snTypeMenu').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  $('snType').value = b.dataset.k; snMenuClose(); snCalc(); $('snTypeBtn').focus();
+});
+$('snTypeMenu').addEventListener('keydown', e => {
+  const items = [...$('snTypeMenu').children], i = items.indexOf(document.activeElement);
+  if(e.key === 'ArrowDown'){ items[Math.min(i+1, items.length-1)].focus({preventScroll:true}); e.preventDefault(); e.stopPropagation(); }
+  else if(e.key === 'ArrowUp'){ items[Math.max(i-1, 0)].focus({preventScroll:true}); e.preventDefault(); e.stopPropagation(); }
+  else if(e.key === 'Escape'){ snMenuClose(); $('snTypeBtn').focus(); }
+});
+document.addEventListener('click', e => { if(!e.target.closest('#snTypeMenu')) snMenuClose(); });
+window.addEventListener('resize', snMenuClose);
+window.addEventListener('scroll', snMenuClose, {passive:true});
+
+function snSetDir(d, btn){
+  snDir = d; segPick(btn);
+  $('snIn').value = snDir === 'fwd' ? '100' : (snFamily === 'rtd' ? '138.506' : '4.096');
+  snUnitChange();
+}
+let snPrevUnit = 'C';
+function snUnitChange(){
+  const nu = $('snUnit').value;
+  if(nu !== snPrevUnit){                       /* carry the numbers across, don't reinterpret them */
+    const cj = num($('snCjc').value);
+    if(isFinite(cj)) $('snCjc').value = fmt(cT(tC(cj, snPrevUnit), nu), 6);
+    if(snDir === 'fwd'){
+      const t = num($('snIn').value);
+      if(isFinite(t)) $('snIn').value = fmt(cT(tC(t, snPrevUnit), nu), 6);
+    }
+    snPrevUnit = nu;
+  }
+  const u = uSym($('snUnit').value);
+  $('snCjcU').textContent = u;
+  $('snInU').textContent = snDir === 'fwd' ? u : (snFamily === 'rtd' ? 'Ω' : 'mV');
+  $('snInLbl').textContent = snDir === 'fwd' ? 'Temperature' : (snFamily === 'rtd' ? 'Resistance' : 'EMF');
+  snCalc();
+}
+function snOut(type, tc){                       /* °C in → Ω or mV out */
+  if(snFamily === 'rtd') return rtdR(type, tc);
+  const cj = tC(num($('snCjc').value) || 0, $('snUnit').value);
+  return tcMV(type, tc) - tcMV(type, cj);
+}
+function snCalc(){
+  snPickerSync();
+  const type = $('snType').value, u = $('snUnit').value, spec = (snFamily==='rtd'?RTDS:TCS)[type];
+  if(!spec) return;
+  const v = num($('snIn').value), warn = $('snWarn');
+  let tc, out;
+  warn.textContent = ''; warn.className = 'warn';
+
+  if(snDir === 'fwd'){
+    tc = tC(v, u); out = snOut(type, tc);
+  } else {
+    out = v;
+    const cj = snFamily === 'tc' ? tC(num($('snCjc').value)||0, u) : 0;
+    tc = snFamily === 'rtd'
+      ? invert(t => rtdR(type,t), out, spec.min, spec.max)
+      : invert(t => tcMV(type,t), out + tcMV(type,cj), spec.min, spec.max);
+    if(!isFinite(tc)) warn.textContent = 'That reading falls outside the sensor curve for ' + type + '.';
+  }
+  const outOfRange = isFinite(tc) && (tc < spec.min || tc > spec.max);
+  if(outOfRange) warn.textContent = `${fx(tc,1)} °C is outside the defined range for ${type} (${spec.min} to ${spec.max} °C) — value is extrapolated.`;
+
+  if(snDir === 'fwd'){
+    $('snCap').textContent = snFamily === 'rtd' ? 'Resistance' : 'Thermoelectric EMF';
+    $('snNum').textContent = snFamily === 'rtd' ? fx(out, out>=1000?2:3) : fx(out, 4);
+    $('snUnitOut').textContent = snFamily === 'rtd' ? 'Ω' : 'mV';
+  } else {
+    $('snCap').textContent = 'Temperature';
+    $('snNum').textContent = isFinite(tc) ? fx(cT(tc,u), 3) : '—';
+    $('snUnitOut').textContent = uSym(u);
+  }
+  $('snNum').className = 'num' + ($('snNum').textContent.length > 9 ? ' sm' : '');
+
+  /* sensitivity + cross-reference line */
+  const d = 0.5, sens = isFinite(tc) ? (snOut(type, tc+d) - snOut(type, tc-d)) / (2*d) : NaN;
+  const parts = [];
+  if(isFinite(tc)){
+    parts.push(fx(tc,2) + ' °C  ·  ' + fx(cT(tc,'F'),2) + ' °F  ·  ' + fx(tc+273.15,2) + ' K');
+    if(snFamily === 'rtd'){
+      parts.push('Sensitivity ' + fx(sens,4) + ' Ω/°C');
+      parts.push('Lead error 1 Ω ≈ ' + fx(1/sens,2) + ' °C (2-wire)');
+    } else {
+      parts.push('Sensitivity ' + fx(sens*1000,2) + ' µV/°C');
+      const mv = snDir === 'fwd' ? out : v;
+      parts.push('EMF ' + fx(mv,4) + ' mV = ' + fx(mv/1000,7) + ' V');
+      parts.push('Cold junction ' + fx(num($('snCjc').value)||0,1) + ' ' + uSym(u) + ' compensated');
+    }
+  }
+  $('snSub').innerHTML = parts.join('<br>');
+
+  /* neighbour table */
+  const step = num($('snStep').value) || 10;
+  const alt = u === 'C' ? ['F','K'] : u === 'F' ? ['C','K'] : ['C','F'];
+  let h = `<tr><th>${uSym(u)}</th><th>${snFamily==='rtd'?'Ω':'mV'}</th>`
+        + alt.map(a=>`<th>${uSym(a)}</th>`).join('') + '</tr>';
+  if(isFinite(tc)){
+    const centre = Math.round(cT(tc,u) / step) * step;
+    for(let i = -5; i <= 5; i++){
+      const tu = centre + i*step, c = tC(tu, u);
+      if(c < spec.min - 1e-9 || c > spec.max + 1e-9) continue;
+      const o = snOut(type, c);
+      const hi = Math.abs(tu - cT(tc,u)) < step/2 ? ' class="hi"' : '';
+      h += `<tr${hi}><td>${fx(tu, step%1?2:0)}</td><td>${snFamily==='rtd'?fx(o,3):fx(o,4)}</td>`
+        +  alt.map(a=>`<td>${fx(cT(c,a), a==='K'?2:1)}</td>`).join('') + '</tr>';
+    }
+  }
+  $('snTable').innerHTML = h;
+  $('snFoot').textContent = snFamily === 'rtd'
+    ? `${type} — defined ${spec.min} to ${spec.max} °C, R₀ = ${spec.r0} Ω. Callendar–Van Dusen; resistance is at the sensor element, so subtract lead resistance on a 2-wire installation.`
+    : `${type} — defined ${spec.min} to ${spec.max} °C. NIST ITS-90 polynomial. EMF shown is what a meter at the cold-junction temperature would read.`;
+}
+
+/* ==========================================================================
+   4. CALIBRATION SHEET
+   ========================================================================== */
+let clRows = [];
+const CL_FIELDS = ['clTag','clDesc','clModel','clSerial','clStd','clTech','clDate',
+                   'clInLo','clInHi','clInU','clOutLo','clOutHi','clOutU','clTol','clXfer'];
+
+function clXferPct(p, mode){          /* input % → output % */
+  if(mode === 'sqrt') return 100 * Math.sqrt(Math.max(0,p)/100);
+  if(mode === 'sq')   return 100 * Math.pow(Math.max(0,p)/100, 2);
+  return p;
+}
+function clSetPoints(n, btn){
+  if(btn) segPick(btn);
+  clRows = [];
+  for(let i = 0; i < n; i++) clRows.push({pct: i*100/(n-1), found:'', left:''});
+  clCalc();
+}
+function clAddRow(){ clRows.push({pct:100, found:'', left:''}); clCalc(); }
+function clDelRow(i){ clRows.splice(i,1); clCalc(); }
+function clClearData(){ clRows.forEach(r => { r.found=''; r.left=''; }); clCalc(); toast('Readings cleared'); }
+function clFillIdeal(){
+  const d = clData();
+  clRows.forEach((r,i) => { r.found = fmt(d.pts[i].ideal, 6); r.left = fmt(d.pts[i].ideal, 6); });
+  clCalc(); toast('Filled with ideal values');
+}
+function clEdit(i, k, v){ clRows[i][k] = v; clRefresh(); }
+
+function clData(){
+  const inLo=num($('clInLo').value), inHi=num($('clInHi').value),
+        oLo=num($('clOutLo').value), oHi=num($('clOutHi').value),
+        tol=num($('clTol').value)||0, mode=$('clXfer').value;
+  const inSpan = inHi - inLo, oSpan = oHi - oLo;
+  const pts = clRows.map(r => {
+    const p = num(r.pct);
+    const inp = inLo + inSpan * p/100;
+    const ideal = oLo + oSpan * clXferPct(p, mode)/100;
+    const f = num(r.found), l = num(r.left);
+    const fe = isFinite(f) ? f - ideal : NaN, le = isFinite(l) ? l - ideal : NaN;
+    return {
+      pct:p, inp:inp, ideal:ideal, found:f, left:l,
+      fErr:fe, lErr:le,
+      fFsd: isFinite(fe) ? fe/oSpan*100 : NaN,
+      lFsd: isFinite(le) ? le/oSpan*100 : NaN,
+      fRdg: isFinite(fe) && ideal !== 0 ? fe/ideal*100 : NaN,
+      lRdg: isFinite(le) && ideal !== 0 ? le/ideal*100 : NaN
+    };
+  });
+  return {inLo,inHi,oLo,oHi,inSpan,oSpan,tol,mode,pts,
+          inU:$('clInU').value, outU:$('clOutU').value};
+}
+/* Build the table only when the row set or headers change. Typing goes through
+   clRefresh(), which patches cells in place so the focused input is never replaced. */
+function clCalc(){
+  const d = clData();
+  let h = `<tr><th>%</th><th>Input<br>${d.inU}</th><th>Ideal<br>${d.outU}</th>`
+        + `<th>As found</th><th>Err %FSD</th><th>As left</th><th>Err %FSD</th><th>%Rdg</th><th></th></tr>`;
+  clRows.forEach((r,i) => {
+    h += `<tr data-i="${i}">
+      <td><input value="${r.pct}" inputmode="decimal" style="min-width:52px" oninput="clEdit(${i},'pct',this.value)"></td>
+      <td data-c="inp"></td><td data-c="ideal"></td>
+      <td><input value="${r.found}" inputmode="decimal" placeholder="—" oninput="clEdit(${i},'found',this.value)"></td>
+      <td data-c="fFsd"></td>
+      <td><input value="${r.left}" inputmode="decimal" placeholder="—" oninput="clEdit(${i},'left',this.value)"></td>
+      <td data-c="lFsd"></td>
+      <td data-c="rdg" style="color:var(--label2)"></td>
+      <td><button class="mini grey" onclick="clDelRow(${i})" title="Remove">✕</button></td></tr>`;
+  });
+  $('clTable').innerHTML = h;
+  clRefresh();
+}
+function clRefresh(){
+  const d = clData();
+  const ths = $('clTable').querySelectorAll('th');
+  if(ths.length){ ths[1].innerHTML = `Input<br>${d.inU}`; ths[2].innerHTML = `Ideal<br>${d.outU}`; }
+  d.pts.forEach((p,i) => {
+    const tr = $('clTable').querySelector(`tr[data-i="${i}"]`); if(!tr) return;
+    const c = k => tr.querySelector(`[data-c="${k}"]`);
+    const cls = v => isFinite(v) ? (Math.abs(v) <= d.tol ? 'pass':'fail') : '';
+    c('inp').textContent = fmt(p.inp,6);
+    c('ideal').textContent = fmt(p.ideal,6);
+    c('fFsd').className = cls(p.fFsd); c('fFsd').textContent = isFinite(p.fFsd)?fx(p.fFsd,3):'—';
+    c('lFsd').className = cls(p.lFsd); c('lFsd').textContent = isFinite(p.lFsd)?fx(p.lFsd,3):'—';
+    c('rdg').textContent = isFinite(p.lRdg)?fx(p.lRdg,2):(isFinite(p.fRdg)?fx(p.fRdg,2):'—');
+  });
+
+  /* summary */
+  const fs = d.pts.filter(p=>isFinite(p.fFsd)), ls = d.pts.filter(p=>isFinite(p.lFsd));
+  const worstF = fs.length ? fs.reduce((a,p)=>Math.abs(p.fFsd)>Math.abs(a.fFsd)?p:a) : null;
+  const worstL = ls.length ? ls.reduce((a,p)=>Math.abs(p.lFsd)>Math.abs(a.lFsd)?p:a) : null;
+  const zero = d.pts.find(p=>p.pct===0), span = d.pts.find(p=>p.pct===100);
+  const badge = ok => `<span class="badge ${ok?'ok':'no'}">${ok?'PASS':'FAIL'}</span>`;
+  const rows = [];
+  if(worstF) rows.push(['As-found max error', `${fx(worstF.fFsd,3)} % FSD @ ${fx(worstF.pct,0)} %`, Math.abs(worstF.fFsd) <= d.tol]);
+  if(worstL) rows.push(['As-left max error',  `${fx(worstL.lFsd,3)} % FSD @ ${fx(worstL.pct,0)} %`, Math.abs(worstL.lFsd) <= d.tol]);
+  if(zero && isFinite(zero.lErr||zero.fErr)) rows.push(['Zero error', `${fx(isFinite(zero.lErr)?zero.lErr:zero.fErr,4)} ${d.outU}`, null]);
+  if(span && isFinite(span.lErr||span.fErr)) rows.push(['Span error', `${fx(isFinite(span.lErr)?span.lErr:span.fErr,4)} ${d.outU}`, null]);
+  rows.push(['Tolerance', `± ${fx(d.tol,3)} % FSD  =  ± ${fmt(d.tol/100*Math.abs(d.oSpan),4)} ${d.outU}`, null]);
+  let sh = '';
+  rows.forEach(r => {
+    sh += `<div class="row"><span class="lbl">${r[0]}</span><span class="val">${r[1]}</span>${r[2]===null?'':'&nbsp;'+badge(r[2])}</div>`;
+  });
+  const verdictSet = worstL || worstF;
+  if(verdictSet){
+    const ok = Math.abs(worstL ? worstL.lFsd : worstF.fFsd) <= d.tol;
+    sh += `<div class="row"><span class="lbl" style="font-weight:600">Result</span>${badge(ok)}</div>`;
+  } else {
+    sh += `<div class="row"><span class="lbl" style="color:var(--label2)">Enter as-found readings to calculate errors</span></div>`;
+  }
+  $('clSummary').innerHTML = sh;
+  clCharts(d);
+  clSave();
+}
+
+/* ---- Charts (hand-rolled SVG, no libraries) ---- */
+function niceTicks(lo, hi, n){
+  if(!isFinite(lo)||!isFinite(hi)||lo===hi) return [lo];
+  const raw = (hi-lo)/n, mag = Math.pow(10, Math.floor(Math.log10(raw))), norm = raw/mag;
+  const step = (norm<=1?1:norm<=2?2:norm<=5?5:10)*mag;
+  const out = []; for(let v = Math.ceil(lo/step)*step; v <= hi+step*1e-9; v += step) out.push(v);
+  return out;
+}
+function clCharts(d){
+  const W = 680, H = 400, m = {l:64, r:18, t:14, b:40};
+  const px = (v,lo,hi) => m.l + (v-lo)/(hi-lo) * (W-m.l-m.r);
+  const py = (v,lo,hi) => H-m.b - (v-lo)/(hi-lo) * (H-m.t-m.b);
+
+  /* ---------- chart 1: actual vs ideal ---------- */
+  let xLo = Math.min(d.inLo,d.inHi), xHi = Math.max(d.inLo,d.inHi);
+  const ys = [d.oLo, d.oHi];
+  d.pts.forEach(p=>{ if(isFinite(p.found)) ys.push(p.found); if(isFinite(p.left)) ys.push(p.left); });
+  let yLo = Math.min.apply(null, ys), yHi = Math.max.apply(null, ys);
+  const pad = (yHi-yLo)*0.08 || 1; yLo -= pad; yHi += pad;
+  if(!(xHi>xLo)){ xHi = xLo + 1; }
+
+  let g = '';
+  niceTicks(xLo,xHi,6).forEach(t=>{
+    const x = px(t,xLo,xHi);
+    g += `<line x1="${x}" y1="${m.t}" x2="${x}" y2="${H-m.b}" stroke="var(--grid)" stroke-width="1"/>`
+      +  `<text x="${x}" y="${H-m.b+18}" font-size="12" fill="var(--label2)" text-anchor="middle">${fmt(t,4)}</text>`;
+  });
+  niceTicks(yLo,yHi,5).forEach(t=>{
+    const y = py(t,yLo,yHi);
+    g += `<line x1="${m.l}" y1="${y}" x2="${W-m.r}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>`
+      +  `<text x="${m.l-8}" y="${y+4}" font-size="12" fill="var(--label2)" text-anchor="end">${fmt(t,4)}</text>`;
+  });
+  /* ideal curve */
+  let ideal = '';
+  for(let i = 0; i <= 60; i++){
+    const p = i/60*100;
+    const x = px(d.inLo + d.inSpan*p/100, xLo, xHi);
+    const y = py(d.oLo + d.oSpan*clXferPct(p,d.mode)/100, yLo, yHi);
+    ideal += (i?' L':'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+  }
+  const series = (key, colour) => {
+    const pts = d.pts.filter(p=>isFinite(p[key])).sort((a,b)=>a.pct-b.pct);
+    if(!pts.length) return '';
+    let path = pts.map((p,i)=>(i?'L':'M') + px(p.inp,xLo,xHi).toFixed(1) + ' ' + py(p[key],yLo,yHi).toFixed(1)).join(' ');
+    let dots = pts.map(p=>`<circle cx="${px(p.inp,xLo,xHi).toFixed(1)}" cy="${py(p[key],yLo,yHi).toFixed(1)}" r="4.5" fill="${colour}" stroke="var(--card)" stroke-width="1.5"/>`).join('');
+    return `<path d="${path}" fill="none" stroke="${colour}" stroke-width="2.5" stroke-linejoin="round"/>${dots}`;
+  };
+  $('svgXY').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      ${g}
+      <path d="${ideal}" fill="none" stroke="var(--label3)" stroke-width="2" stroke-dasharray="6 5"/>
+      ${series('found','var(--blue)')}${series('left','var(--green)')}
+      <line x1="${m.l}" y1="${m.t}" x2="${m.l}" y2="${H-m.b}" stroke="var(--sep)"/>
+      <line x1="${m.l}" y1="${H-m.b}" x2="${W-m.r}" y2="${H-m.b}" stroke="var(--sep)"/>
+      <text x="${(W+m.l)/2}" y="${H-4}" font-size="12.5" fill="var(--label2)" text-anchor="middle">Input — ${d.inU||''}</text>
+      <text x="14" y="${(H)/2}" font-size="12.5" fill="var(--label2)" text-anchor="middle" transform="rotate(-90 14 ${H/2})">Output — ${d.outU||''}</text>
+    </svg>`;
+
+  /* ---------- chart 2: error % FSD ---------- */
+  const errs = [];
+  d.pts.forEach(p=>{ if(isFinite(p.fFsd)) errs.push(Math.abs(p.fFsd)); if(isFinite(p.lFsd)) errs.push(Math.abs(p.lFsd)); });
+  const eMax = Math.max(d.tol*1.8, errs.length ? Math.max.apply(null,errs)*1.35 : 0, 0.01);
+  const H2 = 320, m2 = {l:64, r:18, t:14, b:40};
+  const ex = p => m2.l + p/100 * (W-m2.l-m2.r);
+  const ey = v => H2-m2.b - (v+eMax)/(2*eMax) * (H2-m2.t-m2.b);
+
+  let g2 = `<rect x="${m2.l}" y="${ey(d.tol)}" width="${W-m2.l-m2.r}" height="${Math.max(0,ey(-d.tol)-ey(d.tol))}" fill="var(--orange)" opacity="0.13"/>`
+    + `<line x1="${m2.l}" y1="${ey(d.tol)}" x2="${W-m2.r}" y2="${ey(d.tol)}" stroke="var(--orange)" stroke-width="1.5" stroke-dasharray="5 4"/>`
+    + `<line x1="${m2.l}" y1="${ey(-d.tol)}" x2="${W-m2.r}" y2="${ey(-d.tol)}" stroke="var(--orange)" stroke-width="1.5" stroke-dasharray="5 4"/>`
+    + `<line x1="${m2.l}" y1="${ey(0)}" x2="${W-m2.r}" y2="${ey(0)}" stroke="var(--sep)" stroke-width="1"/>`;
+  [0,25,50,75,100].forEach(p=>{
+    g2 += `<line x1="${ex(p)}" y1="${m2.t}" x2="${ex(p)}" y2="${H2-m2.b}" stroke="var(--grid)"/>`
+       +  `<text x="${ex(p)}" y="${H2-m2.b+18}" font-size="12" fill="var(--label2)" text-anchor="middle">${p}%</text>`;
+  });
+  niceTicks(-eMax, eMax, 6).forEach(t=>{
+    g2 += `<text x="${m2.l-8}" y="${ey(t)+4}" font-size="12" fill="var(--label2)" text-anchor="end">${fmt(t,3)}</text>`;
+  });
+  const eSeries = (key, colour) => {
+    const pts = d.pts.filter(p=>isFinite(p[key])).sort((a,b)=>a.pct-b.pct);
+    if(!pts.length) return '';
+    const path = pts.map((p,i)=>(i?'L':'M') + ex(p.pct).toFixed(1) + ' ' + ey(p[key]).toFixed(1)).join(' ');
+    const dots = pts.map(p=>`<circle cx="${ex(p.pct).toFixed(1)}" cy="${ey(p[key]).toFixed(1)}" r="4.5" fill="${Math.abs(p[key])>d.tol?'var(--red)':colour}" stroke="var(--card)" stroke-width="1.5"/>`).join('');
+    return `<path d="${path}" fill="none" stroke="${colour}" stroke-width="2.5"/>${dots}`;
+  };
+  $('svgErr').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H2}" preserveAspectRatio="xMidYMid meet">
+      ${g2}${eSeries('fFsd','var(--blue)')}${eSeries('lFsd','var(--green)')}
+      <line x1="${m2.l}" y1="${m2.t}" x2="${m2.l}" y2="${H2-m2.b}" stroke="var(--sep)"/>
+      <text x="${(W+m2.l)/2}" y="${H2-4}" font-size="12.5" fill="var(--label2)" text-anchor="middle">Percent of span</text>
+      <text x="14" y="${H2/2}" font-size="12.5" fill="var(--label2)" text-anchor="middle" transform="rotate(-90 14 ${H2/2})">Error — % FSD</text>
+    </svg>`;
+}
+
+/* ---- persistence ---- */
+function clSave(){
+  try{
+    const o = {rows:clRows};
+    CL_FIELDS.forEach(f => o[f] = $(f).value);
+    localStorage.setItem('ik-cal', JSON.stringify(o));
+  }catch(e){}
+}
+function clLoad(){
+  try{
+    const o = JSON.parse(localStorage.getItem('ik-cal') || 'null');
+    if(!o) return false;
+    CL_FIELDS.forEach(f => { if(o[f] !== undefined) $(f).value = o[f]; });
+    if(o.rows && o.rows.length) clRows = o.rows;
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---- export: CSV ---- */
+function clSheetRows(){
+  const d = clData();
+  /* kill binary float noise so 0.009999999999999787 exports as 0.01 */
+  const q = v => (typeof v === 'number' && isFinite(v)) ? +v.toPrecision(10) : v;
+  const rows = [
+    ['CALIBRATION DATA SHEET'], [],
+    ['Tag no.', $('clTag').value], ['Description', $('clDesc').value],
+    ['Manufacturer / model', $('clModel').value], ['Serial no.', $('clSerial').value],
+    ['Test equipment', $('clStd').value], ['Technician', $('clTech').value],
+    ['Date', $('clDate').value], [],
+    ['Input range', d.inLo, 'to', d.inHi, d.inU],
+    ['Output range', d.oLo, 'to', d.oHi, d.outU],
+    ['Transfer function', d.mode === 'lin' ? 'Linear' : d.mode === 'sqrt' ? 'Square root' : 'Square'],
+    ['Tolerance (± % FSD)', d.tol],
+    ['Tolerance (± output units)', d.tol/100*Math.abs(d.oSpan), d.outU], [],
+    ['% span', 'Input ('+d.inU+')', 'Ideal output ('+d.outU+')', 'As found ('+d.outU+')',
+     'AF error ('+d.outU+')', 'AF % FSD', 'AF % rdg', 'As left ('+d.outU+')',
+     'AL error ('+d.outU+')', 'AL % FSD', 'AL % rdg', 'Final status']
+  ];
+  d.pts.forEach(p=>{
+    const st = isFinite(p.lFsd) ? (Math.abs(p.lFsd) <= d.tol ? 'PASS':'FAIL')
+             : isFinite(p.fFsd) ? (Math.abs(p.fFsd) <= d.tol ? 'PASS':'FAIL') : '';
+    rows.push([p.pct, p.inp, p.ideal,
+      isFinite(p.found)?p.found:'', isFinite(p.fErr)?p.fErr:'', isFinite(p.fFsd)?p.fFsd:'', isFinite(p.fRdg)?p.fRdg:'',
+      isFinite(p.left) ?p.left :'', isFinite(p.lErr)?p.lErr:'', isFinite(p.lFsd)?p.lFsd:'', isFinite(p.lRdg)?p.lRdg:'', st]);
+  });
+  const fs = d.pts.filter(p=>isFinite(p.fFsd)), ls = d.pts.filter(p=>isFinite(p.lFsd));
+  rows.push([]);
+  if(fs.length) rows.push(['As-found max error (% FSD)', fs.reduce((a,p)=>Math.max(a,Math.abs(p.fFsd)),0)]);
+  if(ls.length) rows.push(['As-left max error (% FSD)',  ls.reduce((a,p)=>Math.max(a,Math.abs(p.lFsd)),0)]);
+  const worst = ls.length ? ls.reduce((a,p)=>Math.max(a,Math.abs(p.lFsd)),0)
+              : fs.length ? fs.reduce((a,p)=>Math.max(a,Math.abs(p.fFsd)),0) : NaN;
+  rows.push(['Overall result', isFinite(worst) ? (worst <= d.tol ? 'PASS':'FAIL') : '—']);
+  return rows.map(r=>r.map(q));
+}
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function clFileName(ext){
+  const tag = ($('clTag').value || 'calibration').replace(/[^\w.-]+/g,'_');
+  const dt = $('clDate').value || new Date().toISOString().slice(0,10);
+  return `${tag}_${dt}.${ext}`;
+}
+function clExportCSV(){
+  const csv = clSheetRows().map(r => r.map(c => {
+    const s = (c === undefined || c === null) ? '' : String(c);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }).join(',')).join('\r\n');
+  download(new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'}), clFileName('csv'));
+  toast('CSV exported');
+}
+
+/* ---- export: real .xlsx (minimal OOXML + store-only zip) ---- */
+const CRCT = (()=>{ const t = new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c & 1 ? 0xEDB88320 ^ (c>>>1) : c>>>1; t[n]=c>>>0; }
+  return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for(let i=0;i<u8.length;i++) c = CRCT[(c ^ u8[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF)>>>0; }
+const enc = s => new TextEncoder().encode(s);
+function zipStore(files){
+  const chunks = [], central = []; let offset = 0;
+  const w16 = (a,v)=>{ a.push(v & 255, (v>>>8) & 255); };
+  const w32 = (a,v)=>{ a.push(v & 255, (v>>>8) & 255, (v>>>16) & 255, (v>>>24) & 255); };
+  files.forEach(f => {
+    const name = enc(f.name), data = f.data, crc = crc32(data), h = [];
+    w32(h,0x04034b50); w16(h,20); w16(h,0); w16(h,0); w16(h,0); w16(h,0);
+    w32(h,crc); w32(h,data.length); w32(h,data.length); w16(h,name.length); w16(h,0);
+    chunks.push(new Uint8Array(h), name, data);
+    const c = [];
+    w32(c,0x02014b50); w16(c,20); w16(c,20); w16(c,0); w16(c,0); w16(c,0); w16(c,0);
+    w32(c,crc); w32(c,data.length); w32(c,data.length);
+    w16(c,name.length); w16(c,0); w16(c,0); w16(c,0); w16(c,0); w32(c,0); w32(c,offset);
+    central.push(new Uint8Array(c), name);
+    offset += h.length + name.length + data.length;
+  });
+  const cSize = central.reduce((a,b)=>a+b.length,0), end = [];
+  w32(end,0x06054b50); w16(end,0); w16(end,0); w16(end,files.length); w16(end,files.length);
+  w32(end,cSize); w32(end,offset); w16(end,0);
+  const all = chunks.concat(central, [new Uint8Array(end)]);
+  const total = all.reduce((a,b)=>a+b.length,0), out = new Uint8Array(total);
+  let p = 0; all.forEach(u=>{ out.set(u,p); p += u.length; });
+  return out;
+}
+const xesc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function colName(i){ let s=''; i++; while(i>0){ const r=(i-1)%26; s=String.fromCharCode(65+r)+s; i=(i-r-1)/26; } return s; }
+function clExportXLSX(){
+  const rows = clSheetRows();
+  let sheet = '';
+  rows.forEach((r,ri)=>{
+    let cells = '';
+    r.forEach((v,ci)=>{
+      if(v === '' || v === undefined || v === null) return;
+      const ref = colName(ci) + (ri+1);
+      const bold = (ri === 0 || (ci === 0 && typeof v === 'string' && ri < 15) || ri === 15) ? ' s="1"' : '';
+      if(typeof v === 'number' && isFinite(v)) cells += `<c r="${ref}" s="2"><v>${v}</v></c>`;
+      else cells += `<c r="${ref}"${bold} t="inlineStr"><is><t xml:space="preserve">${xesc(v)}</t></is></c>`;
+    });
+    sheet += `<row r="${ri+1}">${cells}</row>`;
+  });
+  const cols = '<cols><col min="1" max="1" width="26" customWidth="1"/><col min="2" max="12" width="15" customWidth="1"/></cols>';
+  const files = [
+    {name:'[Content_Types].xml', data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+      '<Default Extension="xml" ContentType="application/xml"/>'+
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+      '</Types>')},
+    {name:'_rels/.rels', data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'+
+      '</Relationships>')},
+    {name:'xl/workbook.xml', data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '+
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+      '<sheets><sheet name="Calibration" sheetId="1" r:id="rId1"/></sheets></workbook>')},
+    {name:'xl/_rels/workbook.xml.rels', data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'+
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
+      '</Relationships>')},
+    {name:'xl/styles.xml', data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      '<numFmts count="1"><numFmt numFmtId="164" formatCode="0.####"/></numFmts>'+
+      '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>'+
+      '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'+
+      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'+
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'+
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+      '<cellXfs count="3">'+
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'+
+      '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'+
+      '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'+
+      '</styleSheet>')},
+    {name:'xl/worksheets/sheet1.xml', data:enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      cols + '<sheetData>' + sheet + '</sheetData></worksheet>')}
+  ];
+  download(new Blob([zipStore(files)], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), clFileName('xlsx'));
+  toast('Excel workbook exported');
+}
+
+/* ==========================================================================
+   5. REFERENCE
+   ========================================================================== */
+function ohmCalc(src){
+  let I = num($('ohI').value)/1000, R = num($('ohR').value), V = num($('ohV').value);
+  if(src === 'V'){ if(isFinite(V) && isFinite(R) && R !== 0){ I = V/R; $('ohI').value = fmt(I*1000,6); } }
+  else { if(isFinite(I) && isFinite(R)){ V = I*R; $('ohV').value = fmt(V,6); } }
+  const P = (isFinite(V)&&isFinite(I)) ? V*I : NaN;
+  $('ohP').textContent = isFinite(P) ? (P < 1 ? fmt(P*1000,4)+' mW' : fmt(P,4)+' W') : '—';
+}
+const TC_INFO = {
+  'Type K (NiCr–NiAl)':   {rng:'−270 to 1372 °C', t1:'±1.5 °C or 0.4 %', use:'General purpose, oxidising atmospheres'},
+  'Type J (Fe–CuNi)':     {rng:'−210 to 1200 °C', t1:'±1.5 °C or 0.4 %', use:'Reducing atmospheres, older plant'},
+  'Type T (Cu–CuNi)':     {rng:'−270 to 400 °C',  t1:'±0.5 °C or 0.4 %', use:'Cryogenic and low temperature, moist'},
+  'Type E (NiCr–CuNi)':   {rng:'−270 to 1000 °C', t1:'±1.5 °C or 0.4 %', use:'Highest EMF output, cryogenic'},
+  'Type N (NiCrSi–NiSi)': {rng:'−270 to 1300 °C', t1:'±1.5 °C or 0.4 %', use:'K replacement, less drift, no green rot'},
+  'Type R (Pt13Rh–Pt)':   {rng:'−50 to 1768 °C',  t1:'±1.0 °C or 0.1 %', use:'High temperature, noble metal'},
+  'Type S (Pt10Rh–Pt)':   {rng:'−50 to 1768 °C',  t1:'±1.0 °C or 0.1 %', use:'High temperature, reference standard'},
+  'Type B (Pt30Rh–Pt6Rh)':{rng:'0 to 1820 °C',    t1:'±0.25 % (class 2)', use:'Very high temperature, no CJC below 50 °C'}
+};
+const CCOL = {
+  brown:'#8B5A2B', blue:'#1E63C8', red:'#E02B20', yellow:'#EFC000', white:'#FFFFFF',
+  black:'#1D1D1F', green:'#1FA34A', violet:'#8A4FD3', purple:'#8A4FD3',
+  orange:'#F28C1E', pink:'#F49AC1', grey:'#9A9A9A'
+};
+/* [positive, negative, sheath] per standard. null = the type is not covered. */
+const COLOURS = {
+  'K': {iec:['green','white','green'],   bs:['brown','blue','red'],    din:['red','green','green'],  ansi:['yellow','red','yellow']},
+  'J': {iec:['black','white','black'],   bs:['yellow','blue','black'], din:['red','blue','blue'],    ansi:['white','red','black']},
+  'T': {iec:['brown','white','brown'],   bs:['white','blue','blue'],   din:['red','brown','brown'],  ansi:['blue','red','blue']},
+  'E': {iec:['violet','white','violet'], bs:['brown','blue','brown'],  din:null,                     ansi:['purple','red','purple']},
+  'N': {iec:['pink','white','pink'],     bs:['orange','blue','orange'],din:null,                     ansi:['orange','red','orange'],
+        bsNote:'added after BS 1843:1952'},
+  'R': {iec:['orange','white','orange'], bs:['white','blue','green'],  din:['red','white','white'],  ansi:['black','red','green']},
+  'S': {iec:['orange','white','orange'], bs:['white','blue','green'],  din:['red','white','white'],  ansi:['black','red','green']},
+  'B': {iec:['grey','white','grey'],     bs:null,                      din:null,                     ansi:['grey','red','grey']}
+};function buildRef(){
+  let h = '<tr><th>Type</th><th>Range</th><th>Sensitivity</th><th>Class 1 tol.</th><th>Typical use</th></tr>';
+  Object.keys(TCS).forEach(k=>{
+    const i = TC_INFO[k], tRef = k.indexOf('Type B') === 0 ? 1000 : 100;
+    const s = (tcMV(k, tRef+0.5) - tcMV(k, tRef-0.5)) * 1000;
+    h += `<tr><td>${k}</td><td>${i.rng}</td><td>${fx(s,1)} µV/°C @ ${tRef} °C</td><td>${i.t1}</td>`
+      +  `<td style="white-space:normal;min-width:180px;color:var(--label2)">${i.use}</td></tr>`;
+  });
+  $('refTC').innerHTML = h;
+
+  const cable = (spec, note) => {
+    if(!spec) return '<td style="color:var(--label3)">not covered</td>';
+    const pos = spec[0], neg = spec[1], sh = spec[2];
+    return `<td><span class="ccell">
+        <span class="cable" style="background:${CCOL[sh]}" title="${sh} sheath">
+          <i style="background:${CCOL[pos]}"></i><i style="background:${CCOL[neg]}"></i></span>
+        <small>${pos} + / ${neg} −</small><small>${sh} sheath</small>
+        ${note ? `<small style="color:var(--orange)">${note}</small>` : ''}</span></td>`;
+  };
+  h = '<tr><th>Type</th><th>IEC 60584-3<br><span style="font-weight:400">BS EN — current UK &amp; EU</span></th>'
+    + '<th>BS 1843<br><span style="font-weight:400">older UK</span></th>'
+    + '<th>DIN 43710<br><span style="font-weight:400">older German / EU</span></th>'
+    + '<th>ANSI MC96.1<br><span style="font-weight:400">US</span></th></tr>';
+  Object.keys(COLOURS).forEach(k=>{
+    const c = COLOURS[k];
+    h += `<tr><td><b>Type ${k}</b></td>` + cable(c.iec) + cable(c.bs, c.bsNote) + cable(c.din) + cable(c.ansi) + '</tr>';
+  });
+  $('refColour').innerHTML = h;
+  $('refColour').className = 'sticky1';
+
+  h = '<tr><th>Sensor</th><th>R₀</th><th>α (°C⁻¹)</th><th>R @ 100 °C</th><th>Range</th></tr>';
+  Object.keys(RTDS).forEach(k=>{
+    const s = RTDS[k], a = (rtdR(k,100) - s.r0) / (s.r0 * 100);
+    h += `<tr><td>${k}</td><td>${s.r0} Ω</td><td>${a.toFixed(5)}</td><td>${fx(rtdR(k,100),3)} Ω</td>`
+      +  `<td>${s.min} to ${s.max} °C</td></tr>`;
+  });
+  $('refRTD').innerHTML = h + '<tr><td colspan="5" style="white-space:normal;color:var(--label2);text-align:left">'
+    + 'IEC 60751 tolerance at temperature t: Class AA ±(0.1 + 0.0017|t|) °C · Class A ±(0.15 + 0.002|t|) °C · '
+    + 'Class B ±(0.3 + 0.005|t|) °C · Class C ±(0.6 + 0.01|t|) °C.</td></tr>';
+
+  const SIG = [
+    ['4–20 mA','Two-wire loop powered, the plant standard. HART rides on top.'],
+    ['0–20 mA','No live zero — a broken loop looks like 0 %.'],
+    ['1–5 V','4–20 mA across a 250 Ω resistor.'],
+    ['0–10 V / 2–10 V','Common on actuators and building services.'],
+    ['3–15 psi / 0.2–1.0 bar','Pneumatic standard.'],
+    ['NAMUR NE43','3.8–20.5 mA valid · ≤3.6 mA under-range fault · ≥21.0 mA over-range fault.'],
+    ['Loop supply','Typically 24 V DC. Max loop resistance = (Vsupply − Vmin_tx) ÷ 0.020.'],
+    ['HART','Needs 230–600 Ω loop resistance, 250 Ω typical.']
+  ];
+  $('refSig').innerHTML = '<tr><th>Range</th><th>Notes</th></tr>' +
+    SIG.map(r=>`<tr><td>${r[0]}</td><td style="white-space:normal;color:var(--label2)">${r[1]}</td></tr>`).join('');
+
+  const F = [
+    ['mA from percent', 'mA = 4 + 0.16 × %'],
+    ['Percent from mA', '% = (mA − 4) ÷ 0.16'],
+    ['Any span', 'Signal = LRV + (URV − LRV) × % ÷ 100'],
+    ['Square-root extraction', 'Flow % = 100 × √(DP % ÷ 100)'],
+    ['Error, % of full scale', '(actual − ideal) ÷ output span × 100'],
+    ['Error, % of reading', '(actual − ideal) ÷ ideal × 100'],
+    ['Turndown ratio', 'max span ÷ calibrated span'],
+    ['Max loop resistance', '(V supply − 12 V) ÷ 0.020 A'],
+    ['RTD, t ≥ 0 °C', 'R = R₀ (1 + At + Bt²)'],
+    ['RTD, t < 0 °C', 'R = R₀ (1 + At + Bt² + C(t − 100)t³)'],
+    ['Thermocouple', 'E measured = E(process) − E(cold junction)']
+  ];
+  $('refFormulas').innerHTML = F.map(r=>
+    `<div class="row"><span class="lbl">${r[0]}<small class="mono" style="color:var(--blue)">${r[1]}</small></span></div>`).join('');
+  ohmCalc('R');
+}
+
+/* ==========================================================================
+   5. FLANGE BOLT TORQUE
+   ASME/ANSI B16.5 class flanges, torque per bolt. Transcribed from
+   W. Christie "Class Flanges Bolt Torque Loads" (A193 B7/B7M, A320 L7/L7M/L43 studs).
+   Row: [size in, DN, bolts x dia in, A/F in, Copperslip ft·lb, Nm, Molykote ft·lb, Nm]
+   null = no torque published for that size. Both units are the sheet's own printed
+   figures (each rounded to 5), so switching units never re-rounds anything.
+   ========================================================================== */
+const FLANGES = {
+  150:[
+    ['1/2',15,'4 x 1/2','7/8',20,30,25,35],
+    ['3/4',20,'4 x 1/2','7/8',25,35,30,40],
+    ['1',25,'4 x 1/2','7/8',30,40,35,50],
+    ['1-1/2',40,'4 x 1/2','7/8',40,55,50,70],
+    ['2',50,'4 x 5/8','1-1/16',75,100,95,130],
+    ['3',80,'4 x 5/8','1-1/16',75,100,95,130],
+    ['4',100,'8 x 5/8','1-1/16',75,100,95,130],
+    ['6',150,'8 x 3/4','1-1/4',120,165,150,205],
+    ['8',200,'8 x 3/4','1-1/4',120,165,150,205],
+    ['10',250,'12 x 7/8','1-7/16',175,240,220,300],
+    ['12',300,'12 x 7/8','1-7/16',180,245,230,310],
+    ['14',350,'12 x 1','1-5/8',295,400,370,500],
+    ['16',400,'16 x 1','1-5/8',240,325,300,405],
+    ['18',450,'16 x 1-1/8','1-13/16',415,565,520,705],
+    ['20',500,'20 x 1-1/8','1-13/16',415,565,520,705],
+    ['24',600,'20 x 1-1/4','2',575,780,725,985],
+    ['30',750,'28 x 1-1/4','2',360,490,455,615],
+    ['36',900,'32 x 1-1/2','2-3/8',630,855,800,1085],
+    ['42',1070,'36 x 1-1/2','2-3/8',null,null,null,null],
+    ['48',1220,'44 x 1-1/2','2-3/8',null,null,null,null]
+  ],
+  300:[
+    ['1/2',15,'4 x 1/2','7/8',20,30,30,40],
+    ['3/4',20,'4 x 5/8','1-1/16',40,55,50,70],
+    ['1',25,'4 x 5/8','1-1/16',45,60,55,75],
+    ['1-1/2',40,'4 x 3/4','1-1/4',85,115,105,145],
+    ['2',50,'8 x 5/8','1-1/16',55,75,70,95],
+    ['3',80,'8 x 3/4','1-1/4',120,165,150,205],
+    ['4',100,'8 x 3/4','1-1/4',120,165,150,205],
+    ['6',150,'12 x 3/4','1-1/4',120,165,150,205],
+    ['8',200,'12 x 7/8','1-7/16',190,260,240,325],
+    ['10',250,'16 x 1','1-5/8',320,435,405,550],
+    ['12',300,'16 x 1-1/8','1-13/16',450,610,565,765],
+    ['14',350,'20 x 1-1/8','1-13/16',355,480,450,610],
+    ['16',400,'20 x 1-1/4','2',435,590,550,745],
+    ['18',450,'24 x 1-1/4','2',490,665,620,840],
+    ['20',500,'24 x 1-1/4','2',575,780,725,983],
+    ['24',600,'24 x 1-1/2','2-3/8',785,1065,995,1350],
+    ['30',750,'28 x 1-3/4','2-3/4',1210,1640,1545,2095],
+    ['36',900,'32 x 2','3-1/8',1820,2465,2325,3150],
+    ['42',1070,'32 x 1-5/8','2-9/16',null,null,null,null],
+    ['48',1220,'32 x 1-7/8','2-15/16',null,null,null,null]
+  ],
+  600:[
+    ['1/2',15,'4 x 1/2','7/8',20,30,30,40],
+    ['3/4',20,'4 x 5/8','1-1/16',40,55,50,70],
+    ['1',25,'4 x 5/8','1-1/16',45,60,60,80],
+    ['1-1/2',40,'4 x 3/4','1-1/4',105,145,130,175],
+    ['2',50,'8 x 5/8','1-1/16',75,100,95,130],
+    ['3',80,'8 x 3/4','1-1/4',120,165,150,205],
+    ['4',100,'8 x 7/8','1-7/16',195,265,245,335],
+    ['6',150,'12 x 1','1-5/8',320,435,405,550],
+    ['8',200,'12 x 1-1/8','1-13/16',470,635,590,800],
+    ['10',250,'16 x 1-1/4','2',575,780,725,980],
+    ['12',300,'20 x 1-1/4','2',575,780,725,980],
+    ['14',350,'20 x 1-3/8','2-3/16',695,940,880,1190],
+    ['16',400,'20 x 1-1/2','2-3/8',885,1200,1120,1515],
+    ['18',450,'20 x 1-5/8','2-9/16',1295,1755,1645,2230],
+    ['20',500,'24 x 1-5/8','2-9/16',1295,1755,1645,2230],
+    ['24',600,'24 x 1-7/8','2-15/16',1850,2505,2360,3200],
+    ['30',750,'28 x 2','3-1/8',2185,2960,2790,3780],
+    ['36',900,'28 x 2-1/2','3-7/8',3710,5030,4755,6445],
+    ['42',1070,'28 x 2-1/2','3-7/8',null,null,null,null],
+    ['48',1220,'32 x 2-3/4','4-1/4',null,null,null,null]
+  ],
+  900:[
+    ['1/2',15,'4 x 3/4','1-1/4',65,90,80,110],
+    ['3/4',20,'4 x 3/4','1-1/4',85,115,105,145],
+    ['1',25,'4 x 7/8','1-7/16',140,190,175,240],
+    ['1-1/2',40,'4 x 1','1-5/8',225,305,285,390],
+    ['2',50,'8 x 7/8','1-7/16',150,205,190,260],
+    ['3',80,'8 x 7/8','1-7/16',195,265,245,335],
+    ['4',100,'8 x 1-1/8','1-13/16',375,505,470,635],
+    ['6',150,'12 x 1-1/8','1-13/16',415,560,525,710],
+    ['8',200,'12 x 1-3/8','2-3/16',675,915,860,1165],
+    ['10',250,'16 x 1-3/8','2-3/16',675,915,860,1165],
+    ['12',300,'20 x 1-3/8','2-3/16',735,995,930,1260],
+    ['14',350,'20 x 1-1/2','2-3/8',935,1265,1185,1605],
+    ['16',400,'20 x 1-5/8','2-9/16',1295,1755,1645,2230],
+    ['18',450,'20 x 1-7/8','2-15/16',1850,2505,2360,3200],
+    ['20',500,'20 x 2','3-1/8',2245,3040,2865,3885],
+    ['24',600,'20 x 2-1/2','3-7/8',4190,5680,5370,7280],
+    ['30',750,'20 x 3','4-5/8',7070,9585,9085,12315],
+    ['36',900,'20 x 3-1/2','5-3/8',10935,14825,14065,19070]
+  ],
+  1500:[
+    ['1/2',15,'4 x 3/4','1-1/4',65,90,80,110],
+    ['3/4',20,'4 x 3/4','1-1/4',85,115,105,145],
+    ['1',25,'4 x 7/8','1-7/16',140,190,175,240],
+    ['1-1/2',40,'4 x 1','1-5/8',260,350,330,445],
+    ['2',50,'8 x 7/8','1-7/16',160,215,200,270],
+    ['3',80,'8 x 1-1/8','1-13/16',395,535,500,675],
+    ['4',100,'8 x 1-1/4','2',575,780,730,990],
+    ['6',150,'12 x 1-3/8','2-3/16',770,1040,980,1325],
+    ['8',200,'12 x 1-5/8','2-9/16',1295,1755,1645,2230],
+    ['10',250,'12 x 1-7/8','2-15/16',2000,2710,2550,3455],
+    ['12',300,'16 x 2','3-1/8',2125,2880,2710,3670],
+    ['14',350,'16 x 2-1/4','3-1/2',3040,4120,3890,5270],
+    ['16',400,'16 x 2-1/2','3-7/8',4190,5680,5370,7280],
+    ['18',450,'16 x 2-3/4','4-1/4',5585,7570,7170,9720],
+    ['20',500,'16 x 3','4-5/8',7280,9870,9350,12675],
+    ['24',600,'16 x 3-1/2','5-3/8',11600,15730,14920,20230]
+  ],
+  2500:[
+    ['1/2',15,'4 x 3/4','1-1/4',95,130,120,165],
+    ['3/4',20,'4 x 3/4','1-1/4',120,165,150,205],
+    ['1',25,'4 x 7/8','1-7/16',210,285,265,360],
+    ['1-1/2',40,'4 x 1-1/8','1-13/16',470,635,590,800],
+    ['2',50,'8 x 1','1-5/8',320,435,405,550],
+    ['3',80,'8 x 1-1/4','2',650,880,820,1110],
+    ['4',100,'8 x 1-1/2','2-3/8',1060,1435,1350,1830],
+    ['6',150,'8 x 2','3-1/8',2425,3285,3100,4200],
+    ['8',200,'12 x 2','3-1/8',2425,3285,3100,4200],
+    ['10',250,'12 x 2-1/2','3-7/8',4190,5680,5370,7280],
+    ['12',300,'12 x 2-3/4','4-1/4',6385,8655,8195,11110]
+  ]
+};
+const FL_LUBES = [
+  {n:'Copperslip', mu:'0.10', col:4},
+  {n:'Molykote 1000', mu:'0.13', col:6}
+];
+const FL_INFO = {
+  150:{gasket:'Compressed asbestos fibre'},
+  300:{gasket:'Spiral wound and ring joint'}, 600:{gasket:'Spiral wound and ring joint'},
+  900:{gasket:'Spiral wound and ring joint'}, 1500:{gasket:'Spiral wound and ring joint'},
+  2500:{gasket:'Spiral wound and ring joint'}
+};
+/* corrections to obvious misprints on the source sheet */
+const FL_FIXES = { '1500|24|0': 'Sheet prints 1570 Nm against 11,600 ft·lb; corrected to 15,730 Nm (11,600 × 1.3558, rounded to 5 like the rest of the sheet).' };
+const FL_SIZES = FLANGES[150].map(r => [r[0], r[1]]);
+let flUnit = 'nm';
+
+const flIn = s => s.replace('-', ' ') + '″';          // 1-1/2 -> 1 1/2″
+const flStuds = b => { const [q, d] = b.split(/\s*x\s*/); return `${q} × ${flIn(d)}`; };
+/* Imperial A/F -> nearest whole mm, the size of spanner someone will actually pick up */
+function flAF(af){
+  const [w, f] = af.includes('/') ? (af.includes('-') ? af.split('-') : ['0', af]) : [af, null];
+  const [a, b] = f ? f.split('/').map(Number) : [0, 1];
+  return Math.round((Number(w) + a/b) * 25.4);
+}
+function flSave(){
+  try{ localStorage.setItem('ik-flange-v2', JSON.stringify({size:$('flSize').value, cls:$('flClass').value, lube:$('flLube').value, unit:flUnit})); }catch(e){}
+}
+function flBuild(){
+  FL_SIZES.forEach(([s,dn]) => $('flSize').appendChild(new Option(`${flIn(s)}  ·  DN${dn}`, s)));
+  Object.keys(FLANGES).forEach(c => $('flClass').appendChild(new Option(`Class ${c}`, c)));
+  FL_LUBES.forEach((l,i) => $('flLube').appendChild(new Option(`${l.n}  (μ ${l.mu})`, i)));
+  $('flSize').value = '4'; $('flClass').value = '300'; $('flLube').value = '1';     /* Molykote 1000 by default */
+  try{
+    const st = JSON.parse(localStorage.getItem('ik-flange-v2') || 'null');
+    if(st){ $('flSize').value = st.size; $('flClass').value = st.cls; $('flLube').value = st.lube; flUnit = st.unit === 'ftlb' ? 'ftlb' : 'nm'; }
+  }catch(e){}
+  [...$('flUnitSeg').children].forEach(b => b.classList.toggle('on', b.dataset.u === flUnit));
+  flCalc();
+}
+function flSetUnit(u, btn){ flUnit = u; segPick(btn); flCalc(); }
+function flPick(size){ $('flSize').value = size; flCalc(); }
+
+function flCalc(){
+  const size = $('flSize').value, cls = $('flClass').value, li = +$('flLube').value;
+  const lube = FL_LUBES[li], metric = flUnit === 'nm';
+  const rows = FLANGES[cls], row = rows.find(r => r[0] === size);
+  const off = flUnit === 'nm' ? 1 : 0, U = flUnit === 'nm' ? 'Nm' : 'ft·lb';
+  const tq = (r, l) => r[l.col + off];
+  const n = v => v === null ? '—' : v.toLocaleString('en-GB');
+  let warn = '';
+
+  if(!row){
+    const max = rows[rows.length-1][0];
+    $('flNum').textContent = '—'; $('flUnitOut').textContent = '';
+    $('flSub').textContent = `Class ${cls} is not listed at ${flIn(size)}`;
+    warn = `Class ${cls} flanges on this sheet only go up to ${flIn(max)}.`;
+    $('flDetail').innerHTML = '';
+  } else {
+    const [s, dn, bolt, af] = row;
+
+    const v = tq(row, lube);
+    $('flNum').textContent = n(v);
+    $('flUnitOut').textContent = v === null ? '' : `${U} per bolt`;
+    $('flSub').textContent = `${flIn(s)} Class ${cls}  ·  ${lube.n}`;
+    if(v === null) warn = `No torque is published for ${flIn(s)} Class ${cls}. Bolting details are still shown below.`;
+    const fix = FL_FIXES[`${cls}|${s}|${lube === FL_LUBES[0] ? 0 : 1}`];
+    if(fix && flUnit === 'nm') warn = fix;
+    const d = [
+      ['Studs', flStuds(bolt)],
+      metric
+        ? [`Spanner / socket<small>${flIn(af)} imperial nut</small>`, `${flAF(af)} mm A/F`]
+        : ['Spanner / socket', `${flIn(af)} A/F`],
+      ['Gasket', FL_INFO[cls].gasket]
+    ];
+    $('flDetail').innerHTML = d.map(r => `<div class="row"><span class="lbl">${r[0]}</span><span class="val">${r[1]}</span></div>`).join('');
+  }
+  $('flWarn').textContent = warn;
+
+  /* the whole class, so neighbouring sizes are one glance away */
+  $('flTitle').textContent = `Class ${cls} — all sizes (${U} per bolt)`;
+  let h = `<tr><th>Size</th><th>Studs</th><th>A/F ${metric ? 'mm' : 'in'}</th><th>${lube.n}</th></tr>`;
+  rows.forEach(r => {
+    h += `<tr class="${r[0]===size?'hi':''}" style="cursor:pointer" onclick="flPick('${r[0]}')">`
+      +  `<td>${flIn(r[0])} <span style="color:var(--label2)">DN${r[1]}</span></td>`
+      +  `<td>${flStuds(r[2])}</td><td>${metric ? flAF(r[3]) : flIn(r[3])}</td>`
+      +  `<td style="font-weight:600">${n(tq(r,lube))}</td>`
+      +  `</tr>`;
+  });
+  $('flTable').innerHTML = h;
+  flSave();
+}
+
+/* ============================ LEVEL ============================ */
+const LV_G = 9.80665;
+const LV_U = {
+  len:  {'mm':1e-3, 'cm':1e-2, 'm':1, 'in':0.0254, 'ft':0.3048},
+  p:    UNITS.Pressure.u,
+  mass: {'kg':1, 'g':1e-3, 'lb':0.45359237},
+  vol:  {'cm³':1e-6, 'L':1e-3, 'in³':1.6387064e-5}
+};
+const LV_DEF = {len:'mm', p:'mbar', mass:'kg', vol:'cm³'};
+let lvT = 'hy', lvDpM = 'open', lvHyLast = 'h', lvCur = {...LV_DEF};
+
+const lvV = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : NaN; };
+const lvSI = id => lvV(id) * (LV_U[$(id).dataset.u] ? LV_U[$(id).dataset.u][lvCur[$(id).dataset.u]] : 1);
+const lvOut = (si, k) => si / LV_U[k][lvCur[k]];
+const lvF = (si, k, sig) => fmt(lvOut(si, k), sig || 5);
+
+function lvBuild(){
+  Object.keys(LV_U).forEach(k => Object.keys(LV_U[k]).forEach(u => $('lvU-'+k).appendChild(new Option(u, u))));
+  try{
+    const st = JSON.parse(localStorage.getItem('ik-level') || 'null');
+    if(st){
+      Object.assign(lvCur, st.units || {});
+      Object.entries(st.vals || {}).forEach(([id, v]) => { if($(id)) $(id).value = v; });
+      lvT = st.tool || lvT; lvDpM = st.dpm || lvDpM; lvHyLast = st.hyLast || lvHyLast;
+    }
+  }catch(e){}
+  Object.keys(LV_U).forEach(k => { if(!LV_U[k][lvCur[k]]) lvCur[k] = LV_DEF[k]; $('lvU-'+k).value = lvCur[k]; });
+  [...$('lvToolSeg').children].forEach(b => b.classList.toggle('on', b.dataset.t === lvT));
+  [...$('dpModeSeg').children].forEach(b => b.classList.toggle('on', b.dataset.m === lvDpM));
+  lvCalc();
+}
+function lvSave(){
+  const vals = {};
+  document.querySelectorAll('#page-level input.f').forEach(i => vals[i.id] = i.value);
+  try{ localStorage.setItem('ik-level', JSON.stringify({units:lvCur, vals, tool:lvT, dpm:lvDpM, hyLast:lvHyLast})); }catch(e){}
+}
+function lvTool(t, btn){ lvT = t; segPick(btn); lvCalc(); }
+function dpMode(m, btn){ lvDpM = m; segPick(btn); lvCalc(); }
+function lvInput(el){
+  if(el.id === 'hyP') lvHyLast = 'p';
+  else if(el.id === 'hyH') lvHyLast = 'h';
+  lvCalc();
+}
+function lvUnit(k){
+  const old = lvCur[k], nu = $('lvU-'+k).value;
+  document.querySelectorAll(`#page-level input.f[data-u="${k}"]`).forEach(i => {
+    const v = parseFloat(i.value);
+    if(isFinite(v)) i.value = fmt(v * LV_U[k][old] / LV_U[k][nu], 6);
+  });
+  lvCur[k] = nu; lvCalc();
+}
+
+function lvCalc(){
+  ['hy','dp','ds'].forEach(t => $('lv-'+t).hidden = t !== lvT);
+  document.querySelectorAll('#page-level .lv-p').forEach(r => r.hidden = lvT === 'ds');
+  document.querySelectorAll('#page-level .lv-ds').forEach(r => r.hidden = lvT !== 'ds');
+  document.querySelectorAll('#page-level .sfx').forEach(s => s.textContent = s.dataset.u === 'sg' ? 'SG' : lvCur[s.dataset.u]);
+  ({hy:hyCalc, dp:dpCalc, ds:dsCalc})[lvT]();
+  lvSave();
+}
+
+/* ---- hydrostatic head: P = ρ·g·h ---- */
+function hyCalc(){
+  const rho = lvV('hyDen') * 1000;
+  let warn = '', h, P;
+  if(!(rho > 0)) warn = 'Enter a specific gravity above zero.';
+  if(lvHyLast === 'p'){
+    P = lvSI('hyP'); h = P / (rho * LV_G);
+    if(!warn && isFinite(h)) $('hyH').value = lvF(h, 'len', 6);
+    $('hyCap').textContent = 'Height of liquid';
+    $('hyNum').textContent = lvF(h, 'len'); $('hyUnit').textContent = lvCur.len;
+    $('hySub').textContent = `${fmt(lvV('hyP'),5)} ${lvCur.p} at SG ${fmt(rho/1000,4)}`;
+  } else {
+    h = lvSI('hyH'); P = rho * LV_G * h;
+    if(!warn && isFinite(P)) $('hyP').value = lvF(P, 'p', 6);
+    $('hyCap').textContent = 'Hydrostatic head';
+    $('hyNum').textContent = lvF(P, 'p'); $('hyUnit').textContent = lvCur.p;
+    $('hySub').textContent = `${fmt(lvV('hyH'),5)} ${lvCur.len} of SG ${fmt(rho/1000,4)} liquid`;
+  }
+  $('hyWarn').textContent = warn;
+  const list = ['mbar','bar','kPa','psi','inH₂O (4 °C)','mmH₂O (4 °C)','mH₂O (4 °C)','kg/cm²'];
+  $('lvTitle').textContent = 'Same head in other units';
+  $('lvTable').innerHTML = '<thead><tr><th>Unit</th><th>Pressure</th></tr></thead><tbody>' +
+    list.map(u => `<tr${u === lvCur.p ? ' class="hi"' : ''}><td>${u}</td><td>${fmt(P / UNITS.Pressure.u[u], 5)}</td></tr>`).join('') + '</tbody>';
+  $('lvFoot').textContent = 'P = ρ·g·h with g = 9.80665 m/s² and SG referenced to 1000 kg/m³ (water at 4 °C). ' +
+    'This is gauge head only — add vessel pressure for absolute readings.';
+}
+
+/* ---- DP level: DP = g·(ρp·(z+x) + ρh·d − ρw·(H+d)) ---- */
+function dpCalc(){
+  const m = lvDpM, seal = m === 'seal', leg = m !== 'open', wet = m === 'wet' || seal;
+  document.querySelectorAll('#page-level .dp-leg').forEach(e => e.hidden = !leg);
+  document.querySelectorAll('#page-level .dp-wet').forEach(e => e.hidden = !wet);
+  document.querySelectorAll('#page-level .dp-seal').forEach(e => e.hidden = !seal);
+  const S = lvSI('dpSpan'), z = lvSI('dpZero'), d = lvSI('dpD'), H = leg ? lvSI('dpH') : 0;
+  const rp = lvV('dpSGp') * 1000, rh = seal ? lvV('dpSGh') * 1000 : rp, rw = wet ? lvV('dpSGw') * 1000 : 0;
+  const dp = x => LV_G * (rp * (z + x) + rh * d - rw * (H + d));
+  const lrv = dp(0), urv = dp(S);
+  const warns = [];
+  if(!(S > 0)) warns.push('Level span must be greater than zero.');
+  if(z < 0) warns.push('0 % level is below the lower tap — the transmitter cannot see level below the tap.');
+  if(leg && z + S > H + 1e-9) warns.push('100 % level is above the upper tap / LP seal.');
+  if(!seal && d < 0) warns.push('Transmitter above the lower tap: the HP impulse line must stay liquid-full.');
+  if(m === 'wet') warns.push('Wet leg must be kept full; loss of fill shifts the zero by the wet leg head.');
+  $('dpWarn').innerHTML = warns.join('<br>');
+
+  const U = lvCur.p;
+  $('dpNum').textContent = `${lvF(lrv,'p')} to ${lvF(urv,'p')}`;
+  $('dpUnit').textContent = U + '  (LRV to URV)';
+  const kind = Math.abs(lrv) < 1e-9 ? 'no zero shift' : lrv < 0 ? `zero elevation of ${lvF(-lrv,'p')} ${U}` : `zero suppression of ${lvF(lrv,'p')} ${U}`;
+  $('dpSub').textContent = `Span ${lvF(urv - lrv,'p')} ${U} · ${kind}`;
+
+  $('lvTitle').textContent = 'Calibration points';
+  const rows = [0,25,50,75,100].map(pc => {
+    const x = S * pc / 100;
+    return `<tr><td>${pc} %</td><td>${lvF(z + x,'len')}</td><td>${lvF(dp(x),'p')}</td><td>${fx(4 + pc * 0.16, 2)}</td></tr>`;
+  }).join('');
+  $('lvTable').innerHTML = `<thead><tr><th>Level</th><th>Above tap (${lvCur.len})</th><th>DP (${U})</th><th>mA</th></tr></thead><tbody>${rows}</tbody>`;
+  $('lvFoot').textContent = 'DP = HP − LP. Heights are vertical. Open tank / dry leg: LP sees gas only. Wet leg and seals: ' +
+    'LP leg is full from the upper tap down to the transmitter. With seals, set tap separation to the seal centre-to-centre ' +
+    'and transmitter height below the lower seal. Negative LRV = zero elevation, positive = suppression. Vessel pressure cancels.';
+}
+
+/* ---- displacer / Fisher 249 torque tube ---- */
+function dsCalc(){
+  const L = lvSI('dsL'), V = lvSI('dsV'), W = lvSI('dsW');
+  const ru = lvV('dsSGu') * 1000, rl = lvV('dsSGl') * 1000, rt = lvV('dsSGt') * 1000;
+  const CC = lvSI('dsCC'), off = lvSI('dsOff'), R = lvSI('dsR'), K = lvV('dsK');
+  const A = V / L;
+  const buoy = h => A * (ru * (L - h) + rl * h);                 /* kg of displaced fluid */
+  const testH = h => (ru * (L - h) + rl * h) / rt;               /* test fluid depth on displacer giving the same buoyancy */
+  const dF = V * (rl - ru) * LV_G;                                /* N */
+  const lbs = lvCur.mass === 'lb';
+  const force = n => lbs ? fmt(n / 4.4482216153, 4) + ' lbf' : fmt(n, 4) + ' N';
+
+  const warns = [];
+  if(!(L > 0 && V > 0 && W > 0)) warns.push('Enter displacer length, volume and weight.');
+  if(rl <= ru) warns.push('Lower fluid must be denser than the upper fluid.');
+  if(W <= V * rl) warns.push('Displacer would float in the lower fluid — it is too light for this service.');
+  if(rt > 0 && testH(L) > L + 1e-9) warns.push(`Test fluid too light: 100 % needs ${lvF(testH(L),'len')} ${lvCur.len} of test fluid, longer than the displacer. Use hanging weights.`);
+  if(!(rt > 0)) warns.push('Enter a test fluid SG for wet calibration.');
+  if(off < 0) warns.push('Displacer bottom is below the lower nozzle — 0 % level cannot be reached.');
+  if(off + L > CC + 1e-9) warns.push('Displacer top is above the upper nozzle — 100 % level cannot be reached.');
+  if(rt > 0 && off + testH(0) > CC + 1e-9) warns.push('Test fluid fill would be above the upper nozzle.');
+  $('dsWarn').innerHTML = warns.join('<br>');
+
+  $('dsNum').textContent = lbs ? fmt(dF / 4.4482216153, 4) : fmt(dF, 4);
+  $('dsUnit').textContent = lbs ? 'lbf' : 'N';
+  $('dsSub').textContent = `Hang weight ${lvF(W - buoy(0),'mass',4)} → ${lvF(W - buoy(L),'mass',4)} ${lvCur.mass}`;
+
+  const tq = dF * R;
+  let det = `<div class="row"><span class="lbl">Displacer diameter<small>from volume ÷ length</small></span><span class="val">${lvF(Math.sqrt(4 * A / Math.PI),'len',4)} ${lvCur.len}</span></div>`;
+  det += `<div class="row"><span class="lbl">Hang weight at 0 %</span><span class="val">${lvF(W - buoy(0),'mass',4)} ${lvCur.mass}</span></div>`;
+  det += `<div class="row"><span class="lbl">Hang weight at 100 %</span><span class="val">${lvF(W - buoy(L),'mass',4)} ${lvCur.mass}</span></div>`;
+  det += `<div class="row"><span class="lbl">Net rod force at 0 %</span><span class="val">${force((W - buoy(0)) * LV_G)}</span></div>`;
+  det += `<div class="row"><span class="lbl">Torque change over range<small>buoyancy change × driver rod length</small></span><span class="val">${fmt(tq,4)} N·m · ${fmt(tq * 8.850745792,4)} in·lb</span></div>`;
+  if(K > 0) det += `<div class="row"><span class="lbl">Torque tube rotation<small>over the calibrated range</small></span><span class="val">${fmt(tq / K,3)}°</span></div>`;
+  $('dsDetail').innerHTML = det;
+
+  $('lvTitle').textContent = 'Calibration points';
+  const rows = [0,25,50,75,100].map(pc => {
+    const h = L * pc / 100;
+    return `<tr><td>${pc} %</td><td>${lvF(off + h,'len',4)}</td><td>${rt > 0 ? lvF(off + testH(h),'len',4) : '—'}</td><td>${lvF(W - buoy(h),'mass',4)}</td><td>${lvF(buoy(h),'mass',4)}</td></tr>`;
+  }).join('');
+  $('lvTable').innerHTML = `<thead><tr><th>Level</th><th>Above lower nozzle (${lvCur.len})</th><th>Test fluid fill (${lvCur.len})</th><th>Hang wt (${lvCur.mass})</th><th>Buoyancy (${lvCur.mass})</th></tr></thead><tbody>${rows}</tbody>`;
+  $('lvFoot').innerHTML = 'Level is measured over the displacer length: 0 % at the displacer bottom, 100 % at its top. ' +
+    '<b>Test fluid fill</b> is the depth above the lower nozzle that gives the same buoyancy as the process at that point, with the cage otherwise empty. ' +
+    '<b>Hang weight</b> replaces the displacer on the driver rod for a dry calibration (include the hanger if it is not part of the displacer weight). ' +
+    'For interface, the upper fluid fills the cage above the interface. Fisher 249 / DLC3010 setup also needs sensor type, mounting (left/right of displacer), ' +
+    'torque tube material and wall thickness — take these, and the rod length, from the nameplate. Driver rod length is the horizontal distance between the displacer and torque tube centrelines.';
+}
+
+/* ---- desktop sidebar (iPadOS / macOS pattern; the tab bar takes over under 900 px) ---- */
+const PAGES = ['convert','signal','sensor','level','cal','flange','ref'];
+function buildSidebar(){
+  const bar = document.createElement('aside');
+  bar.className = 'sidebar'; bar.id = 'sidebar';
+  let h = '<div class="brand">InstruKit</div><div class="brandsub">Instrument technician toolkit</div>';
+  [...document.querySelectorAll('#tabbar button')].forEach((b,i)=>{
+    h += `<button data-page="${b.dataset.page}" onclick="showPage('${b.dataset.page}')">`
+      +  b.querySelector('svg').outerHTML
+      +  `<span>${b.textContent.trim()}</span><span class="kbd">${i+1}</span></button>`;
+  });
+  h += '<div class="sbfoot"><button onclick="cycleTheme()">'
+    +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+    +  '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+    +  '</svg><span>Appearance</span></button></div>';
+  bar.innerHTML = h;
+  document.body.appendChild(bar);
+}
+/* number keys jump between sections, unless you are typing in a field */
+document.addEventListener('keydown', e=>{
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target.tagName;
+  if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA' || e.target.isContentEditable) return;
+  const i = PAGES.indexOf(document.querySelector('.page.active').id.replace('page-',''));
+  if(e.key >= '1' && e.key <= String(PAGES.length)){ showPage(PAGES[+e.key - 1]); }
+  else if(e.key === 'ArrowDown' || e.key === 'ArrowRight'){ if(i < PAGES.length-1){ showPage(PAGES[i+1]); e.preventDefault(); } }
+  else if(e.key === 'ArrowUp'   || e.key === 'ArrowLeft'){  if(i > 0){ showPage(PAGES[i-1]); e.preventDefault(); } }
+});
+
+/* ==========================================================================
+   6. INIT
+   ========================================================================== */
+(function init(){
+  buildSidebar();
+  cvBuild();
+
+  const st = $('sgType');
+  SIGTYPES.forEach((s,i)=> st.appendChild(new Option(s.n, i)));
+  st.value = 0; sgTypeChange();
+
+  snSetFamily('rtd', document.querySelector('#snFamily button'));
+
+  if(!$('clDate').value) $('clDate').value = new Date().toISOString().slice(0,10);
+  if(!clLoad() || !clRows.length) clSetPoints(5);
+  [...$('clPtSeg').children].forEach(b=>b.classList.toggle('on', +b.textContent === clRows.length));
+  clCalc();
+
+  buildRef();
+  flBuild();
+  lvBuild();
+
+  try{
+    const p = localStorage.getItem('ik-page');
+    if(p && $('page-'+p)) showPage(p);
+  }catch(e){}
+})();
+</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("../sw.js",{scope:"../"}).catch(()=>{}))}</script>
+</body>
+</html>

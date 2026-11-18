@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v9";
+const VERSION = "tools-v10";
 const FILES = [
   "./",
   "index.html",
@@ -22,7 +22,11 @@ const FILES = [
   "turbo-toolkit/",
   "turbo-toolkit/index.html",
   "turbo-toolkit/manifest.webmanifest",
-  "icons/turbo-toolkit-180.png", "icons/turbo-toolkit-192.png", "icons/turbo-toolkit-512.png"
+  "icons/turbo-toolkit-180.png", "icons/turbo-toolkit-192.png", "icons/turbo-toolkit-512.png",
+  "instrukit/",
+  "instrukit/index.html",
+  "instrukit/manifest.webmanifest",
+  "icons/instrukit-180.png", "icons/instrukit-192.png", "icons/instrukit-512.png"
 ];
 
 self.addEventListener("install", e => {
