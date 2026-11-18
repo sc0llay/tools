@@ -35,6 +35,10 @@
   --radius:12px;
 }
 :root[data-theme="dark"], html:not([data-theme="light"]) {}
+:root{color-scheme:light dark;}
+:root[data-theme="light"]{color-scheme:light;}
+:root[data-theme="dark"]{color-scheme:dark;}
+select option{background:var(--card); color:var(--label);}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#000000; --card:#1C1C1E; --card-alt:#2C2C2E;
