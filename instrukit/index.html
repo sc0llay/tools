@@ -2326,7 +2326,20 @@ const FW_FLOW = {
   'm³/s':   r => r.rho,
   'L/min':  r => r.rho/6e4,
   'US gal/min': r => r.rho*6.30901964e-5,
-  'Nm³/h':  r => r.rhoN/3600
+  'kg/min': () => 1/60,
+  'kg/day': () => 1/86400,
+  't/day':  () => 1/86.4,
+  'lb/min': () => 0.45359237/60,
+  'm³/min': r => r.rho/60,
+  'm³/day': r => r.rho/86400,
+  'L/s':    r => r.rho/1e3,
+  'L/h':    r => r.rho/3.6e6,
+  'US gal/h': r => r.rho*6.30901964e-5/60,
+  'UK gal/min': r => r.rho*7.5768e-5,
+  'bbl/day': r => r.rho*1.84013e-6,
+  'Nm³/h':  r => r.rhoN/3600,
+  'Nm³/min': r => r.rhoN/60,
+  'Nm³/day': r => r.rhoN/86400
 };
 const FW_DEF = {len:'mm', dp:'mbar', ps:'bar', den:'kg/m³', flow:'m³/h'};
 const FW_EL = {
@@ -2351,7 +2364,7 @@ const fwOutU = (si, k, sig) => fmt(si / FW_U[k][fwCur[k]], sig || 5);
 
 function fwRef(){
   const rho = fwSI('fwRho');
-  const rhoN = $('fwRhoN') && !$('fwRhoN').closest('.row').hidden ? fwSI('fwRhoN') : NaN;
+  const rhoN = fwSI('fwRhoN');
   return {rho, rhoN};
 }
 const fwFlowF = () => FW_FLOW[fwCur.flow](fwRef());
@@ -2482,7 +2495,7 @@ function fwCalc(){
   $('fwRowDP').hidden = dpMode;
   $('fwRowQ').hidden = qMode;
   document.querySelectorAll('#page-flow .fw-gas').forEach(r => r.hidden = !gas);
-  $('fwRowRhoN').hidden = fwCur.flow !== 'Nm³/h';
+  $('fwRowRhoN').hidden = !fwCur.flow.startsWith('Nm³');
   $('fwDPLbl').firstChild.textContent = qMode ? 'Differential pressure at max flow' : 'DP at max flow';
   document.querySelectorAll('#page-flow .sfx').forEach(s => {
     const u = s.dataset.u; s.textContent = u === 'cp' ? 'cP' : u === 'k' ? '' : u === 'ps' ? fwCur.ps + ' abs' : u === 'den' && fwCur.den === 'SG' ? 'SG' : fwCur[u];
