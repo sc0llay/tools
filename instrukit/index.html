@@ -121,7 +121,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .chev{color:var(--label3); flex:none;}
 .row .sfx{flex:none; min-width:34px; color:var(--label2); font-size:15px;}
 .row input.f[data-u]{flex:1 1 30%;}
-#page-level [hidden], #page-flow [hidden], #page-interp [hidden]{display:none !important;}
+#page-level [hidden], #page-flow [hidden], #page-interp [hidden], .advpage [hidden]{display:none !important;}
 input.sw{-webkit-appearance:none; appearance:none; flex:none; width:51px; height:31px; border-radius:16px; background:var(--fill); position:relative; cursor:pointer; transition:background .2s; margin:0;}
 input.sw::after{content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,.25); transition:transform .2s;}
 input.sw:checked{background:var(--green,#34C759);}
@@ -262,6 +262,22 @@ td input:focus{background:var(--fill2); color:var(--blue);}
 .tabbar svg{width:25px;height:25px;}
 .tabbar .x{display:none;}
 textarea.intbl{display:block; width:100%; min-height:150px; border:none; background:transparent; padding:12px 16px; font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; outline:none; resize:vertical; font-variant-numeric:tabular-nums;}
+
+
+/* ---------- Advanced mode ---------- */
+.tabbar button.adv, .sidebar button.adv{display:none;}
+body.adv-on .tabbar button.adv{display:flex;}
+body.adv-on .sidebar button.adv{display:flex;}
+body.adv-on .tabbar{overflow-x:auto; scrollbar-width:none;}
+body.adv-on .tabbar::-webkit-scrollbar{display:none;}
+body.adv-on .tabbar button{flex:0 0 64px;}
+.modepill{padding:4px 11px; font-size:13px; margin-left:auto; margin-right:8px;}
+.sidebar .seg.modeseg{margin:0 4px 14px;}
+.sidebar .seg.modeseg button{justify-content:center; padding:6px 4px; font-size:13px; border-radius:7px; gap:0; width:auto; flex:1 1 0; color:var(--label);}
+.sidebar .seg.modeseg button.on{background:var(--card); color:var(--label); font-weight:600; box-shadow:0 3px 8px rgba(0,0,0,.10), 0 1px 1px rgba(0,0,0,.06);}
+:root[data-theme="dark"] .sidebar .seg.modeseg button.on{background:#636366; box-shadow:none;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .sidebar .seg.modeseg button.on{background:#636366; box-shadow:none;}}
+.advgrp[hidden]{display:none;}
 
 /* ---------- Desktop: sidebar, two-column layouts, pointer affordances ---------- */
 .sidebar{display:none;}
@@ -1009,6 +1025,7 @@ function showPage(name){
   window.scrollTo(0,0);
   try{ localStorage.setItem('ik-page', name); }catch(e){}
   if(name === 'cal') clCalc();
+  const ab = document.querySelector('#tabbar button.on'); if(ab && ab.scrollIntoView) ab.scrollIntoView({inline:'center', block:'nearest'});
 }
 window.addEventListener('scroll', ()=>{
   const s = window.scrollY > 34;
@@ -2854,11 +2871,15 @@ const PAGES = ['convert','signal','sensor','level','flow','interp','cal','flange
 function buildSidebar(){
   const bar = document.createElement('aside');
   bar.className = 'sidebar'; bar.id = 'sidebar';
-  let h = '<div class="brand">InstruKit</div><div class="brandsub">Instrument technician toolkit</div>';
-  [...document.querySelectorAll('#tabbar button')].forEach((b,i)=>{
-    h += `<button data-page="${b.dataset.page}" onclick="showPage('${b.dataset.page}')">`
+  let h = '<div class="brand">InstruKit</div><div class="brandsub">Instrument technician toolkit</div>'
+    + '<div class="seg modeseg"><button data-m="basic" onclick="setMode(\'basic\')">Basic</button><button data-m="adv" onclick="setMode(\'adv\')">Advanced</button></div>';
+  let nb = 0;
+  [...document.querySelectorAll('#tabbar button')].forEach(b=>{
+    const isAdv = b.classList.contains('adv');
+    if(!isAdv) nb++;
+    h += `<button${isAdv ? ' class="adv"' : ''} data-page="${b.dataset.page}" onclick="showPage('${b.dataset.page}')">`
       +  b.querySelector('svg').outerHTML
-      +  `<span>${b.textContent.trim()}</span><span class="kbd">${i+1}</span></button>`;
+      +  `<span>${b.textContent.trim()}</span>${isAdv ? '' : `<span class="kbd">${nb}</span>`}</button>`;
   });
   h += '<div class="sbfoot"><button onclick="cycleTheme()">'
     +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
@@ -2872,11 +2893,798 @@ document.addEventListener('keydown', e=>{
   if(e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target.tagName;
   if(t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA' || e.target.isContentEditable) return;
-  const i = PAGES.indexOf(document.querySelector('.page.active').id.replace('page-',''));
-  if(e.key >= '1' && e.key <= String(PAGES.length)){ showPage(PAGES[+e.key - 1]); }
-  else if(e.key === 'ArrowDown' || e.key === 'ArrowRight'){ if(i < PAGES.length-1){ showPage(PAGES[i+1]); e.preventDefault(); } }
-  else if(e.key === 'ArrowUp'   || e.key === 'ArrowLeft'){  if(i > 0){ showPage(PAGES[i-1]); e.preventDefault(); } }
+  const VP = visiblePages(), i = VP.indexOf(document.querySelector('.page.active').id.replace('page-',''));
+  const basics = PAGES.filter(p => ADVPAGES.indexOf(p) < 0);
+  if(e.key >= '1' && e.key <= String(basics.length)){ showPage(basics[+e.key - 1]); }
+  else if(e.key === 'ArrowDown' || e.key === 'ArrowRight'){ if(i < VP.length-1){ showPage(VP[i+1]); e.preventDefault(); } }
+  else if(e.key === 'ArrowUp'   || e.key === 'ArrowLeft'){  if(i > 0){ showPage(VP[i-1]); e.preventDefault(); } }
 });
+
+/* ==========================================================================
+   5b. ADVANCED MODE: declarative tool pages (valve, loop, fluids, tank, pressure, analyser, uncertainty)
+   Each tool = { id, n, fields:[{h:'Group title'} | {k,l,s,v,u,t,o,if}], calc(v) -> result }
+   result = { cap,num,unit,sub, warn:[], det:[[label,value,small]], tbl:{title,head,rows,hi}, foot, err }
+   ========================================================================== */
+const ADV = {}, ADVPAGES = [];
+const aRow = (l,v,sm) => `<div class="row"><span class="lbl">${l}${sm ? `<small>${sm}</small>` : ''}</span><span class="val">${v}</span></div>`;
+const advCopyTxt = {};
+const advState = {};                       /* page -> current tool id */
+const advOK = '✓', advNO = '✗';
+
+function advDef(id, o){ ADV[id] = o; ADVPAGES.push(id); }
+
+function advFieldHTML(p, t, f){
+  const d = `data-p="${p}" data-t="${t.id}" data-k="${f.k}"`;
+  let ctl;
+  if(f.t === 's') ctl = `<select class="f" ${d} onchange="advCalc('${p}')">` + f.o.map(o => `<option value="${o[0]}"${String(o[0]) === String(f.v) ? ' selected' : ''}>${o[1]}</option>`).join('') + '</select>';
+  else if(f.t === 'c') ctl = `<input type="checkbox" class="sw" ${d}${f.v ? ' checked' : ''} onchange="advCalc('${p}')">`;
+  else if(f.t === 't') ctl = `<input class="f" ${d} value="${f.v === undefined ? '' : f.v}" autocapitalize="off" autocomplete="off" oninput="advCalc('${p}')">`;
+  else ctl = `<input class="f" ${d} inputmode="decimal" value="${f.v === undefined ? '' : f.v}" oninput="advCalc('${p}')">`;
+  return `<div class="row" data-rk="${f.k}"><span class="lbl">${f.l}${f.s ? `<small>${f.s}</small>` : ''}</span>${ctl}${f.u ? `<span class="sfx">${f.u}</span>` : ''}</div>`;
+}
+function advFieldsHTML(p, t){
+  let h = '', open = false;
+  t.fields.forEach((f, i) => {
+    if(f.h !== undefined){
+      if(open) h += '</div></div>';
+      h += `<div class="advgrp" data-gi="${i}"><div class="gtitle">${f.h}</div><div class="group">`; open = true;
+    } else {
+      if(!open){ h += '<div class="advgrp"><div class="group">'; open = true; }
+      h += advFieldHTML(p, t, f);
+    }
+  });
+  if(open) h += '</div></div>';
+  return h;
+}
+
+function advBuildPage(p){
+  const P = ADV[p];
+  const sec = document.createElement('section');
+  sec.className = 'page advpage'; sec.id = 'page-' + p;
+  const seg = P.tools.length > 1
+    ? `<div class="seg" id="adv-${p}-seg">` + P.tools.map(t => `<button data-t="${t.id}" onclick="advTool('${p}','${t.id}')">${t.n}</button>`).join('') + '</div>' : '';
+  const boxes = P.tools.map(t => `<div class="advtool" id="adv-${p}-${t.id}" hidden>${advFieldsHTML(p, t)}</div>`).join('');
+  sec.innerHTML =
+    `<div class="navbar"><span class="compact-title">${P.title}</span>`
+    + `<button class="navbtn" onclick="cycleTheme()" aria-label="Appearance"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button></div>`
+    + `<div class="large-title">${P.title}</div>` + seg
+    + `<div class="cols"><div class="col stick">${boxes}`
+    + `<div class="result" onclick="copyText($('adv-${p}-num').textContent)"><span class="copyhint">tap to copy</span>`
+    + `<div class="cap" id="adv-${p}-cap">Result</div><div class="num" id="adv-${p}-num">—</div><div class="unit" id="adv-${p}-unit"></div><div class="sub" id="adv-${p}-sub"></div></div>`
+    + `<div class="warn" id="adv-${p}-warn"></div><div class="group" id="adv-${p}-det"></div>`
+    + `</div><div class="col"><div class="gtitle" id="adv-${p}-ttl">Table</div><div class="tablewrap" id="adv-${p}-tw"><table id="adv-${p}-tbl"></table></div>`
+    + `<div class="btnrow" style="margin-top:12px"><button class="btn tinted" id="adv-${p}-cp" onclick="copyText(advCopyTxt['${p}'])" hidden>Copy table</button></div>`
+    + `<div class="gfoot" id="adv-${p}-foot"></div></div></div>`;
+  $('app').appendChild(sec);
+  /* tab button */
+  const b = document.createElement('button');
+  b.className = 'adv'; b.dataset.page = p; b.setAttribute('onclick', `showPage('${p}')`);
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P.icon}</svg>${P.label}`;
+  $('tabbar').appendChild(b);
+  PAGES.push(p);
+}
+
+function advVals(p, tid){
+  const T = ADV[p].tools.find(x => x.id === tid), box = $(`adv-${p}-${tid}`), v = {};
+  T.fields.forEach(f => {
+    if(!f.k) return;
+    const el = box.querySelector(`[data-k="${f.k}"]`);
+    v[f.k] = f.t === 's' || f.t === 't' ? el.value : f.t === 'c' ? el.checked : num(el.value);
+  });
+  return v;
+}
+function advSave(p){
+  try{
+    const o = { tool: advState[p], vals: {} };
+    ADV[p].tools.forEach(t => {
+      o.vals[t.id] = {};
+      t.fields.forEach(f => {
+        if(!f.k) return;
+        const el = $(`adv-${p}-${t.id}`).querySelector(`[data-k="${f.k}"]`);
+        o.vals[t.id][f.k] = f.t === 'c' ? el.checked : el.value;
+      });
+    });
+    localStorage.setItem('ik-adv-' + p, JSON.stringify(o));
+  }catch(e){}
+}
+function advLoad(p){
+  try{
+    const o = JSON.parse(localStorage.getItem('ik-adv-' + p) || 'null');
+    if(!o) return null;
+    ADV[p].tools.forEach(t => {
+      const sv = o.vals && o.vals[t.id]; if(!sv) return;
+      t.fields.forEach(f => {
+        if(!f.k || !(f.k in sv)) return;
+        const el = $(`adv-${p}-${t.id}`).querySelector(`[data-k="${f.k}"]`);
+        if(f.t === 'c') el.checked = !!sv[f.k]; else el.value = sv[f.k];
+      });
+    });
+    return o.tool;
+  }catch(e){ return null; }
+}
+function advTool(p, tid){
+  advState[p] = tid;
+  ADV[p].tools.forEach(t => { $(`adv-${p}-${t.id}`).hidden = t.id !== tid; });
+  const seg = $(`adv-${p}-seg`);
+  if(seg) [...seg.children].forEach(b => b.classList.toggle('on', b.dataset.t === tid));
+  advCalc(p);
+}
+function advCalc(p){
+  const tid = advState[p], T = ADV[p].tools.find(x => x.id === tid), v = advVals(p, tid);
+  /* conditional rows / groups */
+  const box = $(`adv-${p}-${tid}`);
+  T.fields.forEach(f => {
+    if(!f.k) return;
+    const r = box.querySelector(`[data-rk="${f.k}"]`);
+    if(r) r.hidden = !!(f.if && !f.if(v));
+  });
+  box.querySelectorAll('.advgrp').forEach(g => {
+    const gi = g.dataset.gi, hf = gi !== undefined ? T.fields[+gi] : null;
+    g.hidden = (hf && hf.if && !hf.if(v)) || g.querySelectorAll('.row:not([hidden])').length === 0;
+  });
+  let r;
+  try{ r = T.calc(v) || {}; }catch(e){ r = { err: 'Check the inputs.' }; }
+  const warns = (r.err ? [r.err] : []).concat(r.warn || []);
+  $(`adv-${p}-cap`).textContent = r.err ? 'Result' : (r.cap || 'Result');
+  $(`adv-${p}-num`).textContent = r.err ? '—' : (r.num === undefined ? '—' : r.num);
+  $(`adv-${p}-num`).classList.toggle('sm', String(r.num || '').length > 9);
+  $(`adv-${p}-unit`).textContent = r.err ? '' : (r.unit || '');
+  $(`adv-${p}-sub`).textContent = r.err ? '' : (r.sub || '');
+  const w = $(`adv-${p}-warn`); w.innerHTML = warns.join('<br>'); w.classList.toggle('err', !!r.err);
+  const det = (!r.err && r.det || []).map(d => aRow(d[0], d[1], d[2])).join('');
+  $(`adv-${p}-det`).innerHTML = det; $(`adv-${p}-det`).hidden = !det;
+  const tb = !r.err && r.tbl;
+  $(`adv-${p}-ttl`).hidden = !tb; $(`adv-${p}-tw`).hidden = !tb; $(`adv-${p}-cp`).hidden = !tb;
+  if(tb){
+    $(`adv-${p}-ttl`).textContent = tb.title || 'Table';
+    $(`adv-${p}-tbl`).innerHTML = '<thead><tr>' + tb.head.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>'
+      + tb.rows.map((row, i) => `<tr${(tb.hi || []).indexOf(i) >= 0 ? ' class="hi"' : ''}>` + row.map(c => {
+          const s = String(c); const cl = s.startsWith(advOK) ? ' class="pass"' : s.startsWith(advNO) ? ' class="fail"' : '';
+          return `<td${cl}>${s}</td>`; }).join('') + '</tr>').join('') + '</tbody>';
+    advCopyTxt[p] = [tb.head.join('\t')].concat(tb.rows.map(x => x.map(c => String(c).replace(/<[^>]*>/g, '')).join('\t'))).join('\n');
+  }
+  $(`adv-${p}-foot`).textContent = (!r.err && r.foot) || T.foot || '';
+  advSave(p);
+}
+
+/* ---------- mode switch ---------- */
+let advOn = false;
+function setMode(m, quiet){
+  advOn = m === 'adv';
+  document.body.classList.toggle('adv-on', advOn);
+  document.querySelectorAll('.modeseg button').forEach(b => b.classList.toggle('on', (b.dataset.m === 'adv') === advOn));
+  document.querySelectorAll('.modepill').forEach(b => b.textContent = advOn ? 'Advanced' : 'Basic');
+  try{ localStorage.setItem('ik-mode', m); }catch(e){}
+  const cur = document.querySelector('.page.active');
+  if(!advOn && cur && cur.classList.contains('advpage')) showPage('convert');
+  if(!quiet) toast(advOn ? 'Advanced tools on' : 'Basic tools only');
+}
+const visiblePages = () => PAGES.filter(p => advOn || ADVPAGES.indexOf(p) < 0);
+
+/* ---------- shared maths ---------- */
+const PU = { 'bar':1, 'mbar':0.001, 'kPa':0.01, 'MPa':10, 'psi':0.0689475729, 'kg/cm²':0.980665, 'mmHg':0.00133322387, 'inHg':0.0338638866, 'atm':1.01325 };
+const puOpts = k => Object.keys(PU).slice(0, k || 9).map(u => [u, u]);
+const waterRho = T => (999.83952 + 16.945176*T - 7.9870401e-3*T*T - 46.170461e-6*T**3 + 105.56302e-9*T**4 - 280.54253e-12*T**5) / (1 + 16.879850e-3*T);
+const waterMu = T => 2.414e-5 * Math.pow(10, 247.8 / (T + 273.15 - 140));      /* Pa·s */
+const IF97 = [0, 0.11670521452767e4, -0.72421316703206e6, -0.17073846940092e2, 0.12020824702470e5, -0.32325550322333e7, 0.14915108613530e2, -0.48232657361591e4, 0.40511340542057e6, -0.23855557567849, 0.65017534844798e3];
+function psatBar(TC){
+  const n = IF97, th = (TC + 273.15) + n[9] / ((TC + 273.15) - n[10]);
+  const A = th*th + n[1]*th + n[2], B = n[3]*th*th + n[4]*th + n[5], C = n[6]*th*th + n[7]*th + n[8];
+  return 10 * Math.pow(2*C / (-B + Math.sqrt(B*B - 4*A*C)), 4);
+}
+function tsatC(Pbar){
+  const n = IF97, b = Math.pow(Pbar / 10, 0.25);
+  const E = b*b + n[3]*b + n[6], F = n[1]*b*b + n[4]*b + n[7], G = n[2]*b*b + n[5]*b + n[8];
+  const D = 2*G / (-F - Math.sqrt(F*F - 4*E*G));
+  return (n[10] + D - Math.sqrt((n[10] + D)**2 - 4*(n[9] + n[10]*D))) / 2 - 273.15;
+}
+const ST_P  = [0.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 30, 40, 50, 70, 100, 150, 200];
+const ST_HF = [340.6, 417.5, 504.7, 561.4, 604.7, 640.1, 670.4, 697.1, 720.9, 762.6, 844.7, 908.6, 1008.4, 1087.4, 1154.5, 1267.4, 1408, 1611, 1827];
+const ST_HG = [2646.0, 2675.4, 2706.2, 2724.9, 2737.6, 2748.7, 2756.8, 2763.5, 2768.8, 2777.1, 2791.0, 2798.3, 2804.2, 2801.4, 2794.2, 2772.6, 2724.7, 2611, 2412];
+const Z_P   = [1, 2, 5, 10, 20, 30, 50, 100, 200];
+const Z_V   = [0.9847, 0.9757, 0.9557, 0.930, 0.889, 0.855, 0.796, 0.669, 0.397];
+function lnInterp(xs, ys, x){
+  x = Math.min(Math.max(x, xs[0]), xs[xs.length - 1]);
+  let i = 0; while(i < xs.length - 2 && x > xs[i + 1]) i++;
+  const t = (Math.log(x) - Math.log(xs[i])) / (Math.log(xs[i + 1]) - Math.log(xs[i]));
+  return ys[i] + t * (ys[i + 1] - ys[i]);
+}
+function steamProps(P){            /* saturated steam at P bar abs */
+  const T = tsatC(P), TK = T + 273.15, Z = lnInterp(Z_P, Z_V, P);
+  const rho = P * 100 / (Z * 0.46152 * TK);
+  const hf = lnInterp(ST_P, ST_HF, P), hg = lnInterp(ST_P, ST_HG, P);
+  return { P, T, rho, v: 1 / rho, hf, hg, hfg: hg - hf };
+}
+const steamRange = P => P < 0.5 || P > 200 ? 'Pressure is outside 0.5 to 200 bar abs: enthalpy and density are held at the nearest table value.' : '';
+const tf = (v, d) => isFinite(v) ? fmt(v, d || 5) : '—';
+
+/* ==========================================================================
+   VALVE
+   ========================================================================== */
+advDef('valve', {
+  title: 'Valve', label: 'Valve', slabel: 'Control valve',
+  icon: '<path d="M3 8l9 4-9 4zM21 8l-9 4 9 4z"/><path d="M12 12V5M8.5 5h7"/>',
+  tools: [
+  { id: 'size', n: 'Sizing',
+    foot: 'Sizing follows IEC 60534-2-1 (liquid, gas, steam). Kv in m³/h at 1 bar drop; Cv = 1.156 × Kv. Cavitation and flashing limits are indicative: use the manufacturer\'s FL, xT and Kc.',
+    fields: [
+      { h: 'Service' },
+      { k: 'svc', l: 'Fluid', t: 's', v: 'liq', o: [['liq', 'Liquid'], ['gas', 'Gas / vapour'], ['stm', 'Steam']] },
+      { h: 'Process' },
+      { k: 'q', l: 'Flow', s: 'maximum', u: 'm³/h', v: 100, if: v => v.svc === 'liq' },
+      { k: 'sg', l: 'Specific gravity', s: 'water at 15 °C = 1', v: 1, if: v => v.svc === 'liq' },
+      { k: 'qn', l: 'Flow', s: 'normal: 0 °C, 1.01325 bar', u: 'Nm³/h', v: 1000, if: v => v.svc === 'gas' },
+      { k: 'm', l: 'Molar mass', s: 'air 28.96', u: 'g/mol', v: 28.96, if: v => v.svc === 'gas' },
+      { k: 't', l: 'Inlet temperature', u: '°C', v: 20, if: v => v.svc === 'gas' },
+      { k: 'z', l: 'Compressibility Z', v: 1, if: v => v.svc === 'gas' },
+      { k: 'w', l: 'Steam flow', s: 'maximum', u: 'kg/h', v: 1000, if: v => v.svc === 'stm' },
+      { k: 'rho', l: 'Inlet density', s: 'blank = saturated steam at P1', u: 'kg/m³', v: '', if: v => v.svc === 'stm' },
+      { k: 'p1', l: 'Inlet pressure P1', s: 'absolute', u: 'bar a', v: 10 },
+      { k: 'p2', l: 'Outlet pressure P2', s: 'absolute', u: 'bar a', v: 8 },
+      { k: 'pv', l: 'Vapour pressure Pv', s: 'at inlet temperature', u: 'bar a', v: 0.023, if: v => v.svc === 'liq' },
+      { k: 'pc', l: 'Critical pressure Pc', s: 'water 220.6', u: 'bar a', v: 220.64, if: v => v.svc === 'liq' },
+      { h: 'Valve data' },
+      { k: 'fl', l: 'FL', s: 'liquid pressure recovery', v: 0.9, if: v => v.svc === 'liq' },
+      { k: 'xt', l: 'xT', s: 'pressure drop ratio factor', v: 0.7, if: v => v.svc !== 'liq' },
+      { k: 'k', l: 'Specific heat ratio k', s: 'air 1.4, steam 1.31', v: 1.4, if: v => v.svc === 'gas' },
+      { k: 'ks', l: 'Specific heat ratio k', s: 'steam 1.31', v: 1.31, if: v => v.svc === 'stm' },
+      { k: 'cvmax', l: 'Valve Cv, full open', s: 'optional: gives % open', v: '' },
+      { k: 'chr', l: 'Characteristic', t: 's', v: 'lin', o: [['lin', 'Linear'], ['eq', 'Equal percentage (R = 50)'], ['qo', 'Quick opening (approx.)']], if: v => v.cvmax > 0 }
+    ],
+    calc(v){
+      const w = [], det = [], svc = v.svc, p1 = v.p1, p2 = v.p2, dp = p1 - p2;
+      if(!(p1 > 0) || !(p2 >= 0) || p2 >= p1) return { err: 'Enter an inlet pressure above the outlet pressure (both bar absolute).' };
+      let kv, qLbl, qUnit, qReq;
+      if(svc === 'liq'){
+        const q = v.q, sg = v.sg, pv = v.pv || 0, pc = v.pc || 220.64, fl = v.fl || 0.9;
+        if(!(q > 0) || !(sg > 0)) return { err: 'Enter a flow and specific gravity.' };
+        const ff = 0.96 - 0.28 * Math.sqrt(pv / pc), dpmax = fl*fl * (p1 - ff*pv);
+        let dpe = dp;
+        if(dp >= dpmax){ dpe = dpmax; w.push(`Choked flow (flashing or cavitation limit): ΔP ${tf(dp,4)} bar is above ΔPmax ${tf(dpmax,4)} bar. Sized at ΔPmax; the valve will not pass more flow however far P2 falls.`); }
+        else if(dp > 0.7 * fl*fl * (p1 - pv)) w.push(`Cavitation is likely (ΔP above about 0.7·FL²·(P1 − Pv)). Consider anti-cavitation trim, a higher outlet pressure or two stages.`);
+        if(p2 < pv) w.push('Outlet pressure is below the vapour pressure: the liquid flashes and stays two-phase downstream.');
+        kv = q * Math.sqrt(sg / dpe); qReq = q; qUnit = 'm³/h'; qLbl = 'Flow';
+        det.push(['ΔP across valve', `${tf(dp,4)} bar`, `ΔPmax (choked) ${tf(dpmax,4)} bar, FF ${tf(ff,4)}`]);
+        det.push(['Cavitation index σ', tf((p1 - pv) / dp, 3), 'σ = (P1 − Pv)/ΔP, lower is worse']);
+      } else if(svc === 'gas'){
+        const qn = v.qn, M = v.m, T = v.t + 273.15, Z = v.z || 1, k = v.k || 1.4, xt = v.xt || 0.7;
+        if(!(qn > 0) || !(M > 0) || !isFinite(T)) return { err: 'Enter flow, molar mass and temperature.' };
+        const Fk = k / 1.4, xc = Fk * xt; let x = dp / p1;
+        if(x >= xc){ x = xc; w.push(`Choked (critical) flow: ΔP/P1 = ${tf(dp/p1,3)} is at or above Fk·xT = ${tf(xc,3)}. Sized at the choked limit; noise and velocity will be high.`); }
+        const Y = 1 - x / (3 * Fk * xt);
+        kv = qn / (2460 * p1 * Y) * Math.sqrt(M * T * Z / x); qReq = qn; qUnit = 'Nm³/h'; qLbl = 'Flow';
+        det.push(['ΔP / P1 (x)', tf(dp/p1,3), `Fk·xT = ${tf(xc,3)}`]);
+        det.push(['Expansion factor Y', tf(Y,4)]);
+      } else {
+        const W = v.w, k = v.ks || 1.31, xt = v.xt || 0.7, rho = v.rho > 0 ? v.rho : steamProps(p1).rho;
+        if(!(W > 0)) return { err: 'Enter a steam flow.' };
+        const Fk = k / 1.4, xc = Fk * xt; let x = dp / p1;
+        if(x >= xc){ x = xc; w.push(`Choked flow: ΔP/P1 = ${tf(dp/p1,3)} is at or above Fk·xT = ${tf(xc,3)}. Sized at the choked limit.`); }
+        const Y = 1 - x / (3 * Fk * xt);
+        kv = W / (31.6 * Y * Math.sqrt(x * p1 * rho)); qReq = W; qUnit = 'kg/h'; qLbl = 'Steam flow';
+        det.push(['Inlet density', `${tf(rho,4)} kg/m³`, v.rho > 0 ? 'entered' : 'saturated steam at P1']);
+        det.push(['ΔP / P1 (x)', tf(dp/p1,3), `Fk·xT = ${tf(xc,3)}`]);
+        det.push(['Expansion factor Y', tf(Y,4)]);
+      }
+      const cv = 1.156 * kv;
+      const out = { cap: 'Required Cv', num: tf(cv, 4), unit: 'Cv', sub: `Kv ${tf(kv,4)} m³/h · ${qLbl.toLowerCase()} ${tf(qReq,5)} ${qUnit}`, warn: w, det };
+      if(v.cvmax > 0){
+        const r = cv / v.cvmax; let pc;
+        if(v.chr === 'eq') pc = r <= 1 / 50 ? 0 : 1 + Math.log(r) / Math.log(50);
+        else if(v.chr === 'qo') pc = Math.sqrt(Math.max(r, 0));
+        else pc = r;
+        if(r > 1) w.push(`Valve too small: needs Cv ${tf(cv,4)} but only ${tf(v.cvmax,4)} is available.`);
+        else if(pc < 0.1) w.push('Valve is oversized: it would run below 10 % open, where control is poor.');
+        else if(pc > 0.85) w.push('Valve is running above 85 % open: little margin for extra flow.');
+        out.det.unshift(['Valve opening needed', r > 1 ? '> 100 %' : `${tf(pc * 100, 3)} %`, `Cv ${tf(cv,4)} of ${tf(v.cvmax,4)} (${v.chr === 'eq' ? 'equal %' : v.chr === 'qo' ? 'quick opening' : 'linear'})`]);
+        const rows = [];
+        for(let o = 10; o <= 100; o += 10){
+          const f = o / 100; let c;
+          if(v.chr === 'eq') c = v.cvmax * Math.pow(50, f - 1);
+          else if(v.chr === 'qo') c = v.cvmax * f * f;
+          else c = v.cvmax * f;
+          rows.push([o + ' %', tf(c, 4), tf(c / 1.156, 4), tf(qReq * c / cv, 4)]);
+        }
+        out.tbl = { title: 'Capacity by opening (same conditions)', head: ['Open', 'Cv', 'Kv', 'Flow ' + qUnit], rows, hi: [] };
+      }
+      return out;
+    }
+  },
+  { id: 'pos', n: 'Positioner',
+    foot: 'Air-to-open valves fail closed on loss of air; air-to-close valves fail open. A reverse-acting positioner or controller output can make 20 mA = shut on either body: the table follows the valve action only. Split range uses half the signal range for each valve.',
+    fields: [
+      { h: 'Signal' },
+      { k: 'ma', l: 'Input signal', u: 'mA', v: 12 },
+      { k: 'rng', l: 'Range', t: 's', v: 'full', o: [['full', 'Full 4–20 mA'], ['low', 'Split lower 4–12 mA'], ['high', 'Split upper 12–20 mA']] },
+      { h: 'Valve' },
+      { k: 'act', l: 'Action', t: 's', v: 'ato', o: [['ato', 'Air-to-open (fail closed)'], ['atc', 'Air-to-close (fail open)']] },
+      { k: 'spr', l: 'Spring range', t: 's', v: '3-15', o: [['3-15', '3–15 psi (0.2–1.0 bar)'], ['6-30', '6–30 psi (0.4–2.1 bar)'], ['3-9', '3–9 psi split'], ['9-15', '9–15 psi split']] },
+      { k: 'sup', l: 'Air supply', s: 'for margin check', u: 'psi', v: 20 }
+    ],
+    calc(v){
+      const lo = v.rng === 'high' ? 12 : 4, hi = v.rng === 'low' ? 12 : 20;
+      const [sl, sh] = v.spr.split('-').map(Number);
+      const ato = v.act === 'ato';
+      const row = pct => {
+        const sig = lo + (hi - lo) * pct / 100, air = sl + (sh - sl) * pct / 100, trav = ato ? pct : 100 - pct;
+        return [tf(sig, 4) + ' mA', pct + ' %', tf(air, 4) + ' psi', tf(air * 6.894757, 4) + ' kPa', tf(trav, 4) + ' %'];
+      };
+      const sigp = (v.ma - lo) / (hi - lo) * 100, pct = Math.min(Math.max(sigp, 0), 100);
+      const air = sl + (sh - sl) * pct / 100, trav = ato ? pct : 100 - pct, w = [];
+      if(!isFinite(v.ma)) return { err: 'Enter the input signal in mA.' };
+      if(sigp < -0.5 || sigp > 100.5) w.push(`Signal is outside the ${lo}–${hi} mA range for this valve: the positioner saturates at ${sigp < 0 ? 'minimum' : 'maximum'} output.`);
+      if(v.sup > 0 && v.sup < sh + 3) w.push(`Supply ${tf(v.sup,3)} psi leaves under 3 psi above the top of the spring range (${sh} psi): the valve may not fully stroke or seat.`);
+      const row0 = [0, 25, 50, 75, 100].map(row);
+      return { cap: 'Valve travel', num: tf(trav, 4), unit: '% open', sub: `signal ${tf(sigp,4)} % → ${tf(air,4)} psi (${tf(air*6.894757,4)} kPa)`, warn: w,
+        det: [['Signal span position', `${tf(sigp,4)} %`, `${lo}–${hi} mA`],
+              ['Actuator air', `${tf(air,4)} psi`, `${tf(air*0.0689476,4)} bar · spring range ${sl}–${sh} psi`],
+              ['Loss of air / signal', ato ? 'Closes (fail closed)' : 'Opens (fail open)', ato ? 'air-to-open' : 'air-to-close'],
+              ['Open at 4 mA / 20 mA', `${ato ? (lo === 4 ? '0' : '100') : (lo === 4 ? '100' : '0')} % / ${ato ? (hi === 20 ? '100' : '0') : (hi === 20 ? '0' : '100')} %`, 'at the end points of the range']],
+        tbl: { title: 'Signal, air and travel', head: ['Signal', 'Span', 'Air', 'Air', 'Travel'], rows: row0, hi: [] } };
+    }
+  }]
+});
+
+/* ==========================================================================
+   LOOP
+   ========================================================================== */
+const CABLE_R = { '0.5': 36, '0.75': 24.5, '1.0': 18.1, '1.5': 12.1, '2.5': 7.41 };
+advDef('loop', {
+  title: 'Loop', label: 'Loop', icon: '<rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 12h2l1.5-3 2 6 1.5-3h1"/>',
+  tools: [
+  { id: 'vd', n: 'Voltage drop',
+    foot: 'Transmitter terminal voltage = supply − loop current × total loop resistance. Check at the highest current the loop can reach (22 mA fault high, or the NAMUR 21.5 mA alarm). Most 2-wire transmitters need 10.5 V minimum; 12 V or more is safer with HART or a backlit display. Copper resistance is at 20 °C: add about 0.4 % per °C above that.',
+    fields: [
+      { h: 'Supply and transmitter' },
+      { k: 'vs', l: 'Supply voltage', u: 'V', v: 24 },
+      { k: 'vmin', l: 'Transmitter minimum', s: 'datasheet value', u: 'V', v: 10.5 },
+      { k: 'i', l: 'Worst-case current', u: 'mA', v: 22 },
+      { h: 'Resistance in the loop' },
+      { k: 'rr', l: 'Receiver / HART resistor', s: 'DCS input or 250 Ω', u: 'Ω', v: 250 },
+      { k: 'rx', l: 'Other receivers', s: 'indicators, trips, isolators', u: 'Ω', v: 0 },
+      { k: 'rb', l: 'Barrier / isolator', s: 'series resistance', u: 'Ω', v: 0 },
+      { h: 'Cable' },
+      { k: 'len', l: 'Cable length', s: 'one way', u: 'm', v: 300 },
+      { k: 'a', l: 'Conductor size', t: 's', v: '1.0', o: Object.keys(CABLE_R).map(k => [k, k + ' mm²']) }
+    ],
+    calc(v){
+      const rho = CABLE_R[v.a], rc = 2 * v.len / 1000 * rho, rt = rc + v.rr + (v.rx || 0) + (v.rb || 0), I = v.i / 1000;
+      if(!(v.vs > 0) || !(I > 0) || !isFinite(rt)) return { err: 'Enter the supply, current and loop resistances.' };
+      const vt = v.vs - I * rt, mg = vt - v.vmin, w = [];
+      const rmax = (v.vs - v.vmin) / I, lmax = (rmax - v.rr - (v.rx || 0) - (v.rb || 0)) / (2 * rho / 1000);
+      if(mg < 0) w.push(`Not enough voltage: ${tf(-mg,3)} V short at ${v.i} mA. Raise the supply, lower the receiver resistance or use a heavier cable.`);
+      else if(mg < 1) w.push('Margin is under 1 V: it will work on the bench but fail with a cold supply, cable heating or a low battery.');
+      const rows = [3.6, 4, 12, 20, 21.5, 22, 22.5].map(a => [tf(a, 4) + ' mA', tf(v.vs - a / 1000 * rt, 4) + ' V', tf(a / 1000 * rt, 4) + ' V', (v.vs - a / 1000 * rt >= v.vmin ? advOK : advNO) + ' ' + tf(v.vs - a / 1000 * rt - v.vmin, 3) + ' V']);
+      return { cap: 'Voltage at transmitter', num: tf(vt, 4), unit: 'V', sub: `${mg >= 0 ? 'margin' : 'shortfall'} ${tf(Math.abs(mg),3)} V above the ${tf(v.vmin,3)} V minimum`, warn: w,
+        det: [['Cable resistance', `${tf(rc,4)} Ω`, `${tf(rho,4)} Ω/km per core, two cores`],
+              ['Total loop resistance', `${tf(rt,4)} Ω`],
+              ['Maximum loop resistance', `${tf(rmax,4)} Ω`, `at ${v.i} mA with ${tf(v.vs,3)} V supply`],
+              ['Maximum cable length', `${tf(Math.max(lmax,0),4)} m`, 'one way, other resistances as entered']],
+        tbl: { title: 'Terminal voltage by current', head: ['Current', 'At transmitter', 'Drop', 'Margin'], rows, hi: [5] } };
+    }
+  },
+  { id: 'is', n: 'IS entity check',
+    foot: 'Entity concept (IEC 60079-14): the associated apparatus output must not exceed the field device input, and its capacitance and inductance allowances must cover the device plus the cable. Co and Lo come from the barrier certificate for the gas group. This is a screening check: the certificates and loop drawing remain the authority.',
+    fields: [
+      { h: 'Barrier / associated apparatus (output)' },
+      { k: 'uo', l: 'Uo', s: 'max output voltage', u: 'V', v: 28 },
+      { k: 'io', l: 'Io', s: 'max output current', u: 'mA', v: 93 },
+      { k: 'po', l: 'Po', s: 'max output power', u: 'mW', v: 651 },
+      { k: 'co', l: 'Co', s: 'max external capacitance', u: 'nF', v: 83 },
+      { k: 'lo', l: 'Lo', s: 'max external inductance', u: 'mH', v: 3.9 },
+      { h: 'Field device (input)' },
+      { k: 'ui', l: 'Ui', s: 'max input voltage', u: 'V', v: 30 },
+      { k: 'ii', l: 'Ii', s: 'max input current', u: 'mA', v: 100 },
+      { k: 'pi', l: 'Pi', s: 'max input power', u: 'mW', v: 750 },
+      { k: 'ci', l: 'Ci', s: 'internal capacitance', u: 'nF', v: 10 },
+      { k: 'li', l: 'Li', s: 'internal inductance', u: 'mH', v: 0.2 },
+      { h: 'Cable' },
+      { k: 'len', l: 'Length', u: 'm', v: 300 },
+      { k: 'cc', l: 'Capacitance', s: 'typical 200 pF/m', u: 'pF/m', v: 200 },
+      { k: 'lc', l: 'Inductance', s: 'typical 1 µH/m', u: 'µH/m', v: 1 }
+    ],
+    calc(v){
+      const cc = (v.cc || 0) * (v.len || 0) / 1000, lc = (v.lc || 0) * (v.len || 0) / 1000;
+      const chk = (nm, lhs, rhs, le, un) => {
+        if(!isFinite(lhs) || !isFinite(rhs)) return [nm, '—', '—', 'n/a'];
+        const ok = le ? lhs <= rhs : lhs >= rhs;
+        return [nm, tf(lhs, 5) + ' ' + un, tf(rhs, 5) + ' ' + un, (ok ? advOK + ' pass' : advNO + ' fail'), ok];
+      };
+      const rows = [
+        chk('Uo ≤ Ui', v.uo, v.ui, true, 'V'), chk('Io ≤ Ii', v.io, v.ii, true, 'mA'), chk('Po ≤ Pi', v.po, v.pi, true, 'mW'),
+        chk('Co ≥ Ci + Cc', v.co, (v.ci || 0) + cc, false, 'nF'), chk('Lo ≥ Li + Lc', v.lo, (v.li || 0) + lc, false, 'mH')
+      ];
+      const bad = rows.filter(r => r[4] === false), w = [];
+      bad.forEach(r => w.push('Fails ' + r[0] + '.'));
+      return { cap: 'Entity check', num: bad.length ? 'FAIL' : 'PASS', unit: '', sub: bad.length ? `${bad.length} of 5 checks failed` : 'all 5 checks pass', warn: w,
+        det: [['Cable capacitance', `${tf(cc,4)} nF`, `${tf(v.cc,4)} pF/m × ${tf(v.len,4)} m`], ['Cable inductance', `${tf(lc,4)} mH`, `${tf(v.lc,4)} µH/m × ${tf(v.len,4)} m`]],
+        tbl: { title: 'Entity parameters', head: ['Check', 'Barrier', 'Device + cable', 'Result'], rows: rows.map(r => r.slice(0, 4)), hi: [] } };
+    }
+  }]
+});
+
+/* ==========================================================================
+   FLUIDS
+   ========================================================================== */
+const FLUIDS = [
+  ['water', 'Water (calculated)', 0, 0, 0],
+  ['sea', 'Seawater (35 g/kg)', 1025, 1.08, 0.00021],
+  ['diesel', 'Diesel / gas oil', 840, 3.0, 0.00083],
+  ['kero', 'Kerosene / jet fuel', 800, 1.64, 0.00095],
+  ['gaso', 'Gasoline (petrol)', 740, 0.6, 0.00115],
+  ['crude', 'Crude oil (medium)', 870, 15, 0.0007],
+  ['etoh', 'Ethanol', 789, 1.2, 0.00109],
+  ['meoh', 'Methanol', 791, 0.59, 0.00119],
+  ['meg', 'Ethylene glycol (MEG)', 1113, 21, 0.00064],
+  ['glyc', 'Glycerol', 1261, 1412, 0.0005],
+  ['lpg', 'Propane, liquid', 500, 0.1, 0.0030],
+  ['nh3', 'Ammonia, liquid', 610, 0.14, 0.0024],
+  ['hg', 'Mercury', 13546, 1.55, 0.00018]
+];
+const PIPES = { '0.5': ['½', 15, 21.3, 2.11, 2.77, 3.73, 4.78], '0.75': ['¾', 20, 26.7, 2.11, 2.87, 3.91, 5.56], '1': ['1', 25, 33.4, 2.77, 3.38, 4.55, 6.35],
+  '1.25': ['1¼', 32, 42.2, 2.77, 3.56, 4.85, 6.35], '1.5': ['1½', 40, 48.3, 2.77, 3.68, 5.08, 7.14], '2': ['2', 50, 60.3, 2.77, 3.91, 5.54, 8.74],
+  '2.5': ['2½', 65, 73.0, 3.05, 5.16, 7.01, 9.53], '3': ['3', 80, 88.9, 3.05, 5.49, 7.62, 11.13], '4': ['4', 100, 114.3, 3.05, 6.02, 8.56, 13.49],
+  '5': ['5', 125, 141.3, 3.4, 6.55, 9.53, 15.88], '6': ['6', 150, 168.3, 3.4, 7.11, 10.97, 18.26], '8': ['8', 200, 219.1, 3.76, 8.18, 12.70, 23.01],
+  '10': ['10', 250, 273.1, 4.19, 9.27, 15.09, 28.58], '12': ['12', 300, 323.9, 4.57, 10.31, 17.48, 33.32], '14': ['14', 350, 355.6, 6.35, 11.13, 19.05, 35.71],
+  '16': ['16', 400, 406.4, 6.35, 12.70, 21.44, 40.49], '18': ['18', 450, 457.0, 6.35, 14.27, 23.83, 45.24], '20': ['20', 500, 508.0, 6.35, 15.09, 26.19, 50.01],
+  '24': ['24', 600, 610.0, 6.35, 17.48, 30.96, 59.54] };
+const GASES = [['28.96', 'Air'], ['28.014', 'Nitrogen'], ['31.999', 'Oxygen'], ['44.01', 'Carbon dioxide'], ['16.043', 'Methane'], ['18', 'Natural gas (typical)'],
+  ['44.097', 'Propane'], ['2.016', 'Hydrogen'], ['39.948', 'Argon'], ['18.015', 'Steam (ideal)'], ['c', 'Custom']];
+advDef('fluids', {
+  title: 'Fluids', label: 'Fluids', icon: '<path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/>',
+  tools: [
+  { id: 'fl', n: 'Fluids',
+    foot: 'Water uses the Kell density equation and a Vogel-type viscosity fit (±0.5 % to 100 °C). Other fluids are typical 20 °C values corrected for temperature with a constant expansion coefficient, so they are good to a few percent: use the product datasheet for anything critical. Viscosity of the non-water fluids is shown at 20 °C only.',
+    fields: [
+      { k: 'f', l: 'Fluid', t: 's', v: 'water', o: FLUIDS.map(f => [f[0], f[1]]) },
+      { k: 'T', l: 'Temperature', u: '°C', v: 20 }
+    ],
+    calc(v){
+      const F = FLUIDS.find(f => f[0] === v.f), T = v.T, w = [];
+      if(!isFinite(T)) return { err: 'Enter a temperature.' };
+      const rhoAt = t => F[0] === 'water' ? waterRho(t) : F[2] / (1 + F[4] * (t - 20));
+      let rho = rhoAt(T), mu;
+      if(F[0] === 'water'){ mu = waterMu(T) * 1000; if(T < 0 || T > 100) w.push('Water correlations are valid 0–100 °C.'); }
+      else { mu = F[3]; if(Math.abs(T - 20) > 0) w.push('Viscosity shown is the 20 °C value: it changes strongly with temperature.'); }
+      const sg = rho / 999.1;
+      const rows = []; for(let t = 0; t <= 100; t += 10) rows.push([t + ' °C', tf(rhoAt(t), 6), tf(rhoAt(t) / 999.1, 5), F[0] === 'water' ? tf(waterMu(t) * 1000, 4) : '—']);
+      return { cap: F[1], num: tf(rho, 6), unit: 'kg/m³', sub: `SG ${tf(sg,5)} (water 15 °C = 1)`, warn: w,
+        det: [['Dynamic viscosity', `${tf(mu,4)} mPa·s`, F[0] === 'water' ? `at ${tf(T,3)} °C` : 'at 20 °C'], ['Kinematic viscosity', `${tf(mu / rho * 1000,4)} cSt`, 'mm²/s'], ['Density', `${tf(rho / 1000, 5)} g/cm³`, `${tf(rho * 0.062428, 5)} lb/ft³`]],
+        tbl: { title: F[1] + ' vs temperature', head: ['Temp', 'ρ kg/m³', 'SG', 'μ mPa·s'], rows, hi: [] } };
+    }
+  },
+  { id: 'pipe', n: 'Pipe data',
+    foot: 'ASME B36.10M carbon steel dimensions (mm). Inside diameter = OD − 2 × wall; no corrosion or mill tolerance allowance. Stainless and other materials use B36.19M walls, which differ at some sizes.',
+    fields: [
+      { k: 'nps', l: 'Nominal size', t: 's', v: '6', o: Object.keys(PIPES).map(k => [k, `NPS ${PIPES[k][0]} (DN${PIPES[k][1]})`]) },
+      { k: 'sch', l: 'Schedule', t: 's', v: '3', o: [['2', 'Schedule 10'], ['3', 'Schedule 40 (STD ≤ 10")'], ['4', 'Schedule 80 (XS ≤ 8")'], ['5', 'Schedule 160']] },
+      { k: 'q', l: 'Flow', s: 'optional: gives velocity', u: 'm³/h', v: '' }
+    ],
+    calc(v){
+      const P = PIPES[v.nps], od = P[2], wall = P[+v.sch + 1], id = od - 2 * wall, A = Math.PI / 4 * id * id / 1e6;
+      const det = [['Outside diameter', `${tf(od,5)} mm`, `${tf(od / 25.4,5)} in`], ['Wall thickness', `${tf(wall,4)} mm`, `${tf(wall / 25.4,4)} in`], ['Flow area', `${tf(A * 1e4,5)} cm²`], ['Volume per metre', `${tf(A * 1000,5)} L/m`]];
+      const w = [];
+      if(v.q > 0){
+        const vel = v.q / 3600 / A; det.unshift(['Velocity', `${tf(vel,4)} m/s`, `${tf(v.q,5)} m³/h`]);
+        if(vel > 3) w.push('Velocity above 3 m/s: high for liquids (erosion and noise); typical design is 1–3 m/s.');
+        else if(vel < 0.3) w.push('Velocity below 0.3 m/s: low, solids can settle and flow measurement suffers.');
+      }
+      const rows = [['10', 2], ['40', 3], ['80', 4], ['160', 5]].map(([nm, j]) => [`Sch ${nm}`, tf(P[j + 1], 4), tf(od - 2 * P[j + 1], 5), tf(Math.PI / 4 * (od - 2 * P[j + 1]) ** 2 / 100, 5), v.q > 0 ? tf(v.q / 3600 / (Math.PI / 4 * (od - 2 * P[j + 1]) ** 2 / 1e6), 4) : '—']);
+      return { cap: `NPS ${P[0]} sch ${[0,0,10,40,80,160][+v.sch]}`, num: tf(id, 5), unit: 'mm inside diameter', sub: `${tf(id / 25.4,5)} in`, warn: w, det,
+        tbl: { title: `NPS ${P[0]} all schedules`, head: ['Sched', 'Wall mm', 'ID mm', 'Area cm²', 'v m/s'], rows, hi: [+v.sch - 2] } };
+    }
+  },
+  { id: 'gas', n: 'Gas density',
+    foot: 'ρ = P·M / (Z·R·T) with R = 8.314 J/mol·K. Normal conditions 0 °C and 1.01325 bar, standard 15 °C. Use Z = 1 for near-atmospheric pressures; at high pressure take Z from the gas data or an equation of state.',
+    fields: [
+      { k: 'g', l: 'Gas', t: 's', v: '28.96', o: GASES },
+      { k: 'mc', l: 'Molar mass', u: 'g/mol', v: 28.96, if: v => v.g === 'c' },
+      { k: 'p', l: 'Pressure', s: 'absolute', u: 'bar a', v: 1.01325 },
+      { k: 't', l: 'Temperature', u: '°C', v: 20 },
+      { k: 'z', l: 'Compressibility Z', v: 1 },
+      { k: 'qa', l: 'Actual flow', s: 'optional: converts to normal', u: 'm³/h', v: '' }
+    ],
+    calc(v){
+      const M = v.g === 'c' ? v.mc : +v.g, T = v.t + 273.15, Z = v.z || 1;
+      if(!(M > 0) || !(v.p > 0) || !(T > 0)) return { err: 'Enter molar mass, pressure and temperature.' };
+      const rho = v.p * 1e5 * M / 1000 / (Z * 8.314462 * T), rn = 1.01325e5 * M / 1000 / (8.314462 * 273.15), rs = 1.01325e5 * M / 1000 / (8.314462 * 288.15);
+      const f = rho / rn;
+      const det = [['Normal density', `${tf(rn,5)} kg/Nm³`, '0 °C, 1.01325 bar'], ['Standard density', `${tf(rs,5)} kg/m³`, '15 °C, 1.01325 bar'], ['Relative density (air = 1)', tf(M / 28.96, 5)], ['Actual ÷ normal volume', tf(f, 5), 'actual m³ per Nm³']];
+      if(v.qa > 0){ det.unshift(['Normal flow', `${tf(v.qa * f, 5)} Nm³/h`, `from ${tf(v.qa,5)} actual m³/h`]); det.push(['Mass flow', `${tf(v.qa * rho, 5)} kg/h`]); }
+      return { cap: 'Density at conditions', num: tf(rho, 6), unit: 'kg/m³', sub: `${tf(M,5)} g/mol · ${tf(v.p,5)} bar a · ${tf(v.t,4)} °C`, det };
+    }
+  },
+  { id: 'stm', n: 'Steam',
+    foot: 'Saturation pressure and temperature use IAPWS-IF97 region 4 (exact to the printed digits). Enthalpy and density are interpolated from steam-table points between 0.5 and 200 bar a, good to about 0.3 %. Saturated steam only: superheated properties need the full tables.',
+    fields: [
+      { k: 'by', l: 'Know', t: 's', v: 'p', o: [['p', 'Pressure'], ['t', 'Temperature']] },
+      { k: 'p', l: 'Pressure', s: 'absolute', u: 'bar a', v: 10, if: v => v.by === 'p' },
+      { k: 't', l: 'Saturation temperature', u: '°C', v: 180, if: v => v.by === 't' }
+    ],
+    calc(v){
+      let P;
+      if(v.by === 'p') P = v.p; else P = psatBar(v.t);
+      if(!(P > 0.006) || P > 220) return { err: v.by === 'p' ? 'Pressure must be between 0.006 and 220 bar absolute.' : 'Temperature must be between 1 and 370 °C.' };
+      const s = steamProps(P), w = []; const wr = steamRange(P); if(wr) w.push(wr);
+      const rows = [0.5, 1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 50, 70, 100].map(p => { const x = steamProps(p); return [tf(p, 3), tf(x.T, 5), tf(x.hf, 5), tf(x.hg, 5), tf(x.rho, 4)]; });
+      return { cap: v.by === 'p' ? 'Saturation temperature' : 'Saturation pressure', num: v.by === 'p' ? tf(s.T, 6) : tf(P, 6), unit: v.by === 'p' ? '°C' : 'bar a', sub: `${tf(P,5)} bar a = ${tf(P - 1.01325, 5)} bar g · ${tf(s.T,5)} °C`, warn: w,
+        det: [['Latent heat hfg', `${tf(s.hfg,5)} kJ/kg`], ['Water enthalpy hf', `${tf(s.hf,5)} kJ/kg`], ['Steam enthalpy hg', `${tf(s.hg,5)} kJ/kg`], ['Steam density', `${tf(s.rho,5)} kg/m³`, `specific volume ${tf(s.v,4)} m³/kg`]],
+        tbl: { title: 'Saturated steam', head: ['bar a', '°C', 'hf', 'hg', 'ρ kg/m³'], rows, hi: [] } };
+    }
+  }]
+});
+
+/* ==========================================================================
+   TANK
+   ========================================================================== */
+function tkVol(shape, d, L, W, H, h){
+  const R = d / 2; h = Math.min(Math.max(h, 0), shape === 'v' || shape === 'r' ? H : d);
+  switch(shape){
+    case 'v': return Math.PI / 4 * d * d * h;
+    case 'r': return L * W * h;
+    case 'h': case 'e': {
+      const seg = R * R * Math.acos((R - h) / R) - (R - h) * Math.sqrt(Math.max(2 * R * h - h * h, 0));
+      let vol = L * seg;
+      if(shape === 'e') vol += (R / 2) / R * Math.PI * h * h * (3 * R - h) / 3;     /* two 2:1 heads, each (D/4) deep, combined */
+      return vol;
+    }
+    case 's': return Math.PI * h * h * (3 * R - h) / 3;
+  }
+  return NaN;
+}
+advDef('tank', {
+  title: 'Tank', label: 'Tank', icon: '<path d="M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3v12c0 1.7-3.1 3-7 3s-7-1.3-7-3z"/><path d="M5 6c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+  tools: [
+  { id: 'vol', n: 'Volume',
+    foot: 'Geometric volume to the tank\'s inside dimensions. Horizontal vessels with 2:1 semi-elliptical heads add the two heads (each D/4 deep) to the cylindrical length L, which is measured between the tangent lines. For a legal strapping table use the surveyed dimensions.',
+    fields: [
+      { h: 'Shape' },
+      { k: 'sh', l: 'Tank', t: 's', v: 'v', o: [['v', 'Vertical cylinder'], ['h', 'Horizontal cylinder, flat ends'], ['e', 'Horizontal, 2:1 elliptical heads'], ['s', 'Sphere'], ['r', 'Rectangular']] },
+      { k: 'd', l: 'Diameter', u: 'm', v: 3, if: v => v.sh !== 'r' },
+      { k: 'L', l: 'Length', s: 'tangent to tangent', u: 'm', v: 8, if: v => v.sh === 'h' || v.sh === 'e' || v.sh === 'r' },
+      { k: 'W', l: 'Width', u: 'm', v: 2, if: v => v.sh === 'r' },
+      { k: 'H', l: 'Height', u: 'm', v: 6, if: v => v.sh === 'v' || v.sh === 'r' },
+      { h: 'Lookup' },
+      { k: 'md', l: 'Find', t: 's', v: 'hv', o: [['hv', 'Volume from level'], ['vh', 'Level from volume']] },
+      { k: 'h', l: 'Level', s: 'from the tank bottom', u: 'm', v: 2, if: v => v.md === 'hv' },
+      { k: 'vv', l: 'Volume', u: 'm³', v: 20, if: v => v.md === 'vh' }
+    ],
+    calc(v){
+      const sh = v.sh, d = v.d, L = v.L, W = v.W, H = v.H;
+      const hmax = sh === 'v' || sh === 'r' ? H : d;
+      const need = sh === 'r' ? [L, W, H] : sh === 'v' ? [d, H] : sh === 's' ? [d] : [d, L];
+      if(need.some(x => !(x > 0))) return { err: 'Enter all the tank dimensions.' };
+      const V = h => tkVol(sh, d, L, W, H, h), tot = V(hmax), w = [];
+      let h, vol;
+      if(v.md === 'hv'){ h = v.h; vol = V(h); if(h > hmax) w.push('Level is above the top of the tank: volume limited to full.'); if(!(h >= 0)) return { err: 'Enter a level.' }; }
+      else {
+        vol = v.vv; if(!(vol >= 0)) return { err: 'Enter a volume.' };
+        if(vol > tot){ w.push('Volume exceeds the tank capacity: showing full.'); vol = tot; }
+        let a = 0, b = hmax; for(let i = 0; i < 80; i++){ const m = (a + b) / 2; if(V(m) < vol) a = m; else b = m; } h = (a + b) / 2;
+      }
+      const rows = []; for(let p = 0; p <= 100; p += 10){ const hh = hmax * p / 100, vv = V(hh); rows.push([p + ' %', tf(hh * 1000, 5), tf(vv, 5), tf(vv * 1000, 5), tf(vv / tot * 100, 4) + ' %']); }
+      const base = { warn: w, det: [['Total volume', `${tf(tot,5)} m³`, `${tf(tot * 1000,6)} L`], ['Level', `${tf(h * 1000,5)} mm`, `${tf(h / hmax * 100,4)} % of height`], ['Volume', `${tf(vol,5)} m³`, `${tf(vol / tot * 100,4)} % of total`]],
+        tbl: { title: 'Strapping table', head: ['Level', 'mm', 'm³', 'Litres', 'Volume'], rows, hi: [] } };
+      return v.md === 'hv' ? Object.assign(base, { cap: 'Volume', num: tf(vol, 6), unit: 'm³', sub: `${tf(vol * 1000,6)} L · ${tf(vol / tot * 100,4)} % full` })
+                            : Object.assign(base, { cap: 'Level', num: tf(h * 1000, 6), unit: 'mm', sub: `${tf(h / hmax * 100,4)} % of height` });
+    }
+  },
+  { id: 'rad', n: 'Radar / ultrasonic',
+    foot: 'Level = empty distance − measured distance. The 4 mA point is at the empty distance and 20 mA at the full distance. Keep the full point out of the blanking (dead) zone, usually at least the blanking distance plus a safety margin below the sensor. Ultrasonic sensors are temperature compensated internally: the uncompensated figure shows the error if the temperature sensor is faulty.',
+    fields: [
+      { h: 'Calibration' },
+      { k: 'ty', l: 'Sensor', t: 's', v: 'rad', o: [['rad', 'Radar (guided or non-contact)'], ['us', 'Ultrasonic']] },
+      { k: 'E', l: 'Empty distance', s: 'sensor face to 0 %', u: 'm', v: 6 },
+      { k: 'F', l: 'Full distance', s: 'sensor face to 100 %', u: 'm', v: 0.6 },
+      { k: 'bl', l: 'Blanking distance', s: 'datasheet dead zone', u: 'm', v: 0.4 },
+      { h: 'Reading' },
+      { k: 'd', l: 'Measured distance', u: 'm', v: 3 },
+      { k: 'T', l: 'Air temperature', u: '°C', v: 20, if: v => v.ty === 'us' },
+      { k: 'Tc', l: 'Calibrated at', u: '°C', v: 20, if: v => v.ty === 'us' }
+    ],
+    calc(v){
+      const E = v.E, F = v.F, d = v.d;
+      if(!(E > 0) || !isFinite(F) || !isFinite(d)) return { err: 'Enter the empty distance, full distance and a measured distance.' };
+      if(!(E > F)) return { err: 'The empty distance must be greater than the full distance.' };
+      const span = E - F, pct = (E - d) / span * 100, mA = 4 + 16 * pct / 100, w = [];
+      if(F < (v.bl || 0)) w.push(`The full distance (${tf(F,3)} m) is inside the blanking distance (${tf(v.bl,3)} m): the instrument cannot see a full tank.`);
+      else if(F < (v.bl || 0) + 0.1) w.push('Full distance is within 0.1 m of the blanking zone: little margin for foam, turbulence or the echo from the tank top.');
+      if(d < (v.bl || 0)) w.push('Measured distance is inside the blanking distance: reading is not valid.');
+      if(pct < 0) w.push('Level is below the 0 % empty point.'); else if(pct > 100) w.push('Level is above the 100 % full point.');
+      const det = [['Level above empty', `${tf(E - d, 5)} m`], ['Span', `${tf(span, 5)} m`], ['Output', `${tf(mA, 5)} mA`, '4–20 mA, 4 at empty']];
+      if(v.ty === 'us'){
+        const c = 331.3 + 0.606 * v.T, cc = 331.3 + 0.606 * v.Tc, dm = d * cc / c, ep = (E - dm) / span * 100;
+        det.push(['Speed of sound', `${tf(c,5)} m/s`, `echo time ${tf(2 * d / c * 1000,5)} ms`], ['Uncompensated reading', `${tf(ep,4)} %`, `error ${tf(ep - pct,3)} % of span (${tf(dm - d,3)} m)`]);
+      }
+      const rows = [0, 25, 50, 75, 100].map(p => [p + ' %', tf(E - span * p / 100, 5) + ' m', tf(4 + 16 * p / 100, 4) + ' mA']);
+      return { cap: 'Level', num: tf(pct, 5), unit: '%', sub: `${tf(mA,5)} mA · ${tf(E - d,5)} m above empty`, warn: w, det,
+        tbl: { title: 'Calibration points', head: ['Level', 'Distance', 'Output'], rows, hi: [] } };
+    }
+  }]
+});
+
+/* ==========================================================================
+   PRESSURE
+   ========================================================================== */
+const HEADFLUID = [['1000', 'Water (1000 kg/m³)'], ['1025', 'Seawater (1025)'], ['840', 'Diesel (840)'], ['870', 'Crude oil (870)'], ['1113', 'Glycol (1113)'], ['13546', 'Mercury (13546)'], ['c', 'Custom']];
+advDef('pressure', {
+  title: 'Pressure', label: 'Press<span class="x">ure</span>', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 12l4-4M12 6v1.5M6 12h1.5M18 12h-1.5"/>',
+  tools: [
+  { id: 'head', n: 'Head correction',
+    foot: 'A gauge mounted above the tapping point reads low by the weight of the fluid column between them; one mounted below reads high. Add the correction to the gauge reading to get pressure at the tapping point. Uses g = 9.80665 m/s²; fluid density is taken as uniform and the impulse line as full.',
+    fields: [
+      { k: 'fl', l: 'Fluid in line', t: 's', v: '1000', o: HEADFLUID },
+      { k: 'rc', l: 'Density', u: 'kg/m³', v: 1000, if: v => v.fl === 'c' },
+      { k: 'dh', l: 'Gauge height', s: '+ above, − below the tapping', u: 'm', v: 2 },
+      { k: 'un', l: 'Pressure unit', t: 's', v: 'bar', o: puOpts(8) },
+      { k: 'rd', l: 'Gauge reading', s: 'optional', v: '' }
+    ],
+    calc(v){
+      const rho = v.fl === 'c' ? v.rc : +v.fl, dh = v.dh, f = PU[v.un];
+      if(!(rho > 0) || !isFinite(dh)) return { err: 'Enter a density and a height.' };
+      const corr = rho * 9.80665 * dh / 1e5 / f, w = [];
+      const det = [['Head pressure', `${tf(Math.abs(corr),5)} ${v.un}`, `${tf(rho,5)} kg/m³ × g × ${tf(Math.abs(dh),4)} m`], ['Gauge reads', dh >= 0 ? 'low' : 'high', dh >= 0 ? 'gauge is above the tapping' : 'gauge is below the tapping']];
+      if(isFinite(v.rd)) det.unshift(['Pressure at tapping', `${tf(v.rd + corr,6)} ${v.un}`, `${tf(v.rd,6)} ${corr >= 0 ? '+' : '−'} ${tf(Math.abs(corr),5)}`]);
+      const rows = ['bar', 'mbar', 'kPa', 'psi', 'kg/cm²'].map(u => [u, tf(rho * 9.80665 * dh / 1e5 / PU[u], 5)]);
+      return { cap: 'Add to the gauge reading', num: (corr >= 0 ? '+' : '−') + tf(Math.abs(corr), 5), unit: v.un, sub: `${tf(dh,4)} m of ${tf(rho,5)} kg/m³ fluid`, warn: w, det,
+        tbl: { title: 'Correction in other units', head: ['Unit', 'Add'], rows, hi: [] } };
+    }
+  },
+  { id: 'abs', n: 'Gauge / absolute',
+    foot: 'Absolute = gauge + atmospheric. Vacuum is the amount below atmospheric: 0 bar absolute is a perfect vacuum. Atmospheric pressure falls about 1.2 mbar per 10 m of altitude; enter the local value if it matters.',
+    fields: [
+      { k: 'ty', l: 'Reading is', t: 's', v: 'g', o: [['g', 'Gauge'], ['a', 'Absolute'], ['v', 'Vacuum (below atmospheric)']] },
+      { k: 'x', l: 'Value', v: 5 },
+      { k: 'un', l: 'Unit', t: 's', v: 'bar', o: puOpts(9) },
+      { k: 'atm', l: 'Atmospheric pressure', s: 'sea level 1013.25 mbar', u: 'mbar', v: 1013.25 }
+    ],
+    calc(v){
+      const f = PU[v.un], atm = v.atm / 1000;
+      if(!isFinite(v.x) || !(atm > 0)) return { err: 'Enter a value and the atmospheric pressure.' };
+      const x = v.x * f; let abs;
+      if(v.ty === 'g') abs = x + atm; else if(v.ty === 'a') abs = x; else abs = atm - x;
+      const w = []; if(abs < 0) w.push('Absolute pressure cannot be negative: a vacuum reading cannot exceed atmospheric.');
+      const g = abs - atm;
+      const rows = Object.keys(PU).map(u => [u, tf(abs / PU[u], 6), tf(g / PU[u], 6), tf(Math.max(-g, 0) / PU[u], 6)]);
+      return { cap: 'Absolute pressure', num: tf(abs / f, 6), unit: v.un + ' abs', sub: `gauge ${tf(g / f, 6)} ${v.un}${g < 0 ? ' (vacuum)' : ''}`, warn: w,
+        det: [['Gauge', `${tf(g / f,6)} ${v.un}`], ['Vacuum', `${tf(Math.max(-g,0) / f,6)} ${v.un}`, g < 0 ? `${tf(-g / atm * 100,4)} % of atmospheric` : 'above atmospheric'], ['Atmospheric', `${tf(atm / f,6)} ${v.un}`]],
+        tbl: { title: 'All units', head: ['Unit', 'Absolute', 'Gauge', 'Vacuum'], rows, hi: [Object.keys(PU).indexOf(v.un)] } };
+    }
+  }]
+});
+
+/* ==========================================================================
+   ANALYSER
+   ========================================================================== */
+const BUF_T = [0, 5, 10, 15, 20, 25, 30, 35, 40];
+const BUFS = { '4.01': [4.00, 4.00, 4.00, 4.00, 4.00, 4.01, 4.02, 4.02, 4.03], '6.86': [6.98, 6.95, 6.92, 6.90, 6.88, 6.86, 6.85, 6.84, 6.84],
+  '7.00': [7.11, 7.08, 7.06, 7.04, 7.02, 7.00, 6.99, 6.98, 6.98], '9.18': [9.46, 9.39, 9.33, 9.28, 9.23, 9.18, 9.14, 9.10, 9.07], '10.01': [10.32, 10.25, 10.18, 10.12, 10.06, 10.01, 9.97, 9.93, 9.89] };
+function bufAt(name, T){
+  const ys = BUFS[name]; T = Math.min(Math.max(T, 0), 40); let i = Math.min(Math.floor(T / 5), 7);
+  return ys[i] + (ys[i + 1] - ys[i]) * (T - BUF_T[i]) / 5;
+}
+advDef('analyser', {
+  title: 'Analyser', label: 'Analy<span class="x">ser</span>', icon: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
+  tools: [
+  { id: 'ph', n: 'pH slope',
+    foot: 'Slope = (mV₂ − mV₁)/(pH₂ − pH₁). The theoretical (Nernst) slope is 0.19841 × T(K) mV/pH, 59.16 at 25 °C. A healthy electrode gives 92–102 % slope and an offset within ±30 mV at pH 7. Below about 85 % slope replace the electrode. Enter the mV values as read, with their sign.',
+    fields: [
+      { h: 'Buffers' },
+      { k: 'p1', l: 'Buffer 1 pH', v: 7.00 }, { k: 'm1', l: 'Buffer 1 reading', u: 'mV', v: 5 },
+      { k: 'p2', l: 'Buffer 2 pH', v: 4.01 }, { k: 'm2', l: 'Buffer 2 reading', u: 'mV', v: 175 },
+      { k: 'T', l: 'Temperature', u: '°C', v: 25 },
+      { h: 'Sample' },
+      { k: 'ms', l: 'Sample reading', s: 'optional: gives pH', u: 'mV', v: '' }
+    ],
+    calc(v){
+      if(![v.p1, v.m1, v.p2, v.m2].every(isFinite) || v.p1 === v.p2) return { err: 'Enter two different buffers and their mV readings.' };
+      const S = (v.m2 - v.m1) / (v.p2 - v.p1), th = 0.198412 * ((v.T || 25) + 273.15), pct = Math.abs(S) / th * 100;
+      const off = v.m1 + S * (7 - v.p1), w = [];
+      if(S > 0) w.push('Slope is positive: pH electrodes normally give a falling mV as pH rises. Check the buffer order and wiring.');
+      if(pct < 85) w.push('Slope is below 85 %: electrode is worn, coated or dry. Clean, re-soak or replace it.');
+      else if(pct < 92) w.push('Slope is between 85 and 92 %: usable but ageing. Plan to replace the electrode.');
+      else if(pct > 102) w.push('Slope is above 102 %: check buffers, temperature and reference junction.');
+      if(Math.abs(off) > 30) w.push(`Offset of ${tf(off,3)} mV at pH 7 is outside ±30 mV.`);
+      const det = [['Offset at pH 7', `${tf(off,4)} mV`, 'ideal 0, limit ±30 mV'], ['Theoretical slope', `${tf(th,4)} mV/pH`, `at ${tf(v.T || 25,3)} °C`], ['Calibration status', pct >= 92 && pct <= 102 && Math.abs(off) <= 30 ? advOK + ' good' : pct >= 85 && Math.abs(off) <= 60 ? 'marginal' : advNO + ' replace']];
+      if(isFinite(v.ms)) det.unshift(['Sample pH', tf(v.p1 + (v.ms - v.m1) / S, 4), `from ${tf(v.ms,4)} mV`]);
+      const rows = [2, 4, 7, 10, 12].map(p => [tf(p, 3), tf(v.m1 + S * (p - v.p1), 5) + ' mV']);
+      return { cap: 'Slope', num: tf(pct, 4), unit: '% of theoretical', sub: `${tf(S,4)} mV/pH · offset ${tf(off,3)} mV`, warn: w, det,
+        tbl: { title: 'Expected electrode output', head: ['pH', 'Reading'], rows, hi: [] } };
+    }
+  },
+  { id: 'buf', n: 'Buffers',
+    foot: 'Typical commercial buffer values by temperature (NIST-traceable phthalate, phosphate and borate sets, vendor carbonate). Bottles differ by a few hundredths of a pH: always use the value printed on the label or certificate.',
+    fields: [
+      { k: 'b', l: 'Buffer', t: 's', v: '7.00', o: Object.keys(BUFS).map(k => [k, 'pH ' + k]) },
+      { k: 'T', l: 'Temperature', u: '°C', v: 20 }
+    ],
+    calc(v){
+      if(!isFinite(v.T)) return { err: 'Enter the temperature.' };
+      const w = []; if(v.T < 0 || v.T > 40) w.push('Values are tabulated 0–40 °C; the nearest end is used outside it.');
+      const rows = BUF_T.map(t => [t + ' °C'].concat(Object.keys(BUFS).map(k => tf(BUFS[k][BUF_T.indexOf(t)], 4))));
+      return { cap: 'pH ' + v.b + ' buffer', num: tf(bufAt(v.b, v.T), 4), unit: 'pH', sub: `at ${tf(v.T,3)} °C (nominal ${v.b} at 25 °C)`, warn: w,
+        tbl: { title: 'Buffer value by temperature', head: ['Temp'].concat(Object.keys(BUFS)), rows, hi: [] } };
+    }
+  },
+  { id: 'cond', n: 'Conductivity',
+    foot: 'κ(25) = κ(T) / (1 + α(T − 25)). Natural waters and most salts are about 2 %/°C; ultrapure water is higher (about 5 %), strong acids and bases lower (1–1.5 %). TDS is an estimate: use 0.5 for NaCl-type water and 0.64–0.7 for natural water.',
+    fields: [
+      { k: 'k', l: 'Measured conductivity', u: 'µS/cm', v: 1413 },
+      { k: 'T', l: 'Sample temperature', u: '°C', v: 20 },
+      { k: 'a', l: 'Temperature coefficient α', u: '%/°C', v: 2.0 },
+      { k: 'ref', l: 'Reference temperature', u: '°C', v: 25 },
+      { k: 'tds', l: 'TDS factor', s: 'ppm per µS/cm', v: 0.64 }
+    ],
+    calc(v){
+      const a = v.a / 100, ref = isFinite(v.ref) ? v.ref : 25;
+      if(!(v.k >= 0) || !isFinite(v.T) || !(a >= 0)) return { err: 'Enter a conductivity, temperature and coefficient.' };
+      const kr = v.k / (1 + a * (v.T - ref)), rows = []; for(let t = 5; t <= 45; t += 5) rows.push([t + ' °C', tf(kr * (1 + a * (t - ref)), 5)]);
+      return { cap: `Conductivity at ${tf(ref,3)} °C`, num: tf(kr, 5), unit: 'µS/cm', sub: `${tf(kr / 1000,5)} mS/cm`,
+        det: [['Resistivity', `${tf(kr > 0 ? 1 / kr : Infinity,5)} MΩ·cm`, `${tf(kr > 0 ? 1e6 / kr : Infinity,5)} Ω·cm`], ['Estimated TDS', `${tf(kr * (v.tds || 0.64),4)} ppm`, `factor ${tf(v.tds || 0.64,3)}`], ['Compensation factor', tf(1 / (1 + a * (v.T - ref)), 5), `${tf(v.k,5)} µS/cm at ${tf(v.T,3)} °C`]],
+        tbl: { title: 'Expected reading by temperature', head: ['Temp', 'µS/cm'], rows, hi: [] } };
+    }
+  }]
+});
+
+/* ==========================================================================
+   UNCERTAINTY
+   ========================================================================== */
+advDef('uncert', {
+  title: 'Uncertainty', label: 'Uncert<span class="x">ainty</span>', icon: '<path d="M3 20h18"/><path d="M5 20c1-9 3-14 7-14s6 5 7 14"/><path d="M12 6v14" opacity=".5"/>',
+  tools: [
+  { id: 'unc', n: 'Budget and TUR',
+    foot: 'Combines the components by root-sum-square after reducing each to a standard uncertainty (rectangular ÷ √3, resolution ÷ 2√3, certificate value ÷ its k, repeatability s/√n), then expands with the coverage factor. Test uncertainty ratio = tolerance ÷ expanded uncertainty. 4:1 or better is the usual target; below that, apply guard-banding. Enter every component as a percentage of span.',
+    fields: [
+      { h: 'Instrument under test' },
+      { k: 'tol', l: 'Tolerance', s: '± % of span', u: '%', v: 0.5 },
+      { k: 'res', l: 'Resolution', s: 'display or reading step', u: '% span', v: 0.01 },
+      { k: 'sd', l: 'Repeatability s', s: 'standard deviation of readings', u: '% span', v: 0.02 },
+      { k: 'n', l: 'Readings averaged', v: 3 },
+      { h: 'Reference standard' },
+      { k: 'ra', l: 'Specified accuracy', s: '± % of span', u: '%', v: 0.05 },
+      { k: 'rc', l: 'Calibration uncertainty', s: 'certificate U, as stated', u: '%', v: 0.02 },
+      { k: 'rk', l: 'Certificate k', v: 2 },
+      { k: 'rr', l: 'Resolution', u: '% span', v: 0.005 },
+      { h: 'Conditions' },
+      { k: 'amb', l: 'Temperature / ambient effect', s: '± % of span', u: '%', v: 0.02 },
+      { k: 'k', l: 'Coverage factor k', s: '2 ≈ 95 %', v: 2 },
+      { k: 'span', l: 'Span', s: 'optional: shows engineering units', v: '' },
+      { k: 'su', l: 'Unit', t: 't', v: 'bar' }
+    ],
+    calc(v){
+      const z = x => isFinite(x) ? x : 0, k = v.k > 0 ? v.k : 2, n = Math.max(1, Math.round(z(v.n)) || 1);
+      const comps = [
+        ['Reference accuracy', z(v.ra), '√3', z(v.ra) / Math.sqrt(3)],
+        ['Reference calibration', z(v.rc), String(v.rk > 0 ? v.rk : 2), z(v.rc) / (v.rk > 0 ? v.rk : 2)],
+        ['Reference resolution', z(v.rr) / 2, '√3', z(v.rr) / 2 / Math.sqrt(3)],
+        ['UUT resolution', z(v.res) / 2, '√3', z(v.res) / 2 / Math.sqrt(3)],
+        ['Repeatability', z(v.sd), '√' + n, z(v.sd) / Math.sqrt(n)],
+        ['Ambient effect', z(v.amb), '√3', z(v.amb) / Math.sqrt(3)]
+      ];
+      const uc = Math.sqrt(comps.reduce((s, c) => s + c[3] * c[3], 0)), U = k * uc;
+      if(!(uc > 0)) return { err: 'Enter at least one uncertainty component.' };
+      if(!(v.tol > 0)) return { err: 'Enter the tolerance of the instrument under test.' };
+      const tur = v.tol / U, w = [];
+      if(tur < 1) w.push('TUR below 1:1: the reference is not good enough to verify this tolerance. Use a better standard.');
+      else if(tur < 4) w.push(`TUR below 4:1: pass/fail decisions carry risk. Guard-band the acceptance limit to ±${tf(v.tol - U,3)} % of span.`);
+      const tot = comps.reduce((s, c) => s + c[3] * c[3], 0);
+      const rows = comps.map(c => [c[0], tf(c[1], 4), c[2], tf(c[3], 4), tf(c[3] * c[3] / tot * 100, 3) + ' %']);
+      rows.push(['Combined standard uc', '', '', tf(uc, 4), '100 %']);
+      const det = [['Expanded uncertainty U', `±${tf(U,4)} % of span`, `k = ${tf(k,3)}`], ['Guard-banded limit', `±${tf(Math.max(v.tol - U,0),4)} %`, 'tolerance − U'], ['TAR (accuracy ratio)', `${tf(v.tol / Math.max(z(v.ra),1e-9),3)} : 1`, 'tolerance ÷ reference spec only']];
+      if(v.span > 0) det.push(['In engineering units', `±${tf(U / 100 * v.span,4)} ${v.su || ''}`, `span ${tf(v.span,5)} ${v.su || ''}`]);
+      return { cap: 'Test uncertainty ratio', num: tf(tur, 4) + ' : 1', unit: tur >= 4 ? 'adequate' : tur >= 1 ? 'marginal' : 'inadequate', sub: `U = ±${tf(U,4)} % of span vs tolerance ±${tf(v.tol,4)} %`, warn: w, det,
+        tbl: { title: 'Uncertainty budget (% of span)', head: ['Component', 'Value', 'Divisor', 'Std u', 'Share'], rows, hi: [rows.length - 1] } };
+    }
+  }]
+});
+
+/* ---------- build everything ---------- */
+ADVPAGES.forEach(advBuildPage);
+ADVPAGES.forEach(p => {
+  const saved = advLoad(p), t0 = ADV[p].tools.some(t => t.id === saved) ? saved : ADV[p].tools[0].id;
+  advTool(p, t0);
+});
+
 
 /* ==========================================================================
    6. INIT
@@ -2902,9 +3710,15 @@ document.addEventListener('keydown', e=>{
   fwBuild();
   inBuild();
 
+  document.querySelectorAll('.navbar').forEach(n=>{
+    const b = document.createElement('button'); b.className = 'mini modepill'; b.onclick = ()=>setMode(advOn ? 'basic' : 'adv');
+    n.insertBefore(b, n.querySelector('.navbtn'));
+  });
+  let m = 'basic'; try{ m = localStorage.getItem('ik-mode') || 'basic'; }catch(e){}
+  setMode(m, true);
   try{
     const p = localStorage.getItem('ik-page');
-    if(p && $('page-'+p)) showPage(p);
+    if(p && $('page-'+p) && (advOn || ADVPAGES.indexOf(p) < 0)) showPage(p);
   }catch(e){}
 })();
 </script>
