@@ -1,0 +1,14 @@
+{
+  "name": "Health Explorer",
+  "short_name": "Health",
+  "description": "Explore an Apple Health export on-device: workouts, routes, comparisons, aggregates and calibration.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07090D",
+  "theme_color": "#07090D",
+  "icons": [
+    { "src": "../icons/health-explorer-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icons/health-explorer-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

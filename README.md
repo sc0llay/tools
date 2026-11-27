@@ -7,6 +7,7 @@ Each tool is a single HTML page that runs entirely in the browser: no server, no
 | Tool | Address |
 |---|---|
 | VO₂max Estimator | https://sc0llay.github.io/tools/vo2max/ |
+| Health Explorer | https://sc0llay.github.io/tools/health-explorer/ |
 | EV Charge Planner | https://sc0llay.github.io/tools/ev-charge/ |
 | GEM Blend Calculator | https://sc0llay.github.io/tools/gem-blend/ |
 | Turbo Match Bench | https://sc0llay.github.io/tools/turbo-toolkit/ |

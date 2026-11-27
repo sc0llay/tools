@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v18";
+const VERSION = "tools-v19";
 const FILES = [
   "./",
   "index.html",
@@ -26,7 +26,11 @@ const FILES = [
   "instrukit/",
   "instrukit/index.html",
   "instrukit/manifest.webmanifest",
-  "icons/instrukit-180.png", "icons/instrukit-192.png", "icons/instrukit-512.png"
+  "icons/instrukit-180.png", "icons/instrukit-192.png", "icons/instrukit-512.png",
+  "health-explorer/",
+  "health-explorer/index.html",
+  "health-explorer/manifest.webmanifest",
+  "icons/health-explorer-180.png", "icons/health-explorer-192.png", "icons/health-explorer-512.png"
 ];
 
 self.addEventListener("install", e => {
