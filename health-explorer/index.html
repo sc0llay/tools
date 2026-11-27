@@ -2732,7 +2732,8 @@ function bars(host, opts) {
 /* ---------------------------------------------------------------- scatter */
 
 /**
- * scatter(host, {points:[{x,y,color,id,label?}], x:{fmt,label,min,max}, y:{fmt,label,min,max},
+ * scatter(host, {points:[{x,y,yv?,color,id,label?}],  (yv: true value shown in the tooltip when y is clamped to the axis)
+ *   x:{fmt,label,min,max}, y:{fmt,label,min,max},
  *   fit?: {slope,intercept,r2?} | true, onClick(id), height=260})
  * fit === true computes the least-squares line and r² from the points.
  */
@@ -2799,10 +2800,10 @@ function scatter(host, opts) {
       tip(it) {
         const p = P[it.i];
         const s = (p.label ? `<div class="t-h">${esc(p.label)}</div>` : "") +
-          `<div class="t-r">${esc(xo.label || "x")}<b>${esc(xfmt(p.x))}</b></div><div class="t-r">${esc(yo.label || "y")}<b>${esc(yfmt(p.y))}</b></div>`;
+          `<div class="t-r">${esc(xo.label || "x")}<b>${esc(xfmt(p.x))}</b></div><div class="t-r">${esc(yo.label || "y")}<b>${esc(yfmt(ok(p.yv) ? p.yv : p.y))}</b>${ok(p.yv) && p.yv !== p.y ? " (off-scale)" : ""}</div>`;
         return { html: s, x: px[it.i], y: py[it.i] };
       },
-      text: (it) => `${P[it.i].label ? P[it.i].label + ": " : ""}${xfmt(P[it.i].x)}, ${yfmt(P[it.i].y)}`,
+      text: (it) => `${P[it.i].label ? P[it.i].label + ": " : ""}${xfmt(P[it.i].x)}, ${yfmt(ok(P[it.i].yv) ? P[it.i].yv : P[it.i].y)}`,
       activate(it) { if (o.onClick) o.onClick(P[it.i].id); },
     };
   });
@@ -5473,7 +5474,7 @@ __m["ui/surface3d.js"] = (function () {
 //
 const { fmtNum } = __m["core/format.js"];
 const { median } = __m["core/stats.js"];
-const { niceTicks } = __m["ui/charts.js"];
+const { niceTicks, stepTicks } = __m["ui/charts.js"];
 const CSS = `
 .s3{position:relative;min-width:0;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none}
 .s3 canvas{display:block;width:100%;touch-action:none;cursor:grab;outline:none;-webkit-tap-highlight-color:transparent;border-radius:14px}
@@ -5502,6 +5503,25 @@ function injectCss() {
 const ok = (v) => typeof v === "number" && v === v && v !== Infinity && v !== -Infinity;
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+/** Robust axis range: min..max of the values inside Tukey's fences (Q1 − 3·IQR, Q3 + 3·IQR, "far out" values), so outliers never set the scale. */
+function robustRange(vals) {
+  const v = vals.filter(ok).sort((a, b) => a - b);
+  if (!v.length) return { lo: 0, hi: 1 };
+  if (v.length < 4) return { lo: v[0], hi: v[v.length - 1] };
+  const q = (f) => { const i = (v.length - 1) * f, a = Math.floor(i), b = Math.ceil(i); return v[a] + (v[b] - v[a]) * (i - a); };
+  const q1 = q(0.25), q3 = q(0.75), k = 3 * (q3 - q1);
+  const inr = v.filter((x) => x >= q1 - k && x <= q3 + k);
+  return inr.length ? { lo: inr[0], hi: inr[inr.length - 1] } : { lo: v[0], hi: v[v.length - 1] };
+}
+/** Ticks for an axis that spans exactly lo..hi (no rounding out to "nice" bounds). With `step`, ticks are multiples of it and the ends round out to it. */
+function tightTicks(lo, hi, count, step) {
+  if (step > 0) return stepTicks(lo, hi, step, count + 1);
+  if (!(hi > lo)) return niceTicks(lo, hi, count);
+  const n = niceTicks(lo, hi, count);
+  const ticks = n.ticks.filter((t) => t >= lo - 1e-9 && t <= hi + 1e-9);
+  return ticks.length >= 2 ? { ticks, step: n.step, lo, hi } : n;
+}
 const DEFAULT_VIEW = { yaw: -0.66, pitch: 0.5 };
 const PITCH_MIN = 0.07, PITCH_MAX = 1.5;
 const ZS = 0.62;
@@ -5571,18 +5591,17 @@ function surface3d(host, opts0) {
   const cssVar = (name) => { probe.style.color = `var(${name})`; return parseColor(getComputedStyle(probe).color); };
 
   function build() {
-    const P = (o.points || []).filter((p) => ok(p.x) && ok(p.y) && ok(p.z));
-    if (P.length < 3) { model = { P, empty: true }; return; }
-    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
-    for (const p of P) { if (p.x < a0) a0 = p.x; if (p.x > a1) a1 = p.x; if (p.y < b0) b0 = p.y; if (p.y > b1) b1 = p.y; }
+    const P0 = (o.points || []).filter((p) => ok(p.x) && ok(p.y) && ok(p.z));
+    if (P0.length < 3) { model = { P: P0, empty: true }; return; }
+    // every axis spans the recorded min..max with outliers ignored; outlying workouts are drawn at the edge (raw value in the tooltip)
+    const rx = robustRange(P0.map((p) => p.x)), ry = robustRange(P0.map((p) => p.y)), rz = robustRange(P0.map((p) => p.z));
     const nt = W && W < 520 ? 4 : 5;
-    const xt = niceTicks(a0, a1, nt), yt = niceTicks(b0, b1, nt);
+    const xt = tightTicks(rx.lo, rx.hi, nt, o.x && o.x.step), yt = tightTicks(ry.lo, ry.hi, nt, o.y && o.y.step);
+    const zt = tightTicks(rz.lo, rz.hi, 5, o.z && o.z.step);
+    const P = P0.map((p) => ({ ...p, x: clamp(p.x, xt.lo, xt.hi), y: clamp(p.y, yt.lo, yt.hi), z: clamp(p.z, zt.lo, zt.hi), raw: p }));
     const nb = clamp(Math.round(o.bins || 12), 2, 40);
     const grid = surfaceGrid(P, xt, yt, nb, nb, o.fill === undefined ? 2 : o.fill);
-    let z0 = Infinity, z1 = -Infinity;
-    for (const p of P) { if (p.z < z0) z0 = p.z; if (p.z > z1) z1 = p.z; }
-    for (const c of grid.cells) if (c.v !== null) { if (c.v < z0) z0 = c.v; if (c.v > z1) z1 = c.v; }
-    const zt = niceTicks(z0, z1, 5);
+    for (const c of grid.cells) if (c.v !== null) c.v = clamp(c.v, zt.lo, zt.hi);
     model = { P, xt, yt, zt, grid, empty: false, nMeasured: grid.cells.filter((c) => !c.interp && c.v !== null).length };
   }
 
@@ -5765,9 +5784,10 @@ function surface3d(host, opts0) {
     const xl = (o.x && o.x.label) || "X", yl = (o.y && o.y.label) || "Y", zl = (o.z && o.z.label) || "Z";
     if (h.kind === "dot") {
       const p = h.p;
-      return { html: `<div class="t-h">${esc(p.label || "Workout")}</div><div class="t-r">${esc(zl)}<b>${esc(zf(p.z))}</b></div><div class="t-r">${esc(xl)}<b>${esc(xf(p.x))}</b></div><div class="t-r">${esc(yl)}<b>${esc(yf(p.y))}</b></div>` +
+      const r = p.raw || p;
+      return { html: `<div class="t-h">${esc(p.label || "Workout")}</div><div class="t-r">${esc(zl)}<b>${esc(zf(r.z))}</b></div><div class="t-r">${esc(xl)}<b>${esc(xf(r.x))}</b></div><div class="t-r">${esc(yl)}<b>${esc(yf(r.y))}</b></div>` +
         (p.id !== undefined && o.onPoint ? '<div class="t-n">Tap again to open</div>' : ""),
-        text: `${p.label || "Workout"}: ${zl} ${zf(p.z)}, ${xl} ${xf(p.x)}, ${yl} ${yf(p.y)}` };
+        text: `${p.label || "Workout"}: ${zl} ${zf(r.z)}, ${xl} ${xf(r.x)}, ${yl} ${yf(r.y)}` };
     }
     const c = h.cell, g = model.grid;
     const dx = (g.xd.hi - g.xd.lo) / g.nx, dy = (g.yd.hi - g.yd.lo) / g.ny;
@@ -5905,7 +5925,7 @@ function surface3d(host, opts0) {
   };
 }
 
-return { DEFAULT_VIEW, surfaceGrid, surface3d };
+return { robustRange, DEFAULT_VIEW, surfaceGrid, surface3d };
 })();
 // ---- ui/calibration.js
 __m["ui/calibration.js"] = (function () {
@@ -5980,6 +6000,20 @@ function kcalPerKmOf(r) {
 function kcalPerMinOf(r) {
   if (has(r.kcalPerMin)) return r.kcalPerMin;
   return has(r.activeKcal) && has(r.durMin) && r.durMin > 0 ? r.activeKcal / r.durMin : null;
+}
+
+/**
+ * Values that set the kcal/km axis range: within the σ threshold AND inside Tukey's fences (Q1 − 3·IQR, Q3 + 3·IQR, "far out" values).
+ * The σ rule alone lets moderate outliers through because a single huge value inflates the SD, so the axis would still
+ * stretch to them. Everything outside is drawn at the edge (trend, scatter) or counted as off-scale (histogram).
+ */
+function axisKept(points, zThr) {
+  const v = points.filter((p) => Math.abs(p.z) <= zThr).map((p) => p.v).sort((a, b) => a - b);
+  if (v.length < 4) return v;
+  const q = (f) => { const i = (v.length - 1) * f, a = Math.floor(i), b = Math.ceil(i); return v[a] + (v[b] - v[a]) * (i - a); };
+  const q1 = q(0.25), q3 = q(0.75), k = 3 * (q3 - q1);
+  const out = v.filter((x) => x >= q1 - k && x <= q3 + k);
+  return out.length ? out : v;
 }
 
 /** Rows (of `type`, or all when null) that have a usable kcal/km, oldest first. */
@@ -6222,7 +6256,7 @@ function mount(root, ctx) {
     el.appendChild(g1);
     const vals = st.points.map((p) => p.v);
     // axis range = non-outlier values (current σ rule); outliers stay in the data but are clamped / counted as off-scale
-    const kept = st.points.filter((p) => Math.abs(p.z) <= zThr).map((p) => p.v);
+    const kept = axisKept(st.points, zThr);
     const inr = kept.length ? kept : vals;
     const lo = Math.min(...inr), hi = Math.max(...inr), off = vals.length - kept.length;
     const offTxt = off && kept.length ? ` · +${off} off` : "";
@@ -6240,7 +6274,7 @@ function mount(root, ctx) {
       charts.push(line(host, {
         series: [
           { name: "Workout", color: "var(--label-3)", points: st.points.map((p) => [p.row.start, Math.min(hi, Math.max(lo, p.v))]) },
-          { name: `Median of last ${win}`, color: "var(--orange)", points: st.points.map((p, i) => [p.row.start, roll[i]]) },
+          { name: `Median of last ${win}`, color: "var(--orange)", points: st.points.map((p, i) => [p.row.start, roll[i] == null ? null : Math.min(hi, Math.max(lo, roll[i]))]) },
         ],
         x: { fmt: dayLabel }, y: { step: 2.5, tight: true, fmt: fmt25 }, height: 200,
         onPoint: (p) => { const pt = st.points[p.index]; if (pt) openDetail(pt.row.id); },
@@ -6285,12 +6319,15 @@ function mount(root, ctx) {
     }
     if (!is3) {
       const rel = relation(cr, xAxis, yAxis);
-      const { card, host } = chartCard(`${yAxis.label} vs ${xAxis.label}`, rel.n > 1 ? `r² ${fmtNum(rel.r2, 2)} · n ${rel.n}` : `n ${rel.n}`);
+      const kpk = yKey === "kcalPerKm" && kept.length > 0;
+      const offS = kpk ? rel.pts.filter((p) => p.y < lo || p.y > hi).length : 0;
+      const { card, host } = chartCard(`${yAxis.label} vs ${xAxis.label}`, (rel.n > 1 ? `r² ${fmtNum(rel.r2, 2)} · n ${rel.n}` : `n ${rel.n}`) + (offS ? ` · ${offS} off-scale (at edge)` : ""));
       el.appendChild(card);
       const xf = axisFmt(xKey);
       charts.push(scatter(host, {
-        points: rel.pts.map((p) => ({ x: p.x, y: p.y, id: p.row.id, color: outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
-        x: { fmt: xf, label: `${xAxis.label} (${xAxis.unit})` }, y: { fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0), label: yAxis.label },
+        points: rel.pts.map((p) => ({ x: p.x, y: kpk ? Math.min(hi, Math.max(lo, p.y)) : p.y, yv: p.y, id: p.row.id, color: outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
+        x: { fmt: xf, label: `${xAxis.label} (${xAxis.unit})` },
+        y: kpk && kept.length ? { step: 2.5, tight: true, fmt: fmt25, label: yAxis.label } : { fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0), label: yAxis.label },
         fit: rel.n > 1 ? { slope: rel.slope, intercept: rel.intercept, r2: rel.r2 } : undefined,
         onClick: openDetail, height: 280,
       }));
@@ -6319,7 +6356,7 @@ function mount(root, ctx) {
       const sf = surface3d(host, {
         points: pts,
         x: { label: `${aX.label} (${aX.unit})`, fmt: axisFmt(ax) }, y: { label: `${aY.label} (${aY.unit})`, fmt: axisFmt(ay) },
-        z: { label: yAxis.label, fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0) },
+        z: yKey === "kcalPerKm" ? { label: yAxis.label, step: 2.5, fmt: fmt25 } : { label: yAxis.label, fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0) },
         bins: 12, view: view3 || undefined, onView: (v) => { view3 = v; }, onPoint: openDetail,
       });
       charts.push(sf);
@@ -6439,7 +6476,7 @@ function mount(root, ctx) {
   };
 }
 
-return { OUTLIER_Z, X_AXES, Y_AXES, kcalPerKmOf, kcalPerMinOf, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, stepBinWidth, histBinWidth, fmt25, mount };
+return { OUTLIER_Z, X_AXES, Y_AXES, kcalPerKmOf, kcalPerMinOf, axisKept, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, stepBinWidth, histBinWidth, fmt25, mount };
 })();
 // ---- parser/zip.js
 __m["parser/zip.js"] = (function () {
