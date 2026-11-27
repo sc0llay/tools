@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v25";
+const VERSION = "tools-v26";
 const FILES = [
   "./",
   "index.html",
@@ -30,11 +30,15 @@ const FILES = [
   "health-explorer/",
   "health-explorer/index.html",
   "health-explorer/manifest.webmanifest",
-  "icons/health-explorer-180.png", "icons/health-explorer-192.png", "icons/health-explorer-512.png"
+  "icons/health-explorer-180.png", "icons/health-explorer-192.png", "icons/health-explorer-512.png",
+  "icons/health-explorer-maskable-512.png"
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // Cache each file on its own so one missing icon can't block the whole install.
+  e.waitUntil(caches.open(VERSION)
+    .then(c => Promise.all(FILES.map(f => c.add(f).catch(err => console.warn("sw: not cached", f, err)))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
