@@ -5988,9 +5988,11 @@ const X_AXES = [
   { key: "elevM", label: "Elevation gain", unit: "m", get: (r) => r.elevM },
 ];
 const Y_AXES = [
-  { key: "kcalPerKm", label: "kcal/km", get: (r) => kcalPerKmOf(r) },
-  { key: "kcalPerMin", label: "kcal/min", get: (r) => kcalPerMinOf(r) },
+  { key: "kcalPerKm", label: "kcal/km", unit: "kcal/km", get: (r) => kcalPerKmOf(r) },
+  { key: "kcalPerMin", label: "kcal/min", unit: "kcal/min", get: (r) => kcalPerMinOf(r) },
 ];
+/** Every metric the 3D surface can put on any of its three axes. */
+const AXES_3D = [...Y_AXES, ...X_AXES];
 
 /** Active kcal per km of a row: the stored value, else derived; null without both energy and distance > 0. */
 function kcalPerKmOf(r) {
@@ -6127,7 +6129,7 @@ function mount(root, ctx) {
   const ui = ctx.ui || {};
   let type; // undefined = auto (largest group), null = all types, string = one type
   let xKey = "avgHr", yKey = "kcalPerKm", win = 10, zThr = OUTLIER_Z;
-  let dim = "2d", ax = "paceMinKm", ay = "avgHr", view3 = null; // 2D scatter, or 3D surface over axes ax × ay
+  let dim = "2d", ax = "paceMinKm", ay = "avgHr", az = "kcalPerKm", view3 = null; // 2D scatter, or 3D surface: height az over ax × ay
   let charts = [], dirty = true, destroyed = false;
   const el = document.createElement("div");
   el.className = "fk";
@@ -6293,8 +6295,10 @@ function mount(root, ctx) {
     el.appendChild(ctl);
     const is3 = dim === "3d";
     seg(ctl, [{ value: "2d", label: "2D" }, { value: "3d", label: "3D" }], dim, (v) => { dim = v; render(); }, "Chart dimension").style.minWidth = "110px";
-    const yl = document.createElement("label"); yl.textContent = is3 ? "Height" : "Y"; ctl.appendChild(yl);
-    seg(ctl, Y_AXES.map((a) => ({ value: a.key, label: a.label })), yKey, (v) => { yKey = v; render(); }, is3 ? "Height" : "Y axis");
+    if (!is3) {
+      const yl = document.createElement("label"); yl.textContent = "Y"; ctl.appendChild(yl);
+      seg(ctl, Y_AXES.map((a) => ({ value: a.key, label: a.label })), yKey, (v) => { yKey = v; render(); }, "Y axis");
+    }
     const xAxis = X_AXES.find((a) => a.key === xKey), yAxis = Y_AXES.find((a) => a.key === yKey);
     const outIds = new Set(st.outliers.map((p) => p.row.id));
     if (!is3) {
@@ -6306,16 +6310,27 @@ function mount(root, ctx) {
         const s2 = document.createElement("select");
         s2.className = "fk-sel";
         s2.setAttribute("aria-label", label);
-        for (const a of X_AXES) { const op = document.createElement("option"); op.value = a.key; op.textContent = a.label; s2.appendChild(op); }
+        for (const a of AXES_3D) { const op = document.createElement("option"); op.value = a.key; op.textContent = a.label; s2.appendChild(op); }
         s2.value = value;
         s2.onchange = () => onChange(s2.value);
         return s2;
       };
-      const g1x = document.createElement("div"); g1x.className = "fk-selg";
-      const lx = document.createElement("label"); lx.textContent = "over"; g1x.append(lx, sel("3D X axis", ax, (v) => { if (v === ay) ay = ax; ax = v; render(); }));
-      const g2x = document.createElement("div"); g2x.className = "fk-selg";
-      const ly = document.createElement("label"); ly.textContent = "×"; g2x.append(ly, sel("3D Y axis", ay, (v) => { if (v === ax) ax = ay; ay = v; render(); }));
-      ctl.append(g1x, g2x);
+      // choosing a metric another axis already shows swaps the two, so the three axes stay distinct
+      const set3 = (which, v) => {
+        const cur = { ax, ay, az };
+        const other = Object.keys(cur).find((k) => k !== which && cur[k] === v);
+        if (other) cur[other] = cur[which];
+        cur[which] = v;
+        ({ ax, ay, az } = cur);
+        render();
+      };
+      const grp = (txt, label, value, which) => {
+        const g = document.createElement("div"); g.className = "fk-selg";
+        const l = document.createElement("label"); l.textContent = txt;
+        g.append(l, sel(label, value, (v) => set3(which, v)));
+        return g;
+      };
+      ctl.append(grp("Height", "3D height axis", az, "az"), grp("over", "3D X axis", ax, "ax"), grp("×", "3D Y axis", ay, "ay"));
     }
     if (!is3) {
       const rel = relation(cr, xAxis, yAxis);
@@ -6344,19 +6359,21 @@ function mount(root, ctx) {
         card.appendChild(d);
       }
     } else {
-      const aX = X_AXES.find((a) => a.key === ax), aY = X_AXES.find((a) => a.key === ay);
+      // kcal/km ticks sit on the 2.5 grid on whichever axis it is put
+      const axis3 = (a) => a.key === "kcalPerKm" ? { label: a.label, step: 2.5, fmt: fmt25 }
+        : { label: a.unit && a.unit !== a.label ? `${a.label} (${a.unit})` : a.label, fmt: a.key === "kcalPerMin" ? (v) => fmtNum(v, 1) : axisFmt(a.key) };
+      const aX = AXES_3D.find((a) => a.key === ax), aY = AXES_3D.find((a) => a.key === ay), aZ = AXES_3D.find((a) => a.key === az);
       const pts = [];
       for (const r of cr) {
-        const x = aX.get(r), y = aY.get(r), z = yAxis.get(r);
+        const x = aX.get(r), y = aY.get(r), z = aZ.get(r);
         if (has(x) && has(y) && has(z)) pts.push({ x, y, z, id: r.id, label: dayLabel(r.start) });
       }
-      const { card, host } = chartCard(`${yAxis.label} by ${aX.label} × ${aY.label}`, `n ${pts.length}`);
+      const { card, host } = chartCard(`${aZ.label} by ${aX.label} × ${aY.label}`, `n ${pts.length}`);
       card.dataset.s3 = "1";
       el.appendChild(card);
       const sf = surface3d(host, {
         points: pts,
-        x: { label: `${aX.label} (${aX.unit})`, fmt: axisFmt(ax) }, y: { label: `${aY.label} (${aY.unit})`, fmt: axisFmt(ay) },
-        z: yKey === "kcalPerKm" ? { label: yAxis.label, step: 2.5, fmt: fmt25 } : { label: yAxis.label, fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0) },
+        x: axis3(aX), y: axis3(aY), z: axis3(aZ),
         bins: 12, view: view3 || undefined, onView: (v) => { view3 = v; }, onPoint: openDetail,
       });
       charts.push(sf);
@@ -6367,8 +6384,8 @@ function mount(root, ctx) {
       d.className = "fk-note";
       d.dataset.fit3 = "1";
       d.textContent = pts.length < 3
-        ? `Not enough workouts with ${aX.label}, ${aY.label} and ${yAxis.label} to draw a surface.`
-        : `The surface is the median ${yAxis.label} of the workouts in each ${aX.label} × ${aY.label} cell (12 × 12 grid), with nearby empty cells interpolated and distant ones left blank. Dots are individual workouts. Drag to rotate; hover or tap for a cell's value and n.`;
+        ? `Not enough workouts with ${aX.label}, ${aY.label} and ${aZ.label} to draw a surface.`
+        : `The surface is the median ${aZ.label} of the workouts in each ${aX.label} × ${aY.label} cell (12 × 12 grid), with nearby empty cells interpolated and distant ones left blank. Dots are individual workouts. Drag to rotate; hover or tap for a cell's value and n.`;
       card.appendChild(d);
     }
 
@@ -6476,7 +6493,7 @@ function mount(root, ctx) {
   };
 }
 
-return { OUTLIER_Z, X_AXES, Y_AXES, kcalPerKmOf, kcalPerMinOf, axisKept, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, stepBinWidth, histBinWidth, fmt25, mount };
+return { OUTLIER_Z, X_AXES, Y_AXES, AXES_3D, kcalPerKmOf, kcalPerMinOf, axisKept, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, stepBinWidth, histBinWidth, fmt25, mount };
 })();
 // ---- parser/zip.js
 __m["parser/zip.js"] = (function () {
