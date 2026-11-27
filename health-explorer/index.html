@@ -2323,6 +2323,19 @@ function niceTicks(min, max, count = 5, opts) {
  * Returns {yt, yfmt}.
  */
 function yScale(y0, y1, count, yo) {
+  if (ok(yo.step) && yo.step > 0) {
+    const yt = stepTicks(y0, y1, yo.step, count);
+    return { yt, yfmt: yo.fmt || stepFmt(yo.step) };
+  }
+  if (yo.tight) {
+    const r = yScaleLoose(y0, y1, count, yo);
+    const ticks = r.yt.ticks.filter((t) => t >= y0 - 1e-9 && t <= y1 + 1e-9);
+    if (y1 > y0 && ticks.length >= 2) return { yt: { ticks, step: r.yt.step, lo: y0, hi: y1 }, yfmt: r.yfmt };
+    return r;
+  }
+  return yScaleLoose(y0, y1, count, yo);
+}
+function yScaleLoose(y0, y1, count, yo) {
   const uniq = (a) => new Set(a).size === a.length;
   let last = null;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -2341,6 +2354,29 @@ function yScale(y0, y1, count, yo) {
   }
   return last;
 }
+/**
+ * Opt-in "stepped" axis: ticks are whole multiples of `step` (2.5 → 50, 52.5, 55…). The domain is the data min/max rounded
+ * out to `step` (tight, no forced zero). When that gives more than `maxTicks` ticks the tick spacing grows by a whole
+ * multiplier (×2, ×4, ×10…), so every tick is still a multiple of `step`. → {ticks, step, lo, hi}
+ */
+function stepTicks(min, max, step, maxTicks = 6) {
+  if (!ok(min) || !ok(max) || !(step > 0)) return { ticks: [0, 1], step: 1, lo: 0, hi: 1 };
+  if (min > max) { const t = min; min = max; max = t; }
+  const lo = Math.floor(min / step + 1e-9) * step;
+  let hi = Math.ceil(max / step - 1e-9) * step;
+  if (hi - lo < step * 0.5) hi = lo + step;
+  const clean = (v) => +v.toFixed(10);
+  let s = step, first = lo;
+  for (const m of [1, 2, 4, 10, 20, 40, 100, 200, 400, 1000, 4000, 10000]) {
+    s = step * m;
+    first = Math.ceil(lo / s - 1e-9) * s;
+    if (Math.floor((hi - first) / s + 1e-9) + 1 <= Math.max(2, maxTicks)) break;
+  }
+  const ticks = [];
+  for (let t = first; t <= hi + 1e-9; t += s) ticks.push(clean(t));
+  return { ticks, step: s, lo: clean(lo), hi: clean(hi) };
+}
+function stepFmt(step) { const dp = step % 1 === 0 ? 0 : 1; return (v) => fmtNum(v, Number.isInteger(+v.toFixed(9)) ? 0 : dp); }
 function dpFor(step) { return step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step) - 1e-9)); }
 function defFmt(step) { const dp = dpFor(step); return (v) => fmtNum(v, dp); }
 
@@ -2462,7 +2498,8 @@ const labW = (labels) => labels.reduce((m, l) => Math.max(m, String(l).length), 
 /* ------------------------------------------------------------------- line */
 
 /**
- * line(host, {series:[{name,color,points:[[x,y|null]]}], x:{fmt,min,max,integer,ticks}, y:{fmt,tipFmt,min,max},
+ * line(host, {series:[{name,color,points:[[x,y|null]]}], x:{fmt,min,max,integer,ticks}, y:{fmt,tipFmt,min,max,step?,tight?},
+ *   y.step (e.g. 2.5): ticks are whole multiples of it and the domain is the data min..max rounded out to it; y.tight: domain = data min..max.
  *   height=220, onPoint({series,seriesIndex,x,y,index}), selected?:x})
  * Null y values break the line (one <path class="hx-ln"> per run); single-point runs draw a dot.
  */
@@ -2785,14 +2822,16 @@ function histogram(host, opts) {
     const yt = niceTicks(0, Math.max(1, nmax), Math.max(3, Math.round(H / 48)), { integer: true });
     const yfmt = (v) => fmtNum(v, 0);
     const xt0 = niceTicks(x0, x1, 6);
-    const xfmt = xo.fmt || defFmt(xt0.step);
+    const xfmt = xo.fmt || (xo.step > 0 ? stepFmt(xo.step) : defFmt(xt0.step));
     const ml = labW(yt.ticks.map(yfmt)), mr = 14, mt = o.marker != null ? 22 : 10, mb = 26;
     const pw = Math.max(40, W - ml - mr), ph = H - mt - mb;
     const sx = (x) => ml + ((x - x0) / (x1 - x0 || 1)) * pw;
     const sy = (y) => mt + ph - (y / (yt.hi || 1)) * ph;
     let html = yAxis(yt.ticks, yfmt, sy, ml, W, mr);
     html += `<line class="hx-axis" x1="${ml}" x2="${W - mr}" y1="${mt + ph}" y2="${mt + ph}"/>`;
-    const xt = niceTicks(x0, x1, clamp(Math.floor(pw / 80), 2, 8));
+    // x.step: ticks at whole multiples of the step across exactly x0..x1 (the bins' own span); widened by whole multipliers when crowded
+    const xlab = Math.max(...[x0, x1].map((v) => String(xfmt(v)).length), 3) * 6.4 + 22;
+    const xt = xo.step > 0 ? stepTicks(x0, x1, xo.step, clamp(Math.floor(pw / xlab), 2, 12)) : niceTicks(x0, x1, clamp(Math.floor(pw / 80), 2, 8));
     for (const t of xt.ticks) {
       if (t < x0 - 1e-9 || t > x1 + 1e-9) continue;
       const x = sx(t), anc = x < ml + 20 ? "start" : x > W - 30 ? "end" : "middle";
@@ -2903,7 +2942,7 @@ function route(host, tracks, extra) {
   };
 }
 
-return { SERIES_COLORS, niceTicks, line, bars, scatter, histogram, route };
+return { SERIES_COLORS, niceTicks, stepTicks, line, bars, scatter, histogram, route };
 })();
 // ---- ui/map.js
 __m["ui/map.js"] = (function () {
@@ -3408,6 +3447,169 @@ function slippy(wrap, opts) {
 
 return { MAP_STYLES, maxZoomFor, tileUrls, project, unproject, fitZoom, currentTheme, mapLinks, routeMap };
 })();
+// ---- core/vo2max.js
+__m["core/vo2max.js"] = (function () {
+// VO2max estimate from a steady outdoor run / walk / hike. Pure, DOM-free. A faithful port of docs/reference-vo2max.html:
+// VO2 at pace from the ACSM equations and from the Minetti 2002 cost curve, extrapolated to max via %VO2R ~ %HRR.
+const REST_VO2 = 3.5;
+const O2_J_PER_ML = 20.9;
+const DAY = 86400000;
+
+const SUITABLE = { minDurMin: 10, runMinKmh: 7.5, runMaxKmh: 22, walkMinKmh: 2.5, walkMaxKmh: 7.5, minHrr: 0.3, maxHrr: 1.05, plausible: [15, 90] };
+
+/** Minetti 2002 energy cost of running, J/(kg*m), gradient g (fraction, clamped to +-0.45). */
+function minettiC(g) {
+  g = Math.max(-0.45, Math.min(0.45, g));
+  return 155.4 * g ** 5 - 30.4 * g ** 4 - 43.3 * g ** 3 + 46.3 * g ** 2 + 19.5 * g + 3.6;
+}
+
+/** VO2 (ml/kg/min) at a constant speed (m/min) and grade, road surface (terrain factor 1). engine "acsm" | "minetti". */
+function vo2AtPace(vMmin, grade, mode, engine) {
+  if (mode === "walk" || engine === "acsm") {
+    return mode === "walk" ? 0.1 * vMmin + 1.8 * vMmin * grade + REST_VO2 : 0.2 * vMmin + 0.9 * vMmin * grade + REST_VO2;
+  }
+  return (minettiC(grade) * vMmin) / O2_J_PER_ML + REST_VO2;
+}
+
+/** Fraction of heart-rate reserve. */
+const pctHrr = (avgHr, hrRest, hrMax) => (avgHr - hrRest) / (hrMax - hrRest);
+
+/** VO2max = 3.5 + (VO2pace - 3.5) / %HRR. */
+const extrapolate = (vo2pace, hrr) => REST_VO2 + (vo2pace - REST_VO2) / hrr;
+
+/**
+ * "run" for Running, "walk" for Walking and Hiking, else null. Walk mode uses ACSM walking for both components
+ * (the reference switches Minetti to ACSM in walk mode, as the Minetti curve is for running).
+ */
+function modeFor(type) {
+  const t = String(type || "");
+  if (/Run/.test(t)) return "run";
+  if (/Walk|Hik/.test(t)) return "walk";
+  return null;
+}
+
+/**
+ * Suitability of a workout row. Returns {ok, mode, kmh, grade, reason}. Rule (documented in contract.md): outdoor
+ * running / walking / hiking with distance, duration >= 10 min, an average HR, and a speed inside the type's band
+ * (run 7.5-22 km/h, walk/hike 2.5-7.5 km/h, the reference's equation limits).
+ * `elevM` overrides row.elevM (e.g. a GPX gain).
+ */
+function suitability(row, elevM) {
+  const no = (reason) => ({ ok: false, reason });
+  if (!row) return no("no workout");
+  const mode = modeFor(row.type);
+  if (!mode) return no("type");
+  const x = row.ext;
+  const outdoor = x && x.indoor === false ? true : x && x.indoor === true ? false : !!row.route;
+  if (!outdoor) return no("indoor");
+  if (!(row.distKm > 0) || !(row.durMin >= SUITABLE.minDurMin)) return no("distance or duration");
+  if (!(row.avgHr > 0)) return no("no heart rate");
+  const kmh = row.distKm / (row.durMin / 60);
+  const lo = mode === "run" ? SUITABLE.runMinKmh : SUITABLE.walkMinKmh, hi = mode === "run" ? SUITABLE.runMaxKmh : SUITABLE.walkMaxKmh;
+  if (kmh < lo || kmh > hi) return no("speed out of range");
+  const gain = elevM !== undefined && elevM !== null ? elevM : row.elevM;
+  const grade = gain > 0 ? gain / (row.distKm * 1000) : 0;
+  return { ok: true, mode, kmh, grade };
+}
+
+/**
+ * Per-engine VO2max for a suitable row. Returns {acsm, minetti, hrr, vo2paceAcsm, vo2paceMinetti, kmh, grade, mode} where
+ * acsm / minetti are null when not computable (minetti is always null in walk mode; both null when %HRR is outside
+ * [minHrr, maxHrr] or the result is implausible).
+ */
+function estimateFromRow(row, hrRest, hrMax, elevM) {
+  const s = suitability(row, elevM);
+  if (!s.ok || !(hrMax > hrRest) || !(row.avgHr > hrRest)) return null;
+  const hrr = pctHrr(row.avgHr, hrRest, hrMax);
+  if (hrr < SUITABLE.minHrr || hrr > SUITABLE.maxHrr) return null;
+  const v = (s.kmh * 1000) / 60;
+  const ok = (n) => (n >= SUITABLE.plausible[0] && n <= SUITABLE.plausible[1] ? n : null);
+  const pA = vo2AtPace(v, s.grade, s.mode, "acsm");
+  const out = { mode: s.mode, kmh: s.kmh, grade: s.grade, hrr, vo2paceAcsm: pA, vo2paceMinetti: null, acsm: ok(extrapolate(pA, hrr)), minetti: null };
+  if (s.mode === "run") {
+    const pM = vo2AtPace(v, s.grade, "run", "minetti");
+    out.vo2paceMinetti = pM;
+    out.minetti = ok(extrapolate(pM, hrr));
+  }
+  return out;
+}
+
+/** Apple Watch VO2 Max record nearest to `ms` within +-maxDays. series {times, values}. Returns {value, t, days}|null. */
+function nearestMeasured(series, ms, maxDays = 30) {
+  if (!series || !series.times || !series.times.length) return null;
+  const t = series.times;
+  let lo = 0, hi = t.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < ms) lo = m + 1; else hi = m; }
+  let best = -1, bd = Infinity;
+  for (const i of [lo - 1, lo]) {
+    if (i < 0 || i >= t.length) continue;
+    const d = Math.abs(t[i] - ms);
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best < 0 || bd > maxDays * DAY) return null;
+  return { value: series.values[best], t: t[best], days: bd / DAY };
+}
+
+/** Mean of the finite values, or null. */
+function meanOf(vals) {
+  const a = vals.filter((v) => v !== null && v !== undefined && v === v);
+  return a.length ? a.reduce((p, c) => p + c, 0) / a.length : null;
+}
+
+/**
+ * Default HR inputs from the user's history.
+ * hrMax: the highest per-workout maxHr between 100 and 220 bpm that is corroborated, i.e. not a one-off spike:
+ *   the 99.5th percentile of per-workout maxHr values (all within 100-220), rounded. (Sensor spikes are rare, so a high
+ *   percentile ignores them while still tracking the genuine peak.)
+ * hrRest: the lowest plausible (35-100 bpm) workout heart rate sample, taken as the 0.1th percentile of per-workout
+ *   minima so one dropout cannot set it; falls back to the lowest day resting HR (rhrDay) if no workout minima exist.
+ * hrSeries {times, values} is optional; `minima` (precomputed per-workout minima) may be passed instead.
+ */
+function defaultHr(rows, hrSeries, minima) {
+  const maxes = [];
+  for (const r of rows) if (r.maxHr >= 100 && r.maxHr <= 220) maxes.push(r.maxHr);
+  maxes.sort((a, b) => a - b);
+  const q = (a, p) => (a.length ? a[Math.min(a.length - 1, Math.max(0, Math.round(p * (a.length - 1))))] : null);
+  const hrMax = q(maxes, 0.995);
+  let mins = minima || (hrSeries ? workoutMinima(rows, hrSeries) : []);
+  mins = mins.filter((v) => v >= 35 && v <= 100).sort((a, b) => a - b);
+  let hrRest = q(mins, 0.001);
+  let source = "workout";
+  if (hrRest === null) {
+    const d = rows.map((r) => r.rhrDay).filter((v) => v >= 35 && v <= 100);
+    hrRest = d.length ? Math.min(...d) : null;
+    source = "rhrDay";
+  }
+  return { hrMax: hrMax === null ? null : Math.round(hrMax), hrRest: hrRest === null ? null : Math.round(hrRest), restSource: hrRest === null ? null : source };
+}
+
+/** Minimum HR sample inside each workout window (array of numbers, workouts without samples skipped). */
+function workoutMinima(rows, hrSeries) {
+  const out = [];
+  if (!hrSeries || !hrSeries.times) return out;
+  const t = hrSeries.times, v = hrSeries.values;
+  for (const r of rows) {
+    let lo = 0, hi = t.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < r.start) lo = m + 1; else hi = m; }
+    let mn = Infinity;
+    for (let i = lo; i < t.length && t[i] <= r.end; i++) if (v[i] > 0 && v[i] < mn) mn = v[i];
+    if (mn !== Infinity) out.push(mn);
+  }
+  return out;
+}
+
+/** Full card model. `measured` from nearestMeasured (or null). Final = mean of the available {acsm, minetti, watch}. */
+function vo2Card(row, hrRest, hrMax, measured, elevM) {
+  const e = estimateFromRow(row, hrRest, hrMax, elevM);
+  if (!e) return null;
+  const watch = measured ? measured.value : null;
+  const final = meanOf([e.acsm, e.minetti, watch]);
+  if (final === null) return null;
+  return { ...e, watch, watchAt: measured ? measured.t : null, watchDays: measured ? measured.days : null, final };
+}
+
+return { REST_VO2, SUITABLE, minettiC, vo2AtPace, pctHrr, extrapolate, modeFor, suitability, estimateFromRow, nearestMeasured, meanOf, defaultHr, workoutMinima, vo2Card };
+})();
 // ---- ui/workout-charts.js
 __m["ui/workout-charts.js"] = (function () {
 // Derived workout data for the detail page (Agent G): track metrics from a GPX, pace colours, splits, HR zones.
@@ -3593,6 +3795,7 @@ const { typeLabel } = __m["ui/filters.js"];
 const { MAX_COMPARE } = __m["ui/table.js"];
 const { line } = __m["ui/charts.js"];
 const { routeMap } = __m["ui/map.js"];
+const { suitability, defaultHr, workoutMinima, nearestMeasured, vo2Card } = __m["core/vo2max.js"];
 const { trackMetrics, paceColors, paceColor, splitsFromTrack, splitsFromSegments, zoneModel, strideIdx, meanHrBetween, elevGain } = __m["ui/workout-charts.js"];
 const MI = 1.609344, FT = 3.28084;
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -3630,8 +3833,15 @@ const CSS = `
 .wk-c .wk-v{display:block;font-family:var(--round);font-size:30px;line-height:1.12;font-weight:700;letter-spacing:-.5px;margin-top:2px;white-space:nowrap}
 .wk-c .wk-v small{text-transform:uppercase;font-size:15px;font-weight:600;color:var(--label-2);margin-left:3px;letter-spacing:0}
 .wk-c .wk-s{display:block;font-size:12px;color:var(--label-2);margin-top:1px}
-.wk-eff{display:block;position:relative;height:8px;border-radius:999px;margin-top:8px;background:linear-gradient(90deg,#34c759 0%,#34c759 22%,#e4b400 38%,#f08a00 62%,#e5322b 100%);opacity:.9}
-.wk-eff i{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.wk-vo2 .wk-big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.wk-vo2 .wk-big b{font-family:var(--round);font-size:44px;line-height:1.05;font-weight:700;letter-spacing:-.8px}
+.wk-vo2 .wk-big small{font-size:15px;font-weight:600;color:var(--label-2)}
+.wk-vo2 .wk-grid{margin-top:12px}
+.wk-vo2-in{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--sep)}
+.wk-vo2-in label{display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:600;color:var(--label-2)}
+.wk-vo2-in input{width:92px;font:inherit;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--label);background:var(--fill);border:1px solid var(--sep);border-radius:10px;padding:7px 10px}
+.wk-vo2-in .btn{margin-left:auto}
+.wk-vo2-note{font-size:12px;color:var(--label-2);margin-top:8px;line-height:1.4}
 .wk-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 @media(min-width:900px){.wk-cols.two{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .wk-tbl{width:100%;border-collapse:collapse;font-size:15px}
@@ -3810,11 +4020,81 @@ function mount(root, ctx) {
     const eff = x && (has(x.effort) ? x.effort : has(x.effortEst) ? x.effortEst : null);
     if (eff !== null && eff !== undefined) {
       const est = !(x && has(x.effort));
-      add("Effort", `${fmtNum(eff, eff % 1 ? 1 : 0)}`, "/ 10", "var(--blue)", `<span class="wk-s">${effortWord(eff)}${est ? " (estimated)" : ""}</span><span class="wk-eff" aria-hidden="true"><i style="left:${Math.max(3, Math.min(97, ((eff - 0.5) / 9) * 100))}%"></i></span>`);
+      add("Effort", `${fmtNum(eff, eff % 1 ? 1 : 0)}`, "/ 10", "var(--blue)", `<span class="wk-s">${effortWord(eff)}${est ? " (estimated)" : ""}</span>`);
     }
     el.innerHTML = eyebrow("Workout Details") + '<div class="wk-grid">' + cells.map((c) =>
       `<div class="wk-c" data-tile="${esc(c.key)}" style="--tone:${c.tone}"><span class="wk-l">${esc(c.title)}</span>` +
       `<b class="wk-v">${esc(c.value)}${c.unit ? `<small>${esc(c.unit)}</small>` : ""}</b>${c.extra}</div>`).join("") + "</div>";
+    return el;
+  }
+
+  /* VO2max estimate: ACSM + Minetti (+ Apple Watch) averaged; HR inputs default from history, overrides in localStorage. */
+  const VO2_KEY = "he.vo2max";
+  let histRows = null, hist = null;
+  function history() {
+    const rows = ctx.data.rows || [];
+    if (rows !== histRows) {
+      histRows = rows;
+      const ser = ctx.data.series || {};
+      hist = defaultHr(rows, null, ser.hr ? workoutMinima(rows, ser.hr) : []);
+    }
+    return hist;
+  }
+  function vo2Overrides() {
+    try { const o = JSON.parse(localStorage.getItem(VO2_KEY) || "null"); return o && typeof o === "object" ? o : {}; } catch (e) { return {}; }
+  }
+  function saveVo2Overrides(o) {
+    try { if (o.hrMax === undefined && o.hrRest === undefined) localStorage.removeItem(VO2_KEY); else localStorage.setItem(VO2_KEY, JSON.stringify(o)); } catch (e) { /* storage blocked */ }
+  }
+
+  function vo2CardEl(r, gain) {
+    if (!suitability(r, gain).ok) return null;
+    const h = history();
+    const measured = nearestMeasured((ctx.data.series || {}).vo2max, r.start, 30);
+    let ov = vo2Overrides();
+    const el = card("vo2max", "wk-vo2");
+    el.innerHTML = eyebrow("VO₂max Estimate", "ml/kg/min") +
+      '<div class="wk-big"><b data-v="final">—</b><small data-v="note"></small></div>' +
+      '<div class="wk-grid"></div>' +
+      '<div class="wk-vo2-in"><label>HR max (bpm)<input type="number" inputmode="numeric" min="100" max="230" data-in="hrMax"></label>' +
+      '<label>HR rest (bpm)<input type="number" inputmode="numeric" min="30" max="120" data-in="hrRest"></label>' +
+      '<button type="button" class="btn ghost" data-act="reset">Reset to history</button></div>' +
+      '<div class="wk-vo2-note"></div>';
+    const grid = el.querySelector(".wk-grid"), note = el.querySelector(".wk-vo2-note");
+    const inMax = el.querySelector('[data-in="hrMax"]'), inRest = el.querySelector('[data-in="hrRest"]');
+    const val = () => ({ hrMax: ov.hrMax !== undefined ? ov.hrMax : h.hrMax, hrRest: ov.hrRest !== undefined ? ov.hrRest : h.hrRest });
+    const tile = (title, v, sub, key) => `<div class="wk-c" data-tile="${key}" style="--tone:var(--o2)"><span class="wk-l">${title}</span><b class="wk-v">${v === null ? "—" : fmtNum(v, 1)}</b><span class="wk-s">${sub}</span></div>`;
+    const paint = () => {
+      const { hrMax, hrRest } = val();
+      const c = hrMax > hrRest ? vo2Card(r, hrRest, hrMax, measured, gain) : null;
+      const set = (k, t) => { el.querySelector(`[data-v="${k}"]`).textContent = t; };
+      set("final", c ? fmtNum(c.final, 1) : "—");
+      const n = c ? [c.acsm, c.minetti, c.watch].filter((v) => v !== null).length : 0;
+      set("note", c ? `average of ${n} estimate${n === 1 ? "" : "s"}` : "no estimate with these inputs");
+      const walk = c ? c.mode === "walk" : /Walk|Hik/.test(r.type);
+      grid.innerHTML =
+        tile("ACSM", c ? c.acsm : null, c && c.acsm === null ? "outside 15–90" : "equations", "ACSM") +
+        tile("Minetti", c ? c.minetti : null, walk ? "running only" : "cost curve", "Minetti") +
+        tile("Apple Watch", measured ? measured.value : null, measured ? esc(fmtDate(measured.t, r.tzOffset).split(",")[0]) : "none within 30 days", "Apple Watch");
+      const pct = c ? Math.round(c.hrr * 100) : null;
+      note.textContent = (pct !== null ? `Effort ${pct}% of heart-rate reserve${pct < 60 ? ", low, so treat as a rough figure" : ""}. ` : "") +
+        `Defaults come from your workouts (rest ${h.hrRest === null ? "—" : h.hrRest}, max ${h.hrMax === null ? "—" : h.hrMax} bpm).`;
+      for (const [inp, k] of [[inMax, "hrMax"], [inRest, "hrRest"]]) if (document.activeElement !== inp) inp.value = val()[k] === null ? "" : String(val()[k]);
+    };
+    el.addEventListener("input", (e) => {
+      const k = e.target && e.target.dataset && e.target.dataset.in;
+      if (!k) return;
+      const n = Number(e.target.value);
+      ov = { ...ov };
+      if (e.target.value === "" || !(n > 0)) delete ov[k]; else ov[k] = n;
+      saveVo2Overrides(ov);
+      paint();
+    });
+    el.addEventListener("click", (e) => {
+      if (!e.target.closest('[data-act="reset"]')) return;
+      ov = {}; saveVo2Overrides(ov); paint();
+    });
+    paint();
     return el;
   }
 
@@ -3996,6 +4276,11 @@ function mount(root, ctx) {
     const detailsSlot = document.createElement("div");
     el.appendChild(detailsSlot);
     detailsSlot.appendChild(detailsCard(r, x, units, null));
+    const vo2Slot = document.createElement("div");
+    vo2Slot.style.display = "contents";
+    el.appendChild(vo2Slot);
+    const putVo2 = (gain) => { vo2Slot.textContent = ""; try { const c = vo2CardEl(r, gain); if (c) vo2Slot.appendChild(c); } catch (e) { /* estimate is optional */ } };
+    putVo2(null);
 
     const formEl = formCard(r, x, units);
     const splitsSlot = document.createElement("div");
@@ -4063,6 +4348,7 @@ function mount(root, ctx) {
         mapSlot.appendChild(mapCard(r, m, units));
         detailsSlot.textContent = "";
         detailsSlot.appendChild(detailsCard(r, x, units, m));
+        if (!has(r.elevM) && m.ele) putVo2(elevGain(m));
         if (m.t && !cyc) putSplits(splitsCard(r, splitsFromTrack(m, units === "mi" ? MI : 1), units, units === "mi" ? "mi" : "km", hr));
         chartSlot.textContent = "";
         for (const c of trackCharts(r, m, units, cyc)) { chartSlot.appendChild(c.el); c.mount(); }
@@ -5181,6 +5467,446 @@ function mount(root, ctx) {
 
 return { COMPARE_ROWS, COMPARE_CHARTS, deltaTone, fmtVal, compareCells, summarize, periodDefaults, periodRows, mount };
 })();
+// ---- ui/surface3d.js
+__m["ui/surface3d.js"] = (function () {
+// Hand-written 3D surface chart (Canvas 2D, own orthographic projection, no libraries, no WebGL).
+//
+const { fmtNum } = __m["core/format.js"];
+const { median } = __m["core/stats.js"];
+const { niceTicks } = __m["ui/charts.js"];
+const CSS = `
+.s3{position:relative;min-width:0;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none}
+.s3 canvas{display:block;width:100%;touch-action:none;cursor:grab;outline:none;-webkit-tap-highlight-color:transparent;border-radius:14px}
+.s3 canvas.drag{cursor:grabbing}
+.s3 canvas:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.s3 .s3-reset{position:absolute;top:6px;right:6px;z-index:2;border:1px solid var(--glass-rim);background:var(--fill);color:var(--label-2);border-radius:999px;font:600 12px var(--font);padding:4px 11px;cursor:pointer}
+.s3 .s3-reset:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.s3 .tip{left:0;top:0;line-height:1.35;text-align:left;font-family:var(--font);color:var(--label)}
+.s3 .tip[hidden]{display:none}
+.s3 .tip .t-h{color:var(--label-2);font-size:11px;font-weight:600;margin-bottom:2px}
+.s3 .tip .t-r{display:flex;align-items:center;gap:6px}
+.s3 .tip .t-r b{margin-left:auto;padding-left:12px}
+.s3 .tip .t-n{color:var(--label-2);font-size:11px;margin-top:2px}
+.s3 .s3-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+`;
+let cssDone = false;
+function injectCss() {
+  if (cssDone || typeof document === "undefined") return;
+  cssDone = true;
+  const s = document.createElement("style");
+  s.id = "he-surface3d-css";
+  s.textContent = CSS;
+  document.head.appendChild(s);
+}
+
+const ok = (v) => typeof v === "number" && v === v && v !== Infinity && v !== -Infinity;
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const DEFAULT_VIEW = { yaw: -0.66, pitch: 0.5 };
+const PITCH_MIN = 0.07, PITCH_MAX = 1.5;
+const ZS = 0.62;
+
+/**
+ * Bin points onto an nx × ny grid over the x/y domains and take the median z per cell.
+ * Empty cells within `fill` cells of at least two measured cells get an inverse-distance-weighted value (interp = true).
+ * → {nx, ny, xd, yd, cells:[{ix,iy,n,v,interp}]}   v is null for gaps; cells[iy*nx+ix]
+ */
+function surfaceGrid(points, xd, yd, nx, ny, fill = 2) {
+  const cells = [];
+  for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) cells.push({ ix, iy, n: 0, v: null, interp: false, vals: [] });
+  const dx = (xd.hi - xd.lo) / nx || 1, dy = (yd.hi - yd.lo) / ny || 1;
+  for (const p of points) {
+    const ix = clamp(Math.floor((p.x - xd.lo) / dx), 0, nx - 1), iy = clamp(Math.floor((p.y - yd.lo) / dy), 0, ny - 1);
+    const c = cells[iy * nx + ix];
+    c.vals.push(p.z); c.n++;
+  }
+  for (const c of cells) { if (c.n) c.v = median(c.vals); delete c.vals; }
+  if (fill > 0) {
+    const measured = cells.filter((c) => c.v !== null);
+    const add = [];
+    for (const c of cells) {
+      if (c.v !== null) continue;
+      let sw = 0, sv = 0, k = 0;
+      for (const m of measured) {
+        const d2 = (m.ix - c.ix) ** 2 + (m.iy - c.iy) ** 2;
+        if (d2 > fill * fill) continue;
+        const w = 1 / d2;
+        sw += w; sv += w * m.v; k++;
+      }
+      if (k >= 2) add.push([c, sv / sw]);
+    }
+    for (const [c, v] of add) { c.v = v; c.interp = true; }
+  }
+  return { nx, ny, xd, yd, cells };
+}
+
+function parseColor(str) {
+  const m = String(str).match(/-?[\d.]+/g);
+  if (!m || m.length < 3) return [128, 128, 128, 1];
+  return [+m[0], +m[1], +m[2], m.length > 3 ? +m[3] : 1];
+}
+const rgba = (c, a = 1, mul = 1) => `rgba(${Math.round(clamp(c[0] * mul, 0, 255))},${Math.round(clamp(c[1] * mul, 0, 255))},${Math.round(clamp(c[2] * mul, 0, 255))},${+(a * (c[3] === undefined ? 1 : c[3])).toFixed(3)})`;
+function ramp(stops, t) {
+  t = clamp(t, 0, 1) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(t)), f = t - i, a = stops[i], b = stops[i + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, 1];
+}
+
+function surface3d(host, opts0) {
+  injectCss();
+  let o = { ...(opts0 || {}) };
+  let view = { ...DEFAULT_VIEW, ...(o.view || {}) };
+  const wrap = document.createElement("div");
+  wrap.className = "s3";
+  wrap.innerHTML = '<canvas role="img" tabindex="0"></canvas><button type="button" class="s3-reset" aria-label="Reset 3D view">Reset view</button>' +
+    '<div class="tip glass" hidden></div><div class="s3-sr" role="status" aria-live="polite"></div>';
+  host.appendChild(wrap);
+  const canvas = wrap.querySelector("canvas"), resetBtn = wrap.querySelector(".s3-reset"), tip = wrap.querySelector(".tip"), sr = wrap.querySelector(".s3-sr");
+  const ctx = canvas.getContext("2d");
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;width:0;height:0";
+  wrap.appendChild(probe);
+
+  let W = 0, H = 0, dead = false, model = null, frame = null, hover = null, sel = null, raf = 0, anim = 0, drag = null;
+  const cssVar = (name) => { probe.style.color = `var(${name})`; return parseColor(getComputedStyle(probe).color); };
+
+  function build() {
+    const P = (o.points || []).filter((p) => ok(p.x) && ok(p.y) && ok(p.z));
+    if (P.length < 3) { model = { P, empty: true }; return; }
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const p of P) { if (p.x < a0) a0 = p.x; if (p.x > a1) a1 = p.x; if (p.y < b0) b0 = p.y; if (p.y > b1) b1 = p.y; }
+    const nt = W && W < 520 ? 4 : 5;
+    const xt = niceTicks(a0, a1, nt), yt = niceTicks(b0, b1, nt);
+    const nb = clamp(Math.round(o.bins || 12), 2, 40);
+    const grid = surfaceGrid(P, xt, yt, nb, nb, o.fill === undefined ? 2 : o.fill);
+    let z0 = Infinity, z1 = -Infinity;
+    for (const p of P) { if (p.z < z0) z0 = p.z; if (p.z > z1) z1 = p.z; }
+    for (const c of grid.cells) if (c.v !== null) { if (c.v < z0) z0 = c.v; if (c.v > z1) z1 = c.v; }
+    const zt = niceTicks(z0, z1, 5);
+    model = { P, xt, yt, zt, grid, empty: false, nMeasured: grid.cells.filter((c) => !c.interp && c.v !== null).length };
+  }
+
+  function camera() {
+    const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw), cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+    const R = 0.74;
+    const padX = W < 520 ? 36 : 64, padY = 26;
+    const plotH = H - LEG;
+    const sc = Math.max(40, Math.min(W / 2 - padX, plotH / 2 - padY) / R);
+    const cx = W / 2, cyy = plotH / 2 + 6;
+    return (u, v, w) => {
+      const x1 = u * cy - v * sy, y1 = u * sy + v * cy;
+      return [cx + x1 * sc, cyy - (w * cp + y1 * sp) * sc, y1 * cp - w * sp];
+    };
+  }
+  const LEG = 54;
+
+  function draw() {
+    raf = 0;
+    if (dead) return;
+    const dpr = window.devicePixelRatio || 1;
+    W = Math.round(wrap.clientWidth) || 600;
+    H = o.height || (W < 520 ? 400 : 500);
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      canvas.style.height = H + "px";
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    if (!model || model.dirtyW !== (W < 520)) { build(); model.dirtyW = W < 520; }
+    const cLabel = cssVar("--label"), cLabel2 = cssVar("--label-2"), cLabel3 = cssVar("--label-3"), cGrid = cssVar("--grid"), cCard = cssVar("--card"), cFill = cssVar("--fill");
+    const stops = ["--teal", "--green", "--yellow", "--orange", "--red"].map(cssVar);
+    ctx.font = "11px " + (getComputedStyle(wrap).fontFamily || "sans-serif");
+    ctx.textBaseline = "alphabetic";
+    frame = { dots: [], polys: [] };
+    if (model.empty) {
+      ctx.fillStyle = rgba(cLabel2); ctx.font = "13px " + getComputedStyle(wrap).fontFamily; ctx.textAlign = "center";
+      ctx.fillText(o.emptyText || "Not enough workouts to draw a surface", W / 2, H / 2);
+      canvas.setAttribute("aria-label", "3D surface: not enough data");
+      return;
+    }
+    const { P, xt, yt, zt, grid } = model;
+    const proj = camera();
+    const xf = (o.x && o.x.fmt) || ((v) => fmtNum(v, 0)), yf = (o.y && o.y.fmt) || ((v) => fmtNum(v, 0)), zf = (o.z && o.z.fmt) || ((v) => fmtNum(v, 0));
+    const U = (x) => (x - xt.lo) / (xt.hi - xt.lo || 1) - 0.5, V = (y) => (y - yt.lo) / (yt.hi - yt.lo || 1) - 0.5;
+    const Wz = (z) => ((z - zt.lo) / (zt.hi - zt.lo || 1) - 0.5) * ZS;
+    const col = (z, mul = 1, a = 1) => rgba(ramp(stops, (z - zt.lo) / (zt.hi - zt.lo || 1)), a, mul);
+    const wf = -ZS / 2, wt = ZS / 2;
+    let uN = -0.5, vN = -0.5, dN = Infinity;
+    for (const u of [-0.5, 0.5]) for (const v of [-0.5, 0.5]) { const d = proj(u, v, wf)[2]; if (d < dN) { dN = d; uN = u; vN = v; } }
+    const uB = -uN, vB = -vN;
+    const poly = (pts, fill, stroke, lw) => {
+      ctx.beginPath();
+      pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+    };
+    const seg = (a, b, stroke, lw) => { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); };
+    poly([proj(-0.5, -0.5, wf), proj(0.5, -0.5, wf), proj(0.5, 0.5, wf), proj(-0.5, 0.5, wf)], rgba(cFill, 0.55), rgba(cLabel3, 1), 1);
+    poly([proj(uB, -0.5, wf), proj(uB, 0.5, wf), proj(uB, 0.5, wt), proj(uB, -0.5, wt)], rgba(cFill, 0.35), rgba(cLabel3, 0.6), 1);
+    poly([proj(-0.5, vB, wf), proj(0.5, vB, wf), proj(0.5, vB, wt), proj(-0.5, vB, wt)], rgba(cFill, 0.35), rgba(cLabel3, 0.6), 1);
+    const gc = rgba(cGrid, 1.6);
+    for (const t of xt.ticks) { const u = U(t); seg(proj(u, -0.5, wf), proj(u, 0.5, wf), gc); seg(proj(u, vB, wf), proj(u, vB, wt), gc); }
+    for (const t of yt.ticks) { const v = V(t); seg(proj(-0.5, v, wf), proj(0.5, v, wf), gc); seg(proj(uB, v, wf), proj(uB, v, wt), gc); }
+    for (const t of zt.ticks) { const w = Wz(t); seg(proj(uB, -0.5, w), proj(uB, 0.5, w), gc); seg(proj(-0.5, vB, w), proj(0.5, vB, w), gc); }
+
+    const items = [];
+    const C = grid.cells, nx = grid.nx, ny = grid.ny;
+    const dxU = 1 / nx, dyV = 1 / ny;
+    const cu = (ix) => -0.5 + (ix + 0.5) * dxU, cv = (iy) => -0.5 + (iy + 0.5) * dyV;
+    const used = new Uint8Array(nx * ny);
+    const LX = -0.45, LY = -0.35, LZ = 0.82, LL = Math.hypot(LX, LY, LZ);
+    for (let iy = 0; iy < ny - 1; iy++) for (let ix = 0; ix < nx - 1; ix++) {
+      const q = [C[iy * nx + ix], C[iy * nx + ix + 1], C[(iy + 1) * nx + ix + 1], C[(iy + 1) * nx + ix]];
+      if (q.some((c) => c.v === null)) continue;
+      for (const c of q) used[c.iy * nx + c.ix] = 1;
+      const pts = q.map((c) => proj(cu(c.ix), cv(c.iy), Wz(c.v)));
+      const e1 = [dxU, 0, Wz(q[1].v) - Wz(q[0].v) + Wz(q[2].v) - Wz(q[3].v)], e2 = [0, dyV, Wz(q[3].v) - Wz(q[0].v) + Wz(q[2].v) - Wz(q[1].v)];
+      let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      if (n[2] < 0) n = n.map((v) => -v);
+      const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+      const shade = 0.68 + 0.42 * Math.max(0, (n[0] * LX + n[1] * LY + n[2] * LZ) / (nl * LL));
+      const zavg = (q[0].v + q[1].v + q[2].v + q[3].v) / 4;
+      items.push({ d: (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4, kind: "q", pts, fill: col(zavg, shade, 0.93), q, zavg });
+    }
+    for (const c of C) {
+      if (c.v === null || used[c.iy * nx + c.ix]) continue;
+      const u0 = -0.5 + c.ix * dxU, v0 = -0.5 + c.iy * dyV, w = Wz(c.v);
+      const pts = [proj(u0, v0, w), proj(u0 + dxU, v0, w), proj(u0 + dxU, v0 + dyV, w), proj(u0, v0 + dyV, w)];
+      items.push({ d: (pts[0][2] + pts[2][2]) / 2, kind: "q", pts, fill: col(c.v, 0.95, 0.93), q: [c], zavg: c.v });
+    }
+    for (const p of P) {
+      const s = proj(U(p.x), V(p.y), Wz(p.z));
+      items.push({ d: s[2] - 0.05, kind: "d", s, p });
+    }
+    items.sort((a, b) => b.d - a.d);
+    const hoverQ = hover && hover.kind === "cell" ? hover.cell : null;
+    for (const it of items) {
+      if (it.kind === "q") {
+        const isHover = hoverQ && it.q.indexOf(hoverQ) >= 0;
+        poly(it.pts, it.fill, isHover ? rgba(cLabel, 0.9) : rgba(cCard, 0.4), isHover ? 1.8 : 0.6);
+        frame.polys.push(it);
+      } else {
+        const on = (hover && hover.kind === "dot" && hover.p === it.p) || (sel && sel === it.p);
+        ctx.beginPath();
+        ctx.arc(it.s[0], it.s[1], on ? 5.2 : 3.3, 0, Math.PI * 2);
+        ctx.fillStyle = col(it.p.z, 1, 1);
+        ctx.fill();
+        ctx.lineWidth = on ? 2 : 1.2;
+        ctx.strokeStyle = on ? rgba(cLabel, 1) : rgba(cCard, 0.95);
+        ctx.stroke();
+        frame.dots.push({ x: it.s[0], y: it.s[1], p: it.p });
+      }
+    }
+
+    ctx.fillStyle = rgba(cLabel2);
+    const ctr = proj(0, 0, wf);
+    const out = (pt, k) => { const dx = pt[0] - ctr[0], dy = pt[1] - ctr[1], l = Math.hypot(dx, dy) || 1; return [pt[0] + (dx / l) * k, pt[1] + (dy / l) * k]; };
+    const text = (s, x, y, align, style) => {
+      ctx.textAlign = align || "center";
+      ctx.font = (style || "") + " 11px " + getComputedStyle(wrap).fontFamily;
+      ctx.fillText(s, clamp(x, 2, W - 2), y);
+    };
+    const tickLine = (a, k) => { const b = out(a, k); seg(a, b, rgba(cLabel3), 1); return out(a, k + 9); };
+    const zc = [[-uN, vN], [uN, -vN]].map(([u, v]) => ({ u, v, sx: proj(u, v, wf)[0] })).sort((a, b) => a.sx - b.sx)[0];
+    // labels that would land on the shared front corner or on the z axis are dropped (the tick mark stays)
+    for (const t of xt.ticks) { const p = proj(U(t), vN, wf), l = tickLine(p, 5); if (U(t) !== zc.u || vN !== zc.v) text(xf(t), l[0], l[1] + 4, "center"); }
+    for (const t of yt.ticks) { const p = proj(uN, V(t), wf), l = tickLine(p, 5); if (V(t) !== vN && (uN !== zc.u || V(t) !== zc.v)) text(yf(t), l[0], l[1] + 4, "center"); }
+    for (const t of zt.ticks) { const p = proj(zc.u, zc.v, Wz(t)); seg(p, [p[0] - 5, p[1]], rgba(cLabel3), 1); text(zf(t), p[0] - 8, p[1] + 4, "right"); }
+    seg(proj(zc.u, zc.v, wf), proj(zc.u, zc.v, wt), rgba(cLabel3), 1);
+    ctx.fillStyle = rgba(cLabel);
+    const xm = out(proj(0, vN, wf), 46), ym = out(proj(uN, 0, wf), 52);
+    const maxY = H - LEG - 6;
+    text((o.x && o.x.label) || "X", xm[0], Math.min(xm[1] + 4, maxY), "center", "600");
+    text((o.y && o.y.label) || "Y", ym[0], Math.min(ym[1] + 4, maxY), "center", "600");
+    const zt0 = proj(zc.u, zc.v, wt);
+    text((o.z && o.z.label) || "Z", zt0[0], Math.max(12, zt0[1] - 12), zt0[0] < W / 2 ? "left" : "right", "600");
+
+    const lw = Math.min(260, W - 90), lx = (W - lw) / 2, ly = H - 22;
+    const g = ctx.createLinearGradient(lx, 0, lx + lw, 0);
+    for (let i = 0; i <= 8; i++) g.addColorStop(i / 8, rgba(ramp(stops, i / 8)));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(lx, ly, lw, 9, 4.5); else ctx.rect(lx, ly, lw, 9);
+    ctx.fill();
+    ctx.fillStyle = rgba(cLabel2);
+    for (const t of zt.ticks) { const x = lx + ((t - zt.lo) / (zt.hi - zt.lo || 1)) * lw; seg([x, ly + 9], [x, ly + 12], rgba(cLabel3), 1); text(zf(t), x, ly + 23, x < lx + 12 ? "left" : x > lx + lw - 12 ? "right" : "center"); }
+    ctx.fillStyle = rgba(cLabel2);
+    text(`${(o.z && o.z.label) || "Z"} · median per cell · dots are workouts`, W / 2, ly - 7, "center");
+
+    canvas.setAttribute("aria-label", `3D surface of ${(o.z && o.z.label) || "value"} over ${(o.x && o.x.label) || "X"} and ${(o.y && o.y.label) || "Y"}: ` +
+      `${P.length} workouts in ${model.nMeasured} grid cells, ${zf(zt.lo)} to ${zf(zt.hi)}. Drag or use the arrow keys to rotate.`);
+  }
+  const schedule = () => { if (!raf && !dead) raf = requestAnimationFrame(draw); };
+
+  function pip(pts, x, y) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i], [xj, yj] = pts[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function hit(x, y) {
+    if (!frame || !model || model.empty) return null;
+    let best = null, bd = 12 * 12;
+    for (const d of frame.dots) { const dd = (d.x - x) ** 2 + (d.y - y) ** 2; if (dd <= bd) { bd = dd; best = d; } }
+    if (best) return { kind: "dot", p: best.p, x: best.x, y: best.y };
+    let q = null;
+    for (const it of frame.polys) if (pip(it.pts, x, y) && (!q || it.d < q.d)) q = it;
+    if (!q) return null;
+    let bi = 0, bdd = Infinity;
+    q.pts.forEach((pt, i) => { const dd = (pt[0] - x) ** 2 + (pt[1] - y) ** 2; if (dd < bdd) { bdd = dd; bi = i; } });
+    const cell = q.q[Math.min(bi, q.q.length - 1)];
+    return { kind: "cell", cell, x, y };
+  }
+  function describe(h) {
+    const xf = (o.x && o.x.fmt) || ((v) => fmtNum(v, 0)), yf = (o.y && o.y.fmt) || ((v) => fmtNum(v, 0)), zf = (o.z && o.z.fmt) || ((v) => fmtNum(v, 0));
+    const xl = (o.x && o.x.label) || "X", yl = (o.y && o.y.label) || "Y", zl = (o.z && o.z.label) || "Z";
+    if (h.kind === "dot") {
+      const p = h.p;
+      return { html: `<div class="t-h">${esc(p.label || "Workout")}</div><div class="t-r">${esc(zl)}<b>${esc(zf(p.z))}</b></div><div class="t-r">${esc(xl)}<b>${esc(xf(p.x))}</b></div><div class="t-r">${esc(yl)}<b>${esc(yf(p.y))}</b></div>` +
+        (p.id !== undefined && o.onPoint ? '<div class="t-n">Tap again to open</div>' : ""),
+        text: `${p.label || "Workout"}: ${zl} ${zf(p.z)}, ${xl} ${xf(p.x)}, ${yl} ${yf(p.y)}` };
+    }
+    const c = h.cell, g = model.grid;
+    const dx = (g.xd.hi - g.xd.lo) / g.nx, dy = (g.yd.hi - g.yd.lo) / g.ny;
+    const xr = `${xf(g.xd.lo + c.ix * dx)} – ${xf(g.xd.lo + (c.ix + 1) * dx)}`, yr = `${yf(g.yd.lo + c.iy * dy)} – ${yf(g.yd.lo + (c.iy + 1) * dy)}`;
+    return { html: `<div class="t-h">${esc(xl)} ${esc(xr)}</div><div class="t-h">${esc(yl)} ${esc(yr)}</div><div class="t-r">${esc(zl)} (median)<b>${esc(zf(c.v))}</b></div>` +
+      `<div class="t-n">${c.interp ? "interpolated, no workouts here" : "n " + c.n}</div>`,
+      text: `${xl} ${xr}, ${yl} ${yr}: ${zl} ${zf(c.v)}, ${c.interp ? "interpolated" : "n " + c.n}` };
+  }
+  function showTip(h) {
+    if (!h) { tip.hidden = true; return; }
+    const d = describe(h);
+    tip.innerHTML = d.html;
+    tip.hidden = false;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = h.x + 14;
+    if (left + tw > W) left = h.x - tw - 14;
+    tip.style.transform = `translate(${Math.round(Math.max(0, left))}px,${Math.round(clamp(h.y - th / 2, 0, Math.max(0, H - th)))}px)`;
+    sr.textContent = d.text;
+  }
+  const same = (a, b) => (!a && !b) || (a && b && a.kind === b.kind && a.p === b.p && a.cell === b.cell);
+  function setHover(h) {
+    if (same(h, hover)) { if (h) showTip(h); return; }
+    hover = h;
+    showTip(h);
+    schedule();
+  }
+
+  const local = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (W / (r.width || W)), (e.clientY - r.top) * (H / (r.height || H))]; };
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button > 0) return;
+    cancelAnim();
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, yaw: view.yaw, pitch: view.pitch, moved: false, touch: e.pointerType !== "mouse" };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (drag && drag.id === e.pointerId) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; canvas.classList.add("drag"); setHover(null); }
+      if (drag.moved) {
+        view.yaw = drag.yaw + dx * 0.009;
+        view.pitch = clamp(drag.pitch + dy * 0.007, PITCH_MIN, PITCH_MAX);
+        schedule();
+      }
+      return;
+    }
+    if (e.pointerType === "mouse") { const [x, y] = local(e); setHover(hit(x, y)); }
+  });
+  const end = (e) => {
+    if (!drag || drag.id !== e.pointerId) return;
+    const d = drag;
+    drag = null;
+    canvas.classList.remove("drag");
+    try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    if (d.moved) { if (o.onView) o.onView({ yaw: view.yaw, pitch: view.pitch }); return; }
+    if (e.type === "pointercancel") return;
+    const [x, y] = local(e);
+    const h = hit(x, y);
+    if (h && h.kind === "dot") {
+      if (sel === h.p && o.onPoint && h.p.id !== undefined) { o.onPoint(h.p.id); return; }
+      sel = h.p;
+    } else sel = null;
+    hover = null; setHover(h);
+    schedule();
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+  canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && !drag) { sel = null; setHover(null); } });
+  canvas.addEventListener("keydown", (e) => {
+    const k = e.key;
+    if (k === "Home" || k === "Escape") { e.preventDefault(); reset(); return; }
+    const st = e.shiftKey ? 0.2 : 0.08;
+    if (k === "ArrowLeft") view.yaw -= st; else if (k === "ArrowRight") view.yaw += st;
+    else if (k === "ArrowUp") view.pitch = clamp(view.pitch - st, PITCH_MIN, PITCH_MAX);
+    else if (k === "ArrowDown") view.pitch = clamp(view.pitch + st, PITCH_MIN, PITCH_MAX);
+    else return;
+    e.preventDefault();
+    setHover(null);
+    schedule();
+    if (o.onView) o.onView({ yaw: view.yaw, pitch: view.pitch });
+  });
+  function cancelAnim() { if (anim) { cancelAnimationFrame(anim); anim = 0; } }
+  function reset() {
+    cancelAnim();
+    setHover(null); sel = null;
+    const to = { ...DEFAULT_VIEW }, from = { ...view };
+    let dyaw = to.yaw - from.yaw;
+    dyaw = ((((dyaw + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    const still = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (still) { view = { ...to }; schedule(); if (o.onView) o.onView({ ...view }); return; }
+    const t0 = performance.now(), dur = 320;
+    const step = (now) => {
+      const k = clamp((now - t0) / dur, 0, 1), e = 1 - Math.pow(1 - k, 3);
+      view = { yaw: from.yaw + dyaw * e, pitch: from.pitch + (to.pitch - from.pitch) * e };
+      draw();
+      if (k < 1) anim = requestAnimationFrame(step); else { anim = 0; view = { ...to }; draw(); if (o.onView) o.onView({ ...view }); }
+    };
+    anim = requestAnimationFrame(step);
+  }
+  resetBtn.addEventListener("click", reset);
+
+  let ro = null, mq = null, mo = null;
+  const onTheme = () => schedule();
+  if (typeof ResizeObserver !== "undefined") {
+    ro = new ResizeObserver(() => { const w = Math.round(wrap.clientWidth); if (w > 0 && w !== W) { model = null; schedule(); } });
+    ro.observe(wrap);
+  }
+  if (typeof matchMedia !== "undefined") { mq = matchMedia("(prefers-color-scheme: dark)"); if (mq.addEventListener) mq.addEventListener("change", onTheme); }
+  if (typeof MutationObserver !== "undefined") { mo = new MutationObserver(onTheme); mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] }); }
+  build();
+  draw();
+
+  return {
+    el: wrap,
+    update(n) {
+      o = { ...o, ...(n || {}) };
+      if (n && n.view) view = { ...view, ...n.view };
+      sel = null; hover = null; tip.hidden = true;
+      model = null;
+      draw();
+    },
+    destroy() {
+      dead = true;
+      cancelAnim();
+      if (raf) cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      if (mq && mq.removeEventListener) mq.removeEventListener("change", onTheme);
+      if (mo) mo.disconnect();
+      wrap.remove();
+    },
+    reset,
+    getView: () => ({ yaw: view.yaw, pitch: view.pitch }),
+    setView(v) { view = { ...view, ...v, pitch: clamp(v.pitch === undefined ? view.pitch : v.pitch, PITCH_MIN, PITCH_MAX) }; draw(); },
+    info: () => (model && !model.empty ? { n: model.P.length, cells: model.grid.cells.filter((c) => c.v !== null).length, measured: model.nMeasured, xTicks: model.xt.ticks, yTicks: model.yt.ticks, zTicks: model.zt.ticks } : { n: 0, cells: 0, measured: 0 }),
+    hitTest: (x, y) => { const h = hit(x, y); return h ? { kind: h.kind, n: h.cell ? h.cell.n : undefined, v: h.cell ? h.cell.v : h.p.z } : null; },
+  };
+}
+
+return { DEFAULT_VIEW, surfaceGrid, surface3d };
+})();
 // ---- ui/calibration.js
 __m["ui/calibration.js"] = (function () {
 // Calibration view (Agent F). mount(root, ctx): how stable is active kcal/km, what drives it (HR, pace, day context),
@@ -5188,6 +5914,7 @@ __m["ui/calibration.js"] = (function () {
 const { fmtNum, fmtDur, fmtDate, fmtDist } = __m["core/format.js"];
 const { median, mean, sd, rollingMedian, histogram, linreg } = __m["core/stats.js"];
 const { line, scatter, histogram: histChart } = __m["ui/charts.js"];
+const { surface3d } = __m["ui/surface3d.js"];
 const { typeLabel } = __m["ui/filters.js"];
 const CSS = `
 .fk{display:flex;flex-direction:column;gap:14px}
@@ -5212,6 +5939,9 @@ const CSS = `
 .fk-table .pill{margin-top:0;padding:2px 8px}
 .fk-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .fk-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.fk-sel{appearance:none;-webkit-appearance:none;border:1px solid var(--glass-rim);background:var(--fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a90a0' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center;color:var(--label);border-radius:999px;font:600 13px var(--font);padding:7px 30px 7px 13px;min-width:0;max-width:100%;cursor:pointer}
+.fk-sel:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.fk-ctl .fk-selg{display:flex;align-items:center;gap:8px;min-width:0}
 .fk-mini{border:1px solid var(--glass-rim);background:var(--fill);color:var(--label-2);border-radius:999px;font:600 12px var(--font);padding:3px 9px;cursor:pointer}
 `;
 function inject(id, css) {
@@ -5235,6 +5965,7 @@ const X_AXES = [
   { key: "rhrDay", label: "Day resting HR", unit: "bpm", get: (r) => r.rhrDay },
   { key: "hrvDay", label: "Day HRV", unit: "ms", get: (r) => r.hrvDay },
   { key: "massKg", label: "Body mass", unit: "kg", get: (r) => r.massKg },
+  { key: "elevM", label: "Elevation gain", unit: "m", get: (r) => r.elevM },
 ];
 const Y_AXES = [
   { key: "kcalPerKm", label: "kcal/km", get: (r) => kcalPerKmOf(r) },
@@ -5322,6 +6053,36 @@ function niceBinWidth(values) {
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
 }
 
+/**
+ * Bin width for the kcal/km histogram: a whole multiple of `step` (2.5 → 2.5, 5, 10, 25, 50…), the smallest that gives at most
+ * `maxBins` bins over the data's min..max, so bin edges always land on ticks that are multiples of 2.5.
+ */
+function stepBinWidth(values, step = 2.5, maxBins = 20) {
+  const a = values.filter(has);
+  if (a.length < 2) return step;
+  const range = Math.max(...a) - Math.min(...a);
+  for (const m of [1, 2, 4, 10, 20, 40, 100, 200, 400, 1000]) if (range / (step * m) <= maxBins) return step * m;
+  return step * 1000;
+}
+/**
+ * Histogram bin width: sized for the bulk of the data (2nd..98th percentile, so one wild outlier does not turn the bars into
+ * a few fat blocks) but never more than ~240 bins across the full min..max, and always a whole multiple of 2.5.
+ */
+function histBinWidth(values, step = 2.5) {
+  const a = values.filter(has).sort((x, y) => x - y);
+  if (a.length < 2) return step;
+  const q = (p) => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))];
+  let bw = stepBinWidth([q(0.02), q(0.98)], step);
+  while ((a[a.length - 1] - a[0]) / bw > 240) bw *= 2;
+  return bw;
+}
+/** Axis label for kcal/km style values on a 2.5 grid: whole numbers bare, halves with one decimal (50, 52.5, 55). */
+const fmt25 = (v) => fmtNum(v, Number.isInteger(Math.round(v * 1e6) / 1e6) ? 0 : 1);
+/** Value formatter for a metric of X_AXES (pace as m:ss). */
+function axisFmt(key) {
+  return key === "paceMinKm" ? (v) => fmtDur(v) : (v) => fmtNum(v, key === "massKg" ? 1 : 0);
+}
+
 /* ---------------------------------------------------------------- view */
 
 const dayLabel = (ms) => fmtDate(ms, 0).split(",")[0]; // "5 Nov 2026" (date only, no trailing comma)
@@ -5332,6 +6093,7 @@ function mount(root, ctx) {
   const ui = ctx.ui || {};
   let type; // undefined = auto (largest group), null = all types, string = one type
   let xKey = "avgHr", yKey = "kcalPerKm", win = 10, zThr = OUTLIER_Z;
+  let dim = "2d", ax = "paceMinKm", ay = "avgHr", view3 = null; // 2D scatter, or 3D surface over axes ax × ay
   let charts = [], dirty = true, destroyed = false;
   const el = document.createElement("div");
   el.className = "fk";
@@ -5361,8 +6123,32 @@ function mount(root, ctx) {
   const note = (t) => { const d = document.createElement("div"); d.className = "fk-note"; d.textContent = t; el.appendChild(d); return d; };
   const openDetail = (id) => state.set({ detail: id });
 
+  // Re-rendering rebuilds the whole view. Left alone, the document briefly collapses (and the browser clamps scrollY to the
+  // top) the moment a chart reads its width mid-rebuild, and the clicked control is replaced so focus falls to <body>.
+  // So: pin the view's height while it is rebuilt, then restore scroll position and focus on the equivalent new control.
+  function focusQuery(a) {
+    if (!a || !el.contains(a)) return null;
+    const g = a.closest("[role=radiogroup]");
+    if (g && g.getAttribute("aria-label")) return `[role=radiogroup][aria-label="${g.getAttribute("aria-label")}"] button.on`;
+    if (a.dataset && a.dataset.type !== undefined && a.classList.contains("chip")) return `.chip[data-type="${a.dataset.type}"]`;
+    if (a.tagName === "SELECT" && a.getAttribute("aria-label")) return `select[aria-label="${a.getAttribute("aria-label")}"]`;
+    if (a.tagName === "TR" && a.dataset.x) return `tr[data-x="${a.dataset.x}"]`;
+    if (a.tagName === "TR" && a.dataset.id) return `tr[data-id="${a.dataset.id}"]`;
+    if (a.matches(".s3 canvas")) return ".s3 canvas";
+    if (a.matches(".s3-reset")) return ".s3-reset";
+    return null;
+  }
   function render() {
     if (destroyed) return;
+    const sx = window.scrollX, sy = window.scrollY, h = el.offsetHeight;
+    const fq = focusQuery(document.activeElement);
+    if (h) el.style.minHeight = h + "px";
+    try { doRender(); } finally { el.style.minHeight = ""; }
+    if (fq) { const t = el.querySelector(fq); if (t && t.focus) t.focus({ preventScroll: true }); }
+    if (window.scrollY !== sy || window.scrollX !== sx) window.scrollTo(sx, sy);
+  }
+
+  function doRender() {
     dirty = false;
     cleanCharts();
     el.textContent = "";
@@ -5435,22 +6221,28 @@ function mount(root, ctx) {
     g1.className = "chart-grid";
     el.appendChild(g1);
     const vals = st.points.map((p) => p.v);
+    // axis range = non-outlier values (current σ rule); outliers stay in the data but are clamped / counted as off-scale
+    const kept = st.points.filter((p) => Math.abs(p.z) <= zThr).map((p) => p.v);
+    const inr = kept.length ? kept : vals;
+    const lo = Math.min(...inr), hi = Math.max(...inr), off = vals.length - kept.length;
+    const offTxt = off && kept.length ? ` · +${off} off` : "";
     {
-      const { card, host } = chartCard("kcal/km distribution", `${typeLabel(type)} · ${st.n}`);
+      const { card, host } = chartCard("kcal/km distribution", `${typeLabel(type)} · ${inr.length} · ${fmtNum(lo, 1)}–${fmtNum(hi, 1)}${offTxt}`);
       g1.appendChild(card);
-      const bw = niceBinWidth(vals);
-      charts.push(histChart(host, { bins: histogram(vals, bw), marker: st.constant, markerLabel: constAdopted !== null ? "adopted" : "median", x: { fmt: (v) => fmtNum(v, bw < 1 ? 1 : 0) }, height: 200 }));
+      // x spans the data's actual min..max, bin edges and ticks sit on multiples of 2.5
+      const bw = histBinWidth(inr);
+      charts.push(histChart(host, { bins: histogram(inr, bw), marker: st.constant, markerLabel: constAdopted !== null ? "adopted" : "median", x: { step: 2.5, fmt: fmt25 }, height: 200 }));
     }
     {
-      const { card, host } = chartCard("kcal/km over time", `rolling median of ${win}`);
+      const { card, host } = chartCard("kcal/km over time", `rolling median of ${win}${off && kept.length ? ` · ${off} off-scale (at edge)` : ""}`);
       g1.appendChild(card);
       const roll = rollingMedian(vals, win);
       charts.push(line(host, {
         series: [
-          { name: "Workout", color: "var(--label-3)", points: st.points.map((p) => [p.row.start, p.v]) },
+          { name: "Workout", color: "var(--label-3)", points: st.points.map((p) => [p.row.start, Math.min(hi, Math.max(lo, p.v))]) },
           { name: `Median of last ${win}`, color: "var(--orange)", points: st.points.map((p, i) => [p.row.start, roll[i]]) },
         ],
-        x: { fmt: dayLabel }, y: { fmt: (v) => fmtNum(v, 0) }, height: 200,
+        x: { fmt: dayLabel }, y: { step: 2.5, tight: true, fmt: fmt25 }, height: 200,
         onPoint: (p) => { const pt = st.points[p.index]; if (pt) openDetail(pt.row.id); },
       }));
       const ctl = document.createElement("div");
@@ -5465,18 +6257,37 @@ function mount(root, ctx) {
     const ctl = document.createElement("div");
     ctl.className = "fk-ctl";
     el.appendChild(ctl);
-    const yl = document.createElement("label"); yl.textContent = "Y"; ctl.appendChild(yl);
-    seg(ctl, Y_AXES.map((a) => ({ value: a.key, label: a.label })), yKey, (v) => { yKey = v; render(); }, "Y axis");
-    const xl = document.createElement("label"); xl.textContent = "vs"; ctl.appendChild(xl);
-    const xs = seg(ctl, X_AXES.map((a) => ({ value: a.key, label: a.label })), xKey, (v) => { xKey = v; render(); }, "X axis");
-    xs.style.minWidth = "min(100%,520px)";
+    const is3 = dim === "3d";
+    seg(ctl, [{ value: "2d", label: "2D" }, { value: "3d", label: "3D" }], dim, (v) => { dim = v; render(); }, "Chart dimension").style.minWidth = "110px";
+    const yl = document.createElement("label"); yl.textContent = is3 ? "Height" : "Y"; ctl.appendChild(yl);
+    seg(ctl, Y_AXES.map((a) => ({ value: a.key, label: a.label })), yKey, (v) => { yKey = v; render(); }, is3 ? "Height" : "Y axis");
     const xAxis = X_AXES.find((a) => a.key === xKey), yAxis = Y_AXES.find((a) => a.key === yKey);
-    const rel = relation(cr, xAxis, yAxis);
     const outIds = new Set(st.outliers.map((p) => p.row.id));
-    {
+    if (!is3) {
+      const xl = document.createElement("label"); xl.textContent = "vs"; ctl.appendChild(xl);
+      const xs = seg(ctl, X_AXES.map((a) => ({ value: a.key, label: a.label })), xKey, (v) => { xKey = v; render(); }, "X axis");
+      xs.style.minWidth = "min(100%,620px)";
+    } else {
+      const sel = (label, value, onChange) => {
+        const s2 = document.createElement("select");
+        s2.className = "fk-sel";
+        s2.setAttribute("aria-label", label);
+        for (const a of X_AXES) { const op = document.createElement("option"); op.value = a.key; op.textContent = a.label; s2.appendChild(op); }
+        s2.value = value;
+        s2.onchange = () => onChange(s2.value);
+        return s2;
+      };
+      const g1x = document.createElement("div"); g1x.className = "fk-selg";
+      const lx = document.createElement("label"); lx.textContent = "over"; g1x.append(lx, sel("3D X axis", ax, (v) => { if (v === ay) ay = ax; ax = v; render(); }));
+      const g2x = document.createElement("div"); g2x.className = "fk-selg";
+      const ly = document.createElement("label"); ly.textContent = "×"; g2x.append(ly, sel("3D Y axis", ay, (v) => { if (v === ax) ax = ay; ay = v; render(); }));
+      ctl.append(g1x, g2x);
+    }
+    if (!is3) {
+      const rel = relation(cr, xAxis, yAxis);
       const { card, host } = chartCard(`${yAxis.label} vs ${xAxis.label}`, rel.n > 1 ? `r² ${fmtNum(rel.r2, 2)} · n ${rel.n}` : `n ${rel.n}`);
       el.appendChild(card);
-      const xf = xKey === "paceMinKm" ? (v) => fmtDur(v) : (v) => fmtNum(v, xKey === "massKg" ? 1 : 0);
+      const xf = axisFmt(xKey);
       charts.push(scatter(host, {
         points: rel.pts.map((p) => ({ x: p.x, y: p.y, id: p.row.id, color: outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
         x: { fmt: xf, label: `${xAxis.label} (${xAxis.unit})` }, y: { fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0), label: yAxis.label },
@@ -5495,6 +6306,33 @@ function mount(root, ctx) {
         d.textContent = `Not enough workouts with both ${xAxis.label.toLowerCase()} and ${yAxis.label} to fit a line.`;
         card.appendChild(d);
       }
+    } else {
+      const aX = X_AXES.find((a) => a.key === ax), aY = X_AXES.find((a) => a.key === ay);
+      const pts = [];
+      for (const r of cr) {
+        const x = aX.get(r), y = aY.get(r), z = yAxis.get(r);
+        if (has(x) && has(y) && has(z)) pts.push({ x, y, z, id: r.id, label: dayLabel(r.start) });
+      }
+      const { card, host } = chartCard(`${yAxis.label} by ${aX.label} × ${aY.label}`, `n ${pts.length}`);
+      card.dataset.s3 = "1";
+      el.appendChild(card);
+      const sf = surface3d(host, {
+        points: pts,
+        x: { label: `${aX.label} (${aX.unit})`, fmt: axisFmt(ax) }, y: { label: `${aY.label} (${aY.unit})`, fmt: axisFmt(ay) },
+        z: { label: yAxis.label, fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0) },
+        bins: 12, view: view3 || undefined, onView: (v) => { view3 = v; }, onPoint: openDetail,
+      });
+      charts.push(sf);
+      const inf = sf.info();
+      const head = card.querySelector(".c-h span:last-child");
+      if (head) head.textContent = `n ${pts.length} · ${inf.measured} cells`;
+      const d = document.createElement("div");
+      d.className = "fk-note";
+      d.dataset.fit3 = "1";
+      d.textContent = pts.length < 3
+        ? `Not enough workouts with ${aX.label}, ${aY.label} and ${yAxis.label} to draw a surface.`
+        : `The surface is the median ${yAxis.label} of the workouts in each ${aX.label} × ${aY.label} cell (12 × 12 grid), with nearby empty cells interpolated and distant ones left blank. Dots are individual workouts. Drag to rotate; hover or tap for a cell's value and n.`;
+      card.appendChild(d);
     }
 
     // correlation table (HR, pace and day context)
@@ -5507,12 +6345,12 @@ function mount(root, ctx) {
       let html = `<table><thead><tr><th>${esc(yAxis.label)} against</th><th class="num">n</th><th class="num">Slope</th><th class="num">r</th><th class="num">r²</th></tr></thead><tbody>`;
       for (const a of X_AXES) {
         const rr = relation(cr, a, yAxis);
-        html += `<tr data-x="${a.key}" tabindex="0" class="${a.key === xKey ? "on" : ""}"><td>${esc(a.label)}</td><td class="num">${rr.n}</td>` +
+        html += `<tr data-x="${a.key}" tabindex="0" class="${a.key === (dim === "3d" ? ax : xKey) ? "on" : ""}"><td>${esc(a.label)}</td><td class="num">${rr.n}</td>` +
           `<td class="num">${rr.n > 1 ? fmtNum(rr.slope, 3) : "—"}</td><td class="num">${rr.n > 1 ? fmtNum(rr.r, 2) : "—"}</td><td class="num">${rr.n > 1 ? fmtNum(rr.r2, 3) : "—"}</td></tr>`;
       }
       sc.innerHTML = html + "</tbody></table>";
       el.appendChild(wrap);
-      const pick = (tr) => { if (tr && tr.dataset.x) { xKey = tr.dataset.x; render(); } };
+      const pick = (tr) => { if (tr && tr.dataset.x) { if (dim === "3d") { if (tr.dataset.x === ay) ay = ax; ax = tr.dataset.x; } else xKey = tr.dataset.x; render(); } };
       wrap.onclick = (e) => pick(e.target.closest("tr[data-x]"));
       wrap.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { const tr = e.target.closest && e.target.closest("tr[data-x]"); if (tr) { e.preventDefault(); pick(tr); } } };
       note("Day resting HR, HRV and body mass are the day's context joined to each workout. A high r² means that factor explains much of the kcal/km spread; near zero means it does not.");
@@ -5601,7 +6439,7 @@ function mount(root, ctx) {
   };
 }
 
-return { OUTLIER_Z, X_AXES, Y_AXES, kcalPerKmOf, kcalPerMinOf, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, mount };
+return { OUTLIER_Z, X_AXES, Y_AXES, kcalPerKmOf, kcalPerMinOf, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, stepBinWidth, histBinWidth, fmt25, mount };
 })();
 // ---- parser/zip.js
 __m["parser/zip.js"] = (function () {
