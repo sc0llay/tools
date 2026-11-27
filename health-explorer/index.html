@@ -432,12 +432,26 @@
   *,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
 }
 
+  /* Touch screens: every hit area is at least 44 x 44 px (Apple HIG). Visual size stays close to the desktop layout. */
+  @media (pointer:coarse){
+    .seg button{min-height:44px;padding-top:0;padding-bottom:0}
+    .hdr .units button,.hdr-seg button{min-height:44px;padding-top:0;padding-bottom:0}
+    .btn{min-height:44px}
+    .chip{min-height:44px;padding-top:0;padding-bottom:0}
+    .icon-btn,.hdr .icon-btn{width:44px;height:44px}
+    .hdr .ctrl{gap:4px}
+    .hdr .brand h1{font-size:19px}
+    .sort{min-height:44px}
+    input[type=checkbox],input[type=radio]{min-width:24px;min-height:24px}
+    input[type=date],input[type=number],select{min-height:44px}
+  }
+
 </style>
 </head>
 <body>
 <div class="field" aria-hidden="true"><i></i><i></i><i></i></div>
 <noscript>Health Explorer needs JavaScript.</noscript>
-<script>window.HE_WORKER_SRC = "(function(){\nconst __m = Object.create(null);\n// ---- parser/xml-scan.js\n__m[\"parser/xml-scan.js\"] = (function () {\n// Streaming scanner for Apple Health export.xml (see src/contract.md).\n//\n// createScanner(onElement) -> { push(textChunk), end(lenient?), counts, sawRoot }\n//\n// Calls onElement({name, attrs, children}) for every top-level <Workout> (children:\n// WorkoutStatistics, MetadataEntry, WorkoutRoute{FileReference, MetadataEntry},\n// WorkoutZoneGroup{WorkoutZone}, WorkoutEvent of type Segment/Lap/Pause/Resume and nested\n// (Estimated)WorkoutEffortScore Records; other events, WorkoutActivity and other nested Records are dropped) and for every top-level\n// <Record> whose type is whitelisted (children: always empty). Everything else is skipped as it\n// streams past: the DTD internal subset, <Correlation>, <ActivitySummary>, ...\n//\n// The result does not depend on how the text is cut into chunks: anything that is not yet\n// complete is carried in `tail` and re-examined when more text arrives. Attribute values are\n// entity-decoded. The scanner never holds more than one Workout plus a partial tag.\n\nconst WHITELIST = new Set([\n  \"HKQuantityTypeIdentifierHeartRate\",\n  \"HKQuantityTypeIdentifierRestingHeartRate\",\n  \"HKQuantityTypeIdentifierHeartRateVariabilitySDNN\",\n  \"HKQuantityTypeIdentifierVO2Max\",\n  \"HKQuantityTypeIdentifierBodyMass\",\n  \"HKQuantityTypeIdentifierWalkingHeartRateAverage\",\n]);\n\nconst EMPTY = Object.freeze([]);\nconst EVENT_KEEP = /type\\s*=\\s*\"HKWorkoutEventType(?:Segment|Lap|Pause|Resume)\"/;\nconst WORKOUT_NESTED = /type\\s*=\\s*\"HKQuantityTypeIdentifier(?:Estimated)?WorkoutEffortScore\"/;\nconst ATTR_RE = /([^\\s=\\/<>\"']+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')/g;\nconst NAME_RE = /[^\\s\\/>]+/y;\nconst SUBSET_END_RE = /\\]\\s*>/g;\nconst ENTITY_RE = /&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);/g;\n\nfunction decodeEntity(_, e) {\n  switch (e) {\n    case \"lt\": return \"<\";\n    case \"gt\": return \">\";\n    case \"amp\": return \"&\";\n    case \"quot\": return '\"';\n    case \"apos\": return \"'\";\n  }\n  const cp = e.charCodeAt(1) === 120 ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);\n  return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : \"\";\n}\n\nfunction decodeEntities(s) {\n  return s.indexOf(\"&\") < 0 ? s : s.replace(ENTITY_RE, decodeEntity);\n}\n\n/** Parse the attributes of one start tag (text from \"<Name\" up to, excluding, \">\"). */\nfunction parseAttrs(tag) {\n  const attrs = {};\n  ATTR_RE.lastIndex = 0;\n  let m;\n  while ((m = ATTR_RE.exec(tag)) !== null) {\n    const v = m[2] !== undefined ? m[2] : m[3];\n    attrs[m[1]] = v.indexOf(\"&\") < 0 ? v : decodeEntities(v);\n  }\n  return attrs;\n}\n\n/** A start tag that contains a raw \">\" inside an attribute value has an odd number of quotes before\n *  the first \">\". Extend to the real end. Returns the index of the closing \">\" or -1 (need more text). */\nfunction tagEnd(buf, lt, gt) {\n  for (;;) {\n    let q = 0;\n    let i = buf.indexOf('\"', lt);\n    while (i >= 0 && i < gt) { q++; i = buf.indexOf('\"', i + 1); }\n    if ((q & 1) === 0) return gt;\n    gt = buf.indexOf(\">\", gt + 1);\n    if (gt < 0) return -1;\n  }\n}\n\nfunction parseChildren(block, from) {\n  const out = [];\n  let i = from;\n  for (;;) {\n    const lt = block.indexOf(\"<\", i);\n    if (lt < 0) break;\n    if (block.charCodeAt(lt + 1) === 47) { i = lt + 2; continue; }\n    NAME_RE.lastIndex = lt + 1;\n    const m = NAME_RE.exec(block);\n    if (m === null) { i = lt + 1; continue; }\n    const name = m[0];\n    let gt = block.indexOf(\">\", lt);\n    if (gt < 0) break;\n    gt = tagEnd(block, lt, gt);\n    if (gt < 0) break;\n    const self = block.charCodeAt(gt - 1) === 47;\n    i = gt + 1;\n    if (name === \"WorkoutStatistics\" || name === \"MetadataEntry\" || name === \"FileReference\") {\n      out.push({ name, attrs: parseAttrs(block.substring(lt, gt)) });\n    } else if (name === \"WorkoutRoute\") {\n      const attrs = parseAttrs(block.substring(lt, gt));\n      let kids = EMPTY;\n      if (!self) {\n        const ce = block.indexOf(\"<\/WorkoutRoute>\", i);\n        kids = parseChildren(ce < 0 ? block.substring(i) : block.substring(i, ce), 0);\n        i = ce < 0 ? block.length : ce + 15;\n      }\n      out.push({ name, attrs, children: kids });\n    } else if (name === \"WorkoutZone\") {\n      out.push({ name, attrs: parseAttrs(block.substring(lt, gt)) });\n    } else if (name === \"WorkoutZoneGroup\") {\n      const attrs = parseAttrs(block.substring(lt, gt));\n      let kids = EMPTY;\n      if (!self) {\n        const ce = block.indexOf(\"<\/WorkoutZoneGroup>\", i);\n        kids = parseChildren(ce < 0 ? block.substring(i) : block.substring(i, ce), 0);\n        i = ce < 0 ? block.length : ce + 19;\n      }\n      out.push({ name, attrs, children: kids });\n    } else if (name === \"WorkoutEvent\" || name === \"Record\") {\n      // Segment / Lap / Pause / Resume events and nested workout-effort Records are kept (attrs only);\n      // other events and nested Records are dropped. Any children are skipped.\n      const head = block.substring(lt, gt);\n      const keep = name === \"Record\" ? WORKOUT_NESTED.test(head) : EVENT_KEEP.test(head);\n      if (keep) out.push({ name, attrs: parseAttrs(head) });\n      if (!self) {\n        const close = \"<\/\" + name + \">\";\n        const ce = block.indexOf(close, i);\n        i = ce < 0 ? block.length : ce + close.length;\n      }\n    } else if (!self) {\n      // WorkoutActivity, other elements: skip with its children\n      const close = \"<\/\" + name + \">\";\n      const ce = block.indexOf(close, i);\n      i = ce < 0 ? block.length : ce + close.length;\n    }\n  }\n  return out;\n}\n\nfunction createScanner(onElement) {\n  let tail = \"\";\n  let skipClose = null; // closing tag we are skipping towards\n  let wSearch = 0; // resume offset (relative to the \"<Workout\" start) for the <\/Workout> search\n  let sawRoot = false;\n  let closedRoot = false;\n  let ended = false;\n  const counts = { records: 0, workouts: 0 };\n\n  /** Consume as much of buf as possible; return the index where the unconsumed part starts. */\n  function run(buf) {\n    const len = buf.length;\n    let pos = 0;\n    for (;;) {\n      if (skipClose !== null) {\n        const i = buf.indexOf(skipClose, pos);\n        if (i < 0) return Math.max(pos, len - (skipClose.length - 1));\n        pos = i + skipClose.length;\n        skipClose = null;\n      }\n      const lt = buf.indexOf(\"<\", pos);\n      if (lt < 0) return len;\n\n      // ---- fast path: <Record type=\"...\" ...> (the type is the first attribute in real exports)\n      if (buf.startsWith('Record type=\"', lt + 1)) {\n        const q = buf.indexOf('\"', lt + 14);\n        if (q < 0) return lt;\n        const type = buf.substring(lt + 14, q);\n        let gt = buf.indexOf(\">\", q);\n        if (gt < 0) return lt;\n        let self = buf.charCodeAt(gt - 1) === 47;\n        if (!self) {\n          gt = tagEnd(buf, lt, gt);\n          if (gt < 0) return lt;\n          self = buf.charCodeAt(gt - 1) === 47;\n        }\n        counts.records++;\n        if (WHITELIST.has(type)) {\n          onElement({ name: \"Record\", attrs: parseAttrs(buf.substring(lt, gt)), children: EMPTY });\n        }\n        pos = gt + 1;\n        if (!self) skipClose = \"<\/Record>\";\n        continue;\n      }\n\n      const c1 = buf.charCodeAt(lt + 1);\n      if (c1 !== c1) return lt; // \"<\" is the last character so far\n\n      if (c1 === 33) { // \"<!\": comment, CDATA, DOCTYPE\n        if (len - lt < 9) return lt; // might be a prefix of <![CDATA[ or <!DOCTYPE\n        if (buf.startsWith(\"<!--\", lt)) {\n          const i = buf.indexOf(\"-->\", lt + 4);\n          if (i < 0) return lt;\n          pos = i + 3;\n        } else if (buf.startsWith(\"<![CDATA[\", lt)) {\n          const i = buf.indexOf(\"]]>\", lt + 9);\n          if (i < 0) return lt;\n          pos = i + 3;\n        } else if (buf.startsWith(\"<!DOCTYPE\", lt)) {\n          const br = buf.indexOf(\"[\", lt + 9);\n          const g = buf.indexOf(\">\", lt + 9);\n          if (br >= 0 && (g < 0 || br < g)) { // internal subset: skip to \"]>\"\n            SUBSET_END_RE.lastIndex = br + 1;\n            const m = SUBSET_END_RE.exec(buf);\n            if (m === null) return lt;\n            pos = m.index + m[0].length;\n          } else {\n            if (g < 0) return lt;\n            pos = g + 1;\n          }\n        } else {\n          const g = buf.indexOf(\">\", lt);\n          if (g < 0) return lt;\n          pos = g + 1;\n        }\n        continue;\n      }\n      if (c1 === 63) { // \"<?\": processing instruction\n        const i = buf.indexOf(\"?>\", lt + 2);\n        if (i < 0) return lt;\n        pos = i + 2;\n        continue;\n      }\n\n      let gt = buf.indexOf(\">\", lt);\n      if (gt < 0) return lt;\n      gt = tagEnd(buf, lt, gt);\n      if (gt < 0) return lt;\n\n      if (c1 === 47) { // closing tag\n        if (buf.startsWith(\"HealthData\", lt + 2)) closedRoot = true;\n        pos = gt + 1;\n        continue;\n      }\n\n      NAME_RE.lastIndex = lt + 1;\n      const nm = NAME_RE.exec(buf);\n      const name = nm === null ? \"\" : nm[0];\n      const self = buf.charCodeAt(gt - 1) === 47;\n\n      if (name === \"Workout\") {\n        if (self) {\n          counts.workouts++;\n          onElement({ name, attrs: parseAttrs(buf.substring(lt, gt)), children: [] });\n          pos = gt + 1;\n          continue;\n        }\n        const ce = buf.indexOf(\"<\/Workout>\", Math.max(gt + 1, lt + wSearch));\n        if (ce < 0) {\n          wSearch = Math.max(0, len - lt - 9);\n          return lt;\n        }\n        wSearch = 0;\n        counts.workouts++;\n        const block = buf.substring(lt, ce);\n        onElement({ name, attrs: parseAttrs(block.substring(0, gt - lt)), children: parseChildren(block, gt - lt + 1) });\n        pos = ce + 10;\n      } else if (name === \"Record\") { // type not the first attribute: slow path\n        const attrs = parseAttrs(buf.substring(lt, gt));\n        counts.records++;\n        if (WHITELIST.has(attrs.type)) onElement({ name, attrs, children: EMPTY });\n        pos = gt + 1;\n        if (!self) skipClose = \"<\/Record>\";\n      } else if (name === \"HealthData\") {\n        sawRoot = true;\n        if (self) closedRoot = true;\n        pos = gt + 1;\n      } else {\n        pos = gt + 1;\n        if (!self && name !== \"\") skipClose = \"<\/\" + name + \">\";\n      }\n    }\n  }\n\n  return {\n    push(text) {\n      if (ended) throw new Error(\"scanner already ended\");\n      const buf = tail === \"\" ? text : tail + text;\n      const pos = run(buf);\n      tail = pos >= buf.length ? \"\" : buf.slice(pos);\n    },\n    /** Flush. Throws if the document is cut off (unless `lenient`). */\n    end(lenient) {\n      if (!ended) ended = true;\n      const truncated = sawRoot && (!closedRoot || skipClose !== null || tail.trim() !== \"\");\n      if (truncated && !lenient) throw new Error(\"Truncated XML: the file ends before <\/HealthData>\");\n      return { sawRoot, closedRoot, truncated, records: counts.records, workouts: counts.workouts };\n    },\n    counts,\n    get sawRoot() { return sawRoot; },\n  };\n}\n\nreturn { decodeEntities, parseAttrs, createScanner };\n})();\n// ---- parser/build.js\n__m[\"parser/build.js\"] = (function () {\n// Turns scanner elements into WorkoutRows + sorted series (see src/contract.md).\n// Unit / date helpers are private here (same names and behaviour as the contract's core/units.js,\n// exported only so tests can reach them); the main agent dedupes against core/units.js later.\n\nconst NBSP_RE = /\u00a0/g;\nconst WORKOUT_PREFIX = \"HKWorkoutActivityType\";\nconst SERIES_KINDS = [\"hr\", \"rhr\", \"hrv\", \"vo2max\", \"mass\", \"walkHr\"];\nconst KIND_BY_TYPE = {\n  HKQuantityTypeIdentifierHeartRate: \"hr\",\n  HKQuantityTypeIdentifierRestingHeartRate: \"rhr\",\n  HKQuantityTypeIdentifierHeartRateVariabilitySDNN: \"hrv\",\n  HKQuantityTypeIdentifierVO2Max: \"vo2max\",\n  HKQuantityTypeIdentifierBodyMass: \"mass\",\n  HKQuantityTypeIdentifierWalkingHeartRateAverage: \"walkHr\",\n};\nconst DAY_MS = 86400000;\nconst EMPTY_EVENTS = [];\n\n// ---------------------------------------------------------------- units\n\nconst KM = { km: 1, mi: 1.609344, m: 0.001, yd: 0.0009144, ft: 0.0003048 };\nconst KCAL = { kcal: 1, Cal: 1, kJ: 1 / 4.184, cal: 0.001, J: 1 / 4184 };\nconst MIN = { min: 1, s: 1 / 60, sec: 1 / 60, hr: 60, h: 60 };\nconst METRES = { m: 1, cm: 0.01, km: 1000, ft: 0.3048, in: 0.0254, yd: 0.9144, mi: 1609.344, mm: 0.001 };\n\nfunction scale(table, value, unit) {\n  const f = table[unit];\n  return f === undefined || value === null || Number.isNaN(value) ? null : value * f;\n}\nfunction toKm(value, unit) { return scale(KM, value, unit); }\nfunction toKcal(value, unit) { return scale(KCAL, value, unit); }\nfunction toMin(value, unit) { return scale(MIN, value, unit); }\nfunction toM(value, unit) { return scale(METRES, value, unit); }\n\n/** \"4090 cm\" -> {value: 4090, unit: \"cm\"}; null when there is no leading number. */\nfunction parseQty(s) {\n  if (typeof s !== \"string\") return null;\n  const m = /^\\s*(-?\\d+(?:\\.\\d+)?(?:[eE][-+]?\\d+)?)\\s*(.*?)\\s*$/.exec(s);\n  return m === null ? null : { value: parseFloat(m[1]), unit: m[2] };\n}\n\n// ---------------------------------------------------------------- dates\n\nfunction dg(s, i) { return s.charCodeAt(i) - 48; }\n\n/** \"2026-11-24 05:37:53 +0000\" -> {ms, tzOffset} (tzOffset = the stamp's own offset, minutes east). null if malformed. */\nfunction parseHKDate(s) {\n  if (typeof s !== \"string\" || s.length < 19) return null;\n  const y = dg(s, 0) * 1000 + dg(s, 1) * 100 + dg(s, 2) * 10 + dg(s, 3);\n  const mo = dg(s, 5) * 10 + dg(s, 6);\n  const d = dg(s, 8) * 10 + dg(s, 9);\n  const h = dg(s, 11) * 10 + dg(s, 12);\n  const mi = dg(s, 14) * 10 + dg(s, 15);\n  const se = dg(s, 17) * 10 + dg(s, 18);\n  let off = 0;\n  if (s.length >= 25) {\n    off = (dg(s, 21) * 10 + dg(s, 22)) * 60 + dg(s, 23) * 10 + dg(s, 24);\n    if (s.charCodeAt(20) === 45) off = -off;\n  }\n  const ms = Date.UTC(y, mo - 1, d, h, mi, se) - off * 60000;\n  return Number.isNaN(ms) ? null : { ms, tzOffset: off };\n}\n\nconst dtfCache = new Map();\nconst offsetCache = new Map();\n\n/** Minutes east of UTC of an IANA zone at instant `ms` (cached per zone + hour). null for an unknown zone. */\nfunction zoneOffset(ms, zone) {\n  const hour = Math.floor(ms / 3600000);\n  const key = zone + \"|\" + hour;\n  let v = offsetCache.get(key);\n  if (v !== undefined) return v;\n  let dtf = dtfCache.get(zone);\n  if (dtf === undefined) {\n    try {\n      dtf = new Intl.DateTimeFormat(\"en-US\", {\n        timeZone: zone, hourCycle: \"h23\", year: \"numeric\", month: \"numeric\", day: \"numeric\",\n        hour: \"numeric\", minute: \"numeric\", second: \"numeric\",\n      });\n    } catch (e) { dtf = null; }\n    dtfCache.set(zone, dtf);\n  }\n  if (dtf === null) return null;\n  const p = {};\n  for (const part of dtf.formatToParts(new Date(ms))) p[part.type] = parseInt(part.value, 10);\n  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);\n  v = Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60000);\n  if (offsetCache.size > 20000) offsetCache.clear();\n  offsetCache.set(key, v);\n  return v;\n}\n\n/** \"YYYY-MM-DD\" of `ms` shifted by `tzOffset` minutes. */\nfunction localDay(ms, tzOffset) {\n  return new Date(ms + tzOffset * 60000).toISOString().slice(0, 10);\n}\n\n// ---------------------------------------------------------------- helpers\n\n/** Detach a short string from the (large) scanner buffer it was sliced from. */\nfunction copyStr(s) { return (s + \"\\u0000\").slice(0, -1); }\n\nfunction num(s) {\n  if (s === undefined || s === \"\") return null;\n  const v = parseFloat(s);\n  return Number.isNaN(v) ? null : v;\n}\n\nfunction isWhole(v, eps) { return Math.abs(v - Math.round(v)) < eps; }\n\nclass Grow {\n  constructor() { this.n = 0; this.t = new Float64Array(2048); this.v = new Float32Array(2048); }\n  push(t, v) {\n    if (this.n === this.t.length) {\n      const t2 = new Float64Array(this.n * 2); t2.set(this.t); this.t = t2;\n      const v2 = new Float32Array(this.n * 2); v2.set(this.v); this.v = v2;\n    }\n    this.t[this.n] = t;\n    this.v[this.n++] = v;\n  }\n}\n\n/** Sorted, exactly-sized {kind, times, values}. */\nfunction finishSeries(kind, g) {\n  const n = g.n;\n  const t = g.t.slice(0, n);\n  const v = g.v.slice(0, n);\n  let sorted = true;\n  for (let i = 1; i < n; i++) if (t[i] < t[i - 1]) { sorted = false; break; }\n  if (sorted) return { kind, times: t, values: v };\n  const idx = new Uint32Array(n);\n  for (let i = 0; i < n; i++) idx[i] = i;\n  idx.sort((a, b) => t[a] - t[b] || a - b);\n  const t2 = new Float64Array(n);\n  const v2 = new Float32Array(n);\n  for (let i = 0; i < n; i++) { t2[i] = t[idx[i]]; v2[i] = v[idx[i]]; }\n  return { kind, times: t2, values: v2 };\n}\n\n/** first index with times[i] >= x */\nfunction lowerBound(times, x) {\n  let lo = 0, hi = times.length;\n  while (lo < hi) { const mid = (lo + hi) >>> 1; if (times[mid] < x) lo = mid + 1; else hi = mid; }\n  return lo;\n}\n\nfunction dayMean(series, dayStart, dayEnd) {\n  const t = series.times, v = series.values;\n  let i = lowerBound(t, dayStart), sum = 0, n = 0;\n  for (; i < t.length && t[i] < dayEnd; i++) { sum += v[i]; n++; }\n  return n === 0 ? null : sum / n;\n}\n\nfunction distanceStatFor(type) {\n  if (type === \"Cycling\" || type === \"HandCycling\") return \"HKQuantityTypeIdentifierDistanceCycling\";\n  if (type === \"Swimming\") return \"HKQuantityTypeIdentifierDistanceSwimming\";\n  if (type === \"Rowing\") return \"HKQuantityTypeIdentifierDistanceRowing\";\n  return \"HKQuantityTypeIdentifierDistanceWalkingRunning\";\n}\n\n\n// ---------------------------------------------------------------- ext (rich workout detail)\n\nconst SPEED_KMH = { \"km/hr\": 1, \"km/h\": 1, \"m/s\": 3.6, \"mi/hr\": 1.609344, \"mph\": 1.609344 };\nconst STAT_RANGE = { // statistic id suffix -> ext key (avg/min/max objects)\n  RunningPower: \"runningPower\", CyclingPower: \"cyclingPower\", RunningSpeed: \"runningSpeed\", CyclingSpeed: \"cyclingSpeed\",\n};\nconst STAT_AVG = { // suffix -> ext key (average only)\n  RunningGroundContactTime: \"groundContact\", RunningVerticalOscillation: \"verticalOscillation\",\n  RunningStrideLength: \"strideLength\", CyclingCadence: \"cyclingCadence\", WaterTemperature: \"waterTempC\",\n};\nconst STAT_SUM = { StepCount: \"steps\", FlightsClimbed: \"flights\", SwimmingStrokeCount: \"swimStrokes\" };\n\nfunction r2(v) { return Math.round(v * 100) / 100; }\n\nfunction rangeOf(c, conv) {\n  const f = (x) => { const v = num(x); return v === null ? null : r2(conv ? v * conv : v); };\n  const avg = f(c.average);\n  if (avg === null) return null;\n  return { avg, min: f(c.minimum), max: f(c.maximum) };\n}\n\n/** Segment events overlap (km and mile splits interleaved). Follow the chains that start at the first segment\n *  (each next segment begins where the previous one ended) and keep the one whose typical duration matches\n *  minutes-per-km. Without a distance the chain with the most segments is kept. */\nfunction pickSegments(segs, durMin, distKm) {\n  if (segs.length < 2) return segs.map(({ t, sec }) => ({ t, sec }));\n  segs.sort((a, b) => a.t - b.t);\n  const t0 = segs[0].t;\n  const chains = [];\n  for (const s of segs) {\n    if (s.t - t0 > 2000) break;\n    const chain = [s];\n    for (;;) {\n      const last = chain[chain.length - 1];\n      const endT = last.t + last.sec * 1000;\n      let best = null, bd = 4000;\n      for (const n of segs) {\n        if (n.t <= last.t) continue;\n        const d = Math.abs(n.t - endT);\n        if (d < bd) { bd = d; best = n; }\n        else if (n.t - endT > 4000) break;\n      }\n      if (best === null) break;\n      chain.push(best);\n    }\n    chains.push(chain);\n  }\n  let pick = chains[0];\n  if (chains.length > 1) {\n    if (distKm !== null && distKm > 0 && durMin > 0) {\n      const pace = (durMin * 60) / distKm; // seconds per km\n      const score = (c) => {\n        const full = c.slice(0, Math.max(1, c.length - 1)).map((x) => x.sec).sort((a, b) => a - b);\n        return Math.abs(full[full.length >> 1] - pace);\n      };\n      let bs = Infinity;\n      for (const c of chains) { const sc = score(c); if (sc < bs) { bs = sc; pick = c; } }\n    } else {\n      for (const c of chains) if (c.length > pick.length) pick = c;\n    }\n  }\n  return pick.map(({ t, sec }) => ({ t, sec: Math.round(sec * 10) / 10 }));\n}\n\n/** Everything beyond the table columns, or null. */\nfunction buildExt(statsAll, meta, events, zoneGroup, effort, effortEst, durMin, distKm, endMs) {\n  const x = {};\n  let any = false, rawSteps = null;\n  const put = (k, v) => { if (v !== null && v !== undefined) { x[k] = v; any = true; } };\n  for (const id in statsAll) {\n    const c = statsAll[id];\n    const suf = id.startsWith(\"HKQuantityTypeIdentifier\") ? id.slice(24) : id;\n    if (STAT_RANGE[suf]) {\n      const isSpeed = suf.endsWith(\"Speed\");\n      const f = isSpeed ? SPEED_KMH[c.unit] : 1;\n      if (f !== undefined) put(STAT_RANGE[suf], rangeOf(c, isSpeed ? f : 0));\n    } else if (STAT_AVG[suf]) {\n      const v = num(c.average);\n      if (v !== null) put(STAT_AVG[suf], r2(v));\n    } else if (STAT_SUM[suf]) {\n      const v = num(c.sum);\n      if (v !== null) { put(STAT_SUM[suf], Math.round(v)); if (suf === \"StepCount\") rawSteps = v; }\n    }\n  }\n  if (x.steps !== undefined && durMin > 0) put(\"cadence\", Math.round(rawSteps / durMin));\n\n  if (meta.HKWeatherTemperature) {\n    const q = parseQty(meta.HKWeatherTemperature);\n    if (q !== null) {\n      const c = q.unit === \"degF\" ? (q.value - 32) / 1.8 : q.unit === \"degC\" ? q.value : null;\n      if (c !== null) put(\"tempC\", Math.round(c * 10) / 10);\n    }\n  }\n  if (meta.HKWeatherHumidity) {\n    const q = parseQty(meta.HKWeatherHumidity);\n    if (q !== null) put(\"humidityPct\", Math.round(q.value > 100 ? q.value / 100 : q.value <= 1 ? q.value * 100 : q.value));\n  }\n  if (meta.HKAverageMETs) { const q = parseQty(meta.HKAverageMETs); if (q !== null) put(\"mets\", r2(q.value)); }\n  if (meta.HKIndoorWorkout === \"0\" || meta.HKIndoorWorkout === \"1\") put(\"indoor\", meta.HKIndoorWorkout === \"1\");\n  if (meta.HKSWOLFScore) { const v = num(meta.HKSWOLFScore); if (v !== null) put(\"swolf\", v); }\n  if (meta.HKLapLength) { const q = parseQty(meta.HKLapLength); if (q !== null) { const m = toM(q.value, q.unit); if (m !== null) put(\"lapLengthM\", m); } }\n  if (meta.HKSwimmingLocationType) { const v = num(meta.HKSwimmingLocationType); if (v !== null) put(\"swimLocation\", v); } // 1 pool, 2 open water\n  if (effort !== null) put(\"effort\", effort);\n  if (effortEst !== null) put(\"effortEst\", effortEst);\n\n  if (zoneGroup !== null) {\n    const zones = [];\n    for (const z of zoneGroup.children) {\n      if (z.name !== \"WorkoutZone\") continue;\n      const m = toMin(num(z.attrs.duration) || 0, z.attrs.durationUnit || \"min\");\n      zones.push({ min: num(z.attrs.minimum), max: num(z.attrs.maximum), sec: Math.round((m || 0) * 600) / 10 });\n    }\n    if (zones.length) put(\"zones\", zones);\n  }\n\n  if (events.length) {\n    const segs = [], laps = [], marks = [];\n    for (const e of events) {\n      const d = parseHKDate(e.attrs.date);\n      if (d === null) continue;\n      const type = e.attrs.type;\n      if (type === \"HKWorkoutEventTypeSegment\" || type === \"HKWorkoutEventTypeLap\") {\n        const m = toMin(num(e.attrs.duration), e.attrs.durationUnit || \"min\");\n        if (m === null) continue;\n        (type.endsWith(\"Lap\") ? laps : segs).push({ t: d.ms, sec: m * 60 });\n      } else marks.push({ t: d.ms, pause: type === \"HKWorkoutEventTypePause\" });\n    }\n    if (segs.length) put(\"segments\", pickSegments(segs, durMin, distKm));\n    if (laps.length) put(\"laps\", laps.sort((a, b) => a.t - b.t).map((l) => ({ t: l.t, sec: Math.round(l.sec * 10) / 10 })));\n    if (marks.length) {\n      marks.sort((a, b) => a.t - b.t);\n      const pauses = [];\n      let from = null;\n      for (const m of marks) {\n        if (m.pause) { if (from === null) from = m.t; }\n        else if (from !== null) { if (m.t > from) pauses.push([from, m.t]); from = null; }\n      }\n      // a trailing Pause with no Resume is just the end of the workout\n      if (pauses.length) put(\"pauses\", pauses);\n    }\n  }\n  return any ? x : null;\n}\n\n// ---------------------------------------------------------------- builder\n\nfunction createBuilder() {\n  const grows = {};\n  for (const k of SERIES_KINDS) grows[k] = new Grow();\n  const rows = [];\n  const intern = new Map();\n  let kept = 0;\n  let finished = false;\n\n  function interned(s) {\n    let v = intern.get(s);\n    if (v === undefined) { v = copyStr(s); intern.set(v, v); }\n    return v;\n  }\n\n  function addRecord(a) {\n    const kind = KIND_BY_TYPE[a.type];\n    if (kind === undefined) return;\n    let value = parseFloat(a.value);\n    if (Number.isNaN(value)) return;\n    const d = parseHKDate(a.startDate);\n    if (d === null) return;\n    if (kind === \"mass\") {\n      const u = a.unit;\n      if (u === \"lb\") value *= 0.45359237;\n      else if (u === \"g\") value /= 1000;\n      else if (u === \"st\") value *= 6.35029318;\n    } else if (kind === \"hrv\" && a.unit === \"s\") {\n      value *= 1000;\n    }\n    grows[kind].push(d.ms, value);\n    kept++;\n  }\n\n  function addWorkout(el) {\n    const a = el.attrs;\n    const type = interned((a.workoutActivityType || \"Other\").startsWith(WORKOUT_PREFIX)\n      ? a.workoutActivityType.slice(WORKOUT_PREFIX.length) : a.workoutActivityType || \"Other\");\n    const source = interned((a.sourceName || \"\").replace(NBSP_RE, \" \"));\n    const sd = parseHKDate(a.startDate);\n    if (sd === null) return;\n    const ed = parseHKDate(a.endDate);\n    const start = sd.ms;\n    const end = ed === null ? start : ed.ms;\n\n    // children: statistics + metadata\n    const stats = {};\n    const meta = {};\n    let route = null, events = null, zoneGroup = null, effort = null, effortEst = null;\n    for (const c of el.children) {\n      if (c.name === \"WorkoutStatistics\") {\n        if (stats[c.attrs.type] === undefined) stats[c.attrs.type] = c.attrs;\n      } else if (c.name === \"WorkoutEvent\") {\n        (events || (events = [])).push(c);\n      } else if (c.name === \"WorkoutZoneGroup\") {\n        if (zoneGroup === null && c.attrs.type === \"HKQuantityTypeIdentifierHeartRate\") zoneGroup = c;\n      } else if (c.name === \"Record\") { // nested effort score (never added to the series)\n        const v = num(c.attrs.value);\n        if (v !== null) { if (c.attrs.type === \"HKQuantityTypeIdentifierWorkoutEffortScore\") effort = v; else effortEst = v; }\n      } else if (c.name === \"MetadataEntry\") {\n        if (meta[c.attrs.key] === undefined) meta[c.attrs.key] = c.attrs.value;\n      } else if (c.name === \"WorkoutRoute\") {\n        for (const k of c.children) if (k.name === \"FileReference\" && route === null) route = k.attrs.path;\n      } else if (c.name === \"FileReference\" && route === null) {\n        route = c.attrs.path;\n      }\n    }\n    if (route) {\n      const slash = route.lastIndexOf(\"/\");\n      route = copyStr(slash >= 0 ? route.slice(slash + 1) : route);\n    } else route = null;\n\n    // time zone\n    let tzOffset = null;\n    const zone = meta.HKTimeZone;\n    if (zone) tzOffset = zoneOffset(start, zone);\n    if (tzOffset === null) tzOffset = sd.tzOffset !== 0 ? sd.tzOffset : -new Date(start).getTimezoneOffset();\n\n    // duration\n    let durMin = num(a.duration);\n    durMin = durMin === null ? null : toMin(durMin, a.durationUnit || \"min\");\n    if (durMin === null) durMin = (end - start) / 60000;\n\n    // distance: preferred statistic for the type, else any Distance* statistic, else attribute\n    let distKm = null;\n    let ds = stats[distanceStatFor(type)];\n    if (ds === undefined) {\n      for (const k in stats) if (k.startsWith(\"HKQuantityTypeIdentifierDistance\")) { ds = stats[k]; break; }\n    }\n    if (ds !== undefined) {\n      const v = num(ds.sum);\n      if (v !== null) distKm = toKm(v, ds.unit);\n    }\n    if (distKm === null && a.totalDistance) {\n      const v = num(a.totalDistance);\n      if (v !== null) distKm = toKm(v, a.totalDistanceUnit || \"km\");\n    }\n    if (distKm !== null && !(distKm > 0)) distKm = null;\n\n    // energy\n    const energy = (id, attr, attrUnit) => {\n      const s = stats[\"HKQuantityTypeIdentifier\" + id];\n      if (s !== undefined) {\n        const v = num(s.sum);\n        if (v !== null) return toKcal(v, s.unit);\n      }\n      if (attr) {\n        const v = num(attr);\n        if (v !== null) return toKcal(v, attrUnit || \"kcal\");\n      }\n      return null;\n    };\n    const activeKcal = energy(\"ActiveEnergyBurned\", a.totalEnergyBurned, a.totalEnergyBurnedUnit);\n    const basalKcal = energy(\"BasalEnergyBurned\", null, null);\n    const totalKcal = activeKcal === null ? null : basalKcal === null ? activeKcal : activeKcal + basalKcal;\n\n    // heart rate\n    let avgHr = null, maxHr = null;\n    const hs = stats.HKQuantityTypeIdentifierHeartRate;\n    if (hs !== undefined) { avgHr = num(hs.average); maxHr = num(hs.maximum); }\n\n    // elevation\n    let elevM = null;\n    if (meta.HKElevationAscended) {\n      const q = parseQty(meta.HKElevationAscended);\n      if (q !== null) elevM = toM(q.value, q.unit);\n    }\n\n    // manual heuristic\n    let manual = meta.HKWasUserEntered === \"1\";\n    if (!manual && !source.includes(\"Watch\")) {\n      let hits = 0;\n      if (distKm !== null && isWhole(distKm, 1e-6)) hits++;\n      if (isWhole(durMin, 1e-6)) hits++;\n      if (activeKcal !== null && isWhole(activeKcal / 10, 1e-6)) hits++;\n      if (avgHr !== null && isWhole(avgHr / 5, 1e-6)) hits++;\n      manual = hits >= 2;\n    }\n\n    rows.push({\n      id: rows.length, type, source, manual, start, end, tzOffset,\n      localDay: localDay(start, tzOffset),\n      durMin, distKm, elevM, activeKcal, basalKcal, totalKcal, avgHr, maxHr,\n      paceMinKm: distKm !== null && durMin !== null ? durMin / distKm : null,\n      kcalPerKm: distKm !== null && activeKcal !== null ? activeKcal / distKm : null,\n      kcalPerMin: activeKcal !== null && durMin > 0 ? activeKcal / durMin : null,\n      rhrDay: null, hrvDay: null, massKg: null, route, dupOf: null,\n      ext: buildExt(stats, meta, events || EMPTY_EVENTS, zoneGroup, effort, effortEst, durMin, distKm, end),\n    });\n  }\n\n  function markDuplicates() {\n    const byType = new Map();\n    for (const r of rows) {\n      let list = byType.get(r.type);\n      if (list === undefined) byType.set(r.type, list = []);\n      list.push(r);\n    }\n    for (const list of byType.values()) {\n      list.sort((a, b) => a.start - b.start || a.id - b.id);\n      let active = []; // earlier rows that may still overlap the current one\n      for (const r of list) {\n        active = active.filter((a) => a.end > r.start);\n        for (const a of active) { // active is in start order, so the first hit is the earliest\n          if (a.source !== r.source) { r.dupOf = a.id; break; }\n        }\n        active.push(r);\n      }\n    }\n  }\n\n  return {\n    add(el) {\n      if (finished) throw new Error(\"builder already finished\");\n      if (el.name === \"Record\") addRecord(el.attrs);\n      else if (el.name === \"Workout\") addWorkout(el);\n    },\n    /** `extra` may override summary counters: {records, bytes, ms}. */\n    finish(extra) {\n      finished = true;\n      extra = extra || {};\n      const series = {};\n      for (const k of SERIES_KINDS) series[k] = finishSeries(k, grows[k]);\n\n      markDuplicates();\n      const { rhr, hrv, mass } = series;\n      for (const r of rows) {\n        const p = r.localDay.split(\"-\");\n        const dayStart = Date.UTC(+p[0], +p[1] - 1, +p[2]) - r.tzOffset * 60000;\n        r.rhrDay = dayMean(rhr, dayStart, dayStart + DAY_MS);\n        r.hrvDay = dayMean(hrv, dayStart, dayStart + DAY_MS);\n        const i = lowerBound(mass.times, r.start + 1) - 1; // last sample with time <= start\n        r.massKg = i >= 0 ? Math.round(mass.values[i] * 1000) / 1000 : null; // Float32 noise out\n      }\n\n      const byType = {};\n      const sources = {};\n      for (const r of rows) {\n        byType[r.type] = (byType[r.type] || 0) + 1;\n        sources[r.source] = (sources[r.source] || 0) + 1;\n      }\n      const summary = {\n        workouts: rows.length,\n        records: extra.records !== undefined ? extra.records : kept,\n        bytes: extra.bytes || 0,\n        ms: extra.ms || 0,\n        byType, sources,\n      };\n      return { rows, series, summary };\n    },\n  };\n}\n\nreturn { toKm, toKcal, toMin, toM, parseQty, parseHKDate, zoneOffset, localDay, createBuilder };\n})();\n// ---- parser/zip.js\n__m[\"parser/zip.js\"] = (function () {\n// Minimal zip reader: central directory through File.slice (random access, no whole-file read),\n// native DecompressionStream(\"deflate-raw\") for method 8. Handles ZIP64 and data descriptors\n// (sizes always come from the central directory, never from the local header).\n\nconst SIG_EOCD = 0x06054b50;\nconst SIG_EOCD64 = 0x06064b50;\nconst SIG_LOC64 = 0x07064b50;\nconst SIG_CEN = 0x02014b50;\nconst SIG_LOCAL = 0x04034b50;\n\nasync function readBytes(file, start, end) {\n  return new DataView(await file.slice(start, end).arrayBuffer());\n}\n\nfunction u64(dv, o) {\n  return dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296;\n}\n\n/** true when the file starts with a zip local-file or end-of-central-directory signature */\nasync function isZip(file) {\n  if (file.size < 22) return false;\n  const dv = await readBytes(file, 0, 4);\n  const sig = dv.getUint32(0, true);\n  return sig === SIG_LOCAL || sig === SIG_EOCD;\n}\n\n/** Parse the central directory. Returns [{name, method, flags, size, compressedSize, offset}]. */\nasync function listEntries(file) {\n  const tailLen = Math.min(file.size, 65557 + 20);\n  const tailStart = file.size - tailLen;\n  const tail = await readBytes(file, tailStart, file.size);\n  let eocd = -1;\n  for (let i = tailLen - 22; i >= 0; i--) {\n    if (tail.getUint32(i, true) === SIG_EOCD) {\n      const commentLen = tail.getUint16(i + 20, true);\n      if (i + 22 + commentLen <= tailLen) { eocd = i; break; }\n    }\n  }\n  if (eocd < 0) throw new Error(\"Not a zip file (no end-of-central-directory record)\");\n\n  let count = tail.getUint16(eocd + 10, true);\n  let cdSize = tail.getUint32(eocd + 12, true);\n  let cdOffset = tail.getUint32(eocd + 16, true);\n  if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {\n    // ZIP64: locator sits right before the EOCD record\n    let loc = -1;\n    if (eocd >= 20 && tail.getUint32(eocd - 20, true) === SIG_LOC64) loc = tailStart + eocd - 20;\n    if (loc < 0) throw new Error(\"Zip64 end-of-central-directory locator not found\");\n    const l = await readBytes(file, loc, loc + 20);\n    const eocd64Off = u64(l, 8);\n    const r = await readBytes(file, eocd64Off, eocd64Off + 56);\n    if (r.getUint32(0, true) !== SIG_EOCD64) throw new Error(\"Bad zip64 end-of-central-directory record\");\n    count = u64(r, 32);\n    cdSize = u64(r, 40);\n    cdOffset = u64(r, 48);\n  }\n\n  const cd = await readBytes(file, cdOffset, cdOffset + cdSize);\n  const bytes = new Uint8Array(cd.buffer, cd.byteOffset, cd.byteLength);\n  const utf8 = new TextDecoder(\"utf-8\");\n  const entries = [];\n  let p = 0;\n  while (p + 46 <= cd.byteLength && cd.getUint32(p, true) === SIG_CEN && entries.length < count) {\n    const flags = cd.getUint16(p + 8, true);\n    const method = cd.getUint16(p + 10, true);\n    let compressedSize = cd.getUint32(p + 20, true);\n    let size = cd.getUint32(p + 24, true);\n    const nameLen = cd.getUint16(p + 28, true);\n    const extraLen = cd.getUint16(p + 30, true);\n    const commentLen = cd.getUint16(p + 32, true);\n    let offset = cd.getUint32(p + 42, true);\n    const name = utf8.decode(bytes.subarray(p + 46, p + 46 + nameLen));\n    if (size === 0xffffffff || compressedSize === 0xffffffff || offset === 0xffffffff) {\n      // zip64 extra field (0x0001): only the fields that overflowed are present, in this order\n      let e = p + 46 + nameLen;\n      const eEnd = e + extraLen;\n      while (e + 4 <= eEnd) {\n        const id = cd.getUint16(e, true);\n        const len = cd.getUint16(e + 2, true);\n        if (id === 0x0001) {\n          let q = e + 4;\n          if (size === 0xffffffff) { size = u64(cd, q); q += 8; }\n          if (compressedSize === 0xffffffff) { compressedSize = u64(cd, q); q += 8; }\n          if (offset === 0xffffffff) { offset = u64(cd, q); q += 8; }\n          break;\n        }\n        e += 4 + len;\n      }\n    }\n    entries.push({ name, method, flags, size, compressedSize, offset });\n    p += 46 + nameLen + extraLen + commentLen;\n  }\n  return entries;\n}\n\n/**\n * Locate the first entry whose name matches `pattern` (shortest path wins on ties).\n * Returns null when there is none, else {name, size, compressedSize, stream()}.\n * stream() yields the uncompressed bytes as a ReadableStream<Uint8Array>.\n */\nasync function findEntry(file, pattern) {\n  const entries = await listEntries(file);\n  let best = null;\n  for (const e of entries) {\n    if (e.name.endsWith(\"/\") || !pattern.test(e.name)) continue;\n    if (best === null || e.name.length < best.name.length) best = e;\n  }\n  if (best === null) return null;\n  return entryHandle(file, best);\n}\n\nfunction entryHandle(file, e) {\n  if (e.method !== 0 && e.method !== 8) throw new Error(\"Unsupported zip compression method \" + e.method);\n  return {\n    name: e.name,\n    size: e.size,\n    compressedSize: e.compressedSize,\n    stream() {\n      // The local header repeats the name/extra lengths, which can differ from the central ones.\n      const readStream = async () => {\n        const h = await readBytes(file, e.offset, e.offset + 30);\n        if (h.getUint32(0, true) !== SIG_LOCAL) throw new Error(\"Bad zip local header for \" + e.name);\n        const dataStart = e.offset + 30 + h.getUint16(26, true) + h.getUint16(28, true);\n        return file.slice(dataStart, dataStart + e.compressedSize).stream();\n      };\n      // Return a stream immediately; it starts pulling from the slice on first read.\n      let inner = null;\n      const raw = new ReadableStream({\n        async pull(controller) {\n          if (inner === null) inner = (await readStream()).getReader();\n          const { done, value } = await inner.read();\n          if (done) controller.close(); else controller.enqueue(value);\n        },\n        cancel(reason) { return inner ? inner.cancel(reason) : undefined; },\n      });\n      return e.method === 0 ? raw : raw.pipeThrough(new DecompressionStream(\"deflate-raw\"));\n    },\n  };\n}\n\nreturn { isZip, listEntries, findEntry, entryHandle };\n})();\n// ---- parser/gpx.js\n__m[\"parser/gpx.js\"] = (function () {\n// GPX -> typed arrays, regex based (no DOMParser: this runs in a worker).\n// parseGpx(text) -> {lat: Float32Array, lon: Float32Array, ele: Float32Array, t: Float64Array}\n// t is epoch ms; missing elevation / time are NaN.\n\nconst TRKPT_RE = /<trkpt\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/trkpt>)/g;\nconst LAT_RE = /\\blat\\s*=\\s*[\"']([^\"']+)[\"']/;\nconst LON_RE = /\\blon\\s*=\\s*[\"']([^\"']+)[\"']/;\nconst ELE_RE = /<ele>\\s*([^<\\s]+)\\s*<\\/ele>/;\nconst TIME_RE = /<time>\\s*([^<\\s]+)\\s*<\\/time>/;\n\nfunction parseGpx(text) {\n  const lat = [], lon = [], ele = [], t = [];\n  TRKPT_RE.lastIndex = 0;\n  let m;\n  while ((m = TRKPT_RE.exec(text)) !== null) {\n    const a = LAT_RE.exec(m[1]);\n    const o = LON_RE.exec(m[1]);\n    if (a === null || o === null) continue;\n    const la = parseFloat(a[1]);\n    const lo = parseFloat(o[1]);\n    if (Number.isNaN(la) || Number.isNaN(lo)) continue;\n    lat.push(la);\n    lon.push(lo);\n    const inner = m[2];\n    const e = inner === undefined ? null : ELE_RE.exec(inner);\n    const tm = inner === undefined ? null : TIME_RE.exec(inner);\n    ele.push(e === null ? NaN : parseFloat(e[1]));\n    t.push(tm === null ? NaN : Date.parse(tm[1]));\n  }\n  return {\n    lat: Float32Array.from(lat),\n    lon: Float32Array.from(lon),\n    ele: Float32Array.from(ele),\n    t: Float64Array.from(t),\n  };\n}\n\nreturn { parseGpx };\n})();\n// ---- parser/worker.js\n__m[\"parser/worker.js\"] = (function () {\n// Parser worker (protocol in src/contract.md).\n//   UI -> worker: {cmd:\"parse\", file, routes}   (cancel = worker.terminate())\n//                 {cmd:\"gpx\", id, file}          (extra: parse one GPX file -> {type:\"gpx\", id, lat, lon, ele, t})\n//   worker -> UI: progress..., workouts, series x6, done | error\nconst { createScanner } = __m[\"parser/xml-scan.js\"];\nconst { createBuilder } = __m[\"parser/build.js\"];\nconst { isZip, findEntry } = __m[\"parser/zip.js\"];\nconst { parseGpx } = __m[\"parser/gpx.js\"];\nconst PROGRESS_MS = 250;\nconst SNIFF_BYTES = 1 << 20; // a Health export shows <HealthData> within the first MB\n\nclass UserError extends Error {}\n\nasync function openXml(file) {\n  if (await isZip(file)) {\n    const entry = await findEntry(file, /(^|\\/)export\\.xml$/);\n    if (entry === null) throw new UserError(\"No export.xml found in this zip. Is it an Apple Health export?\");\n    return { stream: entry.stream(), total: entry.size };\n  }\n  return { stream: file.stream(), total: file.size };\n}\n\nasync function parse(file) {\n  const t0 = performance.now();\n  const { stream, total } = await openXml(file);\n  const builder = createBuilder();\n  const scanner = createScanner((el) => builder.add(el));\n  const decoder = new TextDecoder(\"utf-8\");\n  const reader = stream.getReader();\n\n  let bytes = 0;\n  let lastReport = t0;\n  const progress = () => {\n    self.postMessage({ type: \"progress\", bytes, total, records: scanner.counts.records, workouts: scanner.counts.workouts });\n    lastReport = performance.now();\n  };\n  progress();\n\n  for (;;) {\n    const { done, value } = await reader.read();\n    if (done) break;\n    bytes += value.byteLength;\n    scanner.push(decoder.decode(value, { stream: true }));\n    if (!scanner.sawRoot && bytes >= SNIFF_BYTES) {\n      reader.cancel().catch(() => {});\n      throw new UserError(\"This does not look like an Apple Health export (no <HealthData> element).\");\n    }\n    if (performance.now() - lastReport >= PROGRESS_MS) progress();\n  }\n  scanner.push(decoder.decode());\n  const end = scanner.end(); // throws on truncated XML\n  if (!end.sawRoot) throw new UserError(\"This does not look like an Apple Health export (no <HealthData> element).\");\n\n  const ms = Math.round(performance.now() - t0);\n  const { rows, series, summary } = builder.finish({ records: end.records, bytes, ms });\n  progress();\n  self.postMessage({ type: \"workouts\", rows });\n  for (const kind of Object.keys(series)) {\n    const s = series[kind];\n    self.postMessage({ type: \"series\", kind, times: s.times, values: s.values }, [s.times.buffer, s.values.buffer]);\n  }\n  self.postMessage({ type: \"done\", summary });\n}\n\nself.onmessage = (ev) => {\n  const m = ev.data || {};\n  if (m.cmd === \"parse\") {\n    parse(m.file).catch((err) => {\n      self.postMessage({ type: \"error\", message: err && err.message ? String(err.message) : String(err) });\n    });\n  } else if (m.cmd === \"gpx\") {\n    m.file.text().then((text) => {\n      const g = parseGpx(text);\n      self.postMessage({ type: \"gpx\", id: m.id, lat: g.lat, lon: g.lon, ele: g.ele, t: g.t }, [g.lat.buffer, g.lon.buffer, g.ele.buffer, g.t.buffer]);\n    }).catch((err) => {\n      self.postMessage({ type: \"error\", message: \"GPX: \" + (err && err.message ? err.message : String(err)), id: m.id });\n    });\n  }\n};\n\nreturn {  };\n})();\n})();";</script>
+<script>window.HE_WORKER_SRC = "(function(){\nconst __m = Object.create(null);\n// ---- parser/xml-scan.js\n__m[\"parser/xml-scan.js\"] = (function () {\n// Streaming scanner for Apple Health export.xml (see src/contract.md).\n//\n// createScanner(onElement) -> { push(textChunk), end(lenient?), counts, sawRoot }\n//\n// Calls onElement({name, attrs, children}) for every top-level <Workout> (children:\n// WorkoutStatistics, MetadataEntry, WorkoutRoute{FileReference, MetadataEntry},\n// WorkoutZoneGroup{WorkoutZone}, WorkoutEvent of type Segment/Lap/Pause/Resume and nested\n// (Estimated)WorkoutEffortScore Records; other events, WorkoutActivity and other nested Records are dropped) and for every top-level\n// <Record> whose type is whitelisted (children: always empty). Everything else is skipped as it\n// streams past: the DTD internal subset, <Correlation>, <ActivitySummary>, ...\n//\n// The result does not depend on how the text is cut into chunks: anything that is not yet\n// complete is carried in `tail` and re-examined when more text arrives. Attribute values are\n// entity-decoded. The scanner never holds more than one Workout plus a partial tag.\n\nconst WHITELIST = new Set([\n  \"HKQuantityTypeIdentifierHeartRate\",\n  \"HKQuantityTypeIdentifierRestingHeartRate\",\n  \"HKQuantityTypeIdentifierHeartRateVariabilitySDNN\",\n  \"HKQuantityTypeIdentifierVO2Max\",\n  \"HKQuantityTypeIdentifierBodyMass\",\n  \"HKQuantityTypeIdentifierWalkingHeartRateAverage\",\n]);\n\nconst EMPTY = Object.freeze([]);\nconst EVENT_KEEP = /type\\s*=\\s*\"HKWorkoutEventType(?:Segment|Lap|Pause|Resume)\"/;\nconst WORKOUT_NESTED = /type\\s*=\\s*\"HKQuantityTypeIdentifier(?:Estimated)?WorkoutEffortScore\"/;\nconst ATTR_RE = /([^\\s=\\/<>\"']+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')/g;\nconst NAME_RE = /[^\\s\\/>]+/y;\nconst SUBSET_END_RE = /\\]\\s*>/g;\nconst ENTITY_RE = /&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);/g;\n\nfunction decodeEntity(_, e) {\n  switch (e) {\n    case \"lt\": return \"<\";\n    case \"gt\": return \">\";\n    case \"amp\": return \"&\";\n    case \"quot\": return '\"';\n    case \"apos\": return \"'\";\n  }\n  const cp = e.charCodeAt(1) === 120 ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);\n  return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : \"\";\n}\n\nfunction decodeEntities(s) {\n  return s.indexOf(\"&\") < 0 ? s : s.replace(ENTITY_RE, decodeEntity);\n}\n\n/** Parse the attributes of one start tag (text from \"<Name\" up to, excluding, \">\"). */\nfunction parseAttrs(tag) {\n  const attrs = {};\n  ATTR_RE.lastIndex = 0;\n  let m;\n  while ((m = ATTR_RE.exec(tag)) !== null) {\n    const v = m[2] !== undefined ? m[2] : m[3];\n    attrs[m[1]] = v.indexOf(\"&\") < 0 ? v : decodeEntities(v);\n  }\n  return attrs;\n}\n\n/** A start tag that contains a raw \">\" inside an attribute value has an odd number of quotes before\n *  the first \">\". Extend to the real end. Returns the index of the closing \">\" or -1 (need more text). */\nfunction tagEnd(buf, lt, gt) {\n  for (;;) {\n    let q = 0;\n    let i = buf.indexOf('\"', lt);\n    while (i >= 0 && i < gt) { q++; i = buf.indexOf('\"', i + 1); }\n    if ((q & 1) === 0) return gt;\n    gt = buf.indexOf(\">\", gt + 1);\n    if (gt < 0) return -1;\n  }\n}\n\nfunction parseChildren(block, from) {\n  const out = [];\n  let i = from;\n  for (;;) {\n    const lt = block.indexOf(\"<\", i);\n    if (lt < 0) break;\n    if (block.charCodeAt(lt + 1) === 47) { i = lt + 2; continue; }\n    NAME_RE.lastIndex = lt + 1;\n    const m = NAME_RE.exec(block);\n    if (m === null) { i = lt + 1; continue; }\n    const name = m[0];\n    let gt = block.indexOf(\">\", lt);\n    if (gt < 0) break;\n    gt = tagEnd(block, lt, gt);\n    if (gt < 0) break;\n    const self = block.charCodeAt(gt - 1) === 47;\n    i = gt + 1;\n    if (name === \"WorkoutStatistics\" || name === \"MetadataEntry\" || name === \"FileReference\") {\n      out.push({ name, attrs: parseAttrs(block.substring(lt, gt)) });\n    } else if (name === \"WorkoutRoute\") {\n      const attrs = parseAttrs(block.substring(lt, gt));\n      let kids = EMPTY;\n      if (!self) {\n        const ce = block.indexOf(\"<\/WorkoutRoute>\", i);\n        kids = parseChildren(ce < 0 ? block.substring(i) : block.substring(i, ce), 0);\n        i = ce < 0 ? block.length : ce + 15;\n      }\n      out.push({ name, attrs, children: kids });\n    } else if (name === \"WorkoutZone\") {\n      out.push({ name, attrs: parseAttrs(block.substring(lt, gt)) });\n    } else if (name === \"WorkoutZoneGroup\") {\n      const attrs = parseAttrs(block.substring(lt, gt));\n      let kids = EMPTY;\n      if (!self) {\n        const ce = block.indexOf(\"<\/WorkoutZoneGroup>\", i);\n        kids = parseChildren(ce < 0 ? block.substring(i) : block.substring(i, ce), 0);\n        i = ce < 0 ? block.length : ce + 19;\n      }\n      out.push({ name, attrs, children: kids });\n    } else if (name === \"WorkoutEvent\" || name === \"Record\") {\n      // Segment / Lap / Pause / Resume events and nested workout-effort Records are kept (attrs only);\n      // other events and nested Records are dropped. Any children are skipped.\n      const head = block.substring(lt, gt);\n      const keep = name === \"Record\" ? WORKOUT_NESTED.test(head) : EVENT_KEEP.test(head);\n      if (keep) out.push({ name, attrs: parseAttrs(head) });\n      if (!self) {\n        const close = \"<\/\" + name + \">\";\n        const ce = block.indexOf(close, i);\n        i = ce < 0 ? block.length : ce + close.length;\n      }\n    } else if (!self) {\n      // WorkoutActivity, other elements: skip with its children\n      const close = \"<\/\" + name + \">\";\n      const ce = block.indexOf(close, i);\n      i = ce < 0 ? block.length : ce + close.length;\n    }\n  }\n  return out;\n}\n\nfunction createScanner(onElement) {\n  let tail = \"\";\n  let skipClose = null; // closing tag we are skipping towards\n  let wSearch = 0; // resume offset (relative to the \"<Workout\" start) for the <\/Workout> search\n  let sawRoot = false;\n  let closedRoot = false;\n  let ended = false;\n  const counts = { records: 0, workouts: 0 };\n\n  /** Consume as much of buf as possible; return the index where the unconsumed part starts. */\n  function run(buf) {\n    const len = buf.length;\n    let pos = 0;\n    for (;;) {\n      if (skipClose !== null) {\n        const i = buf.indexOf(skipClose, pos);\n        if (i < 0) return Math.max(pos, len - (skipClose.length - 1));\n        pos = i + skipClose.length;\n        skipClose = null;\n      }\n      const lt = buf.indexOf(\"<\", pos);\n      if (lt < 0) return len;\n\n      // ---- fast path: <Record type=\"...\" ...> (the type is the first attribute in real exports)\n      if (buf.startsWith('Record type=\"', lt + 1)) {\n        const q = buf.indexOf('\"', lt + 14);\n        if (q < 0) return lt;\n        const type = buf.substring(lt + 14, q);\n        let gt = buf.indexOf(\">\", q);\n        if (gt < 0) return lt;\n        let self = buf.charCodeAt(gt - 1) === 47;\n        if (!self) {\n          gt = tagEnd(buf, lt, gt);\n          if (gt < 0) return lt;\n          self = buf.charCodeAt(gt - 1) === 47;\n        }\n        counts.records++;\n        if (WHITELIST.has(type)) {\n          onElement({ name: \"Record\", attrs: parseAttrs(buf.substring(lt, gt)), children: EMPTY });\n        }\n        pos = gt + 1;\n        if (!self) skipClose = \"<\/Record>\";\n        continue;\n      }\n\n      const c1 = buf.charCodeAt(lt + 1);\n      if (c1 !== c1) return lt; // \"<\" is the last character so far\n\n      if (c1 === 33) { // \"<!\": comment, CDATA, DOCTYPE\n        if (len - lt < 9) return lt; // might be a prefix of <![CDATA[ or <!DOCTYPE\n        if (buf.startsWith(\"<!--\", lt)) {\n          const i = buf.indexOf(\"-->\", lt + 4);\n          if (i < 0) return lt;\n          pos = i + 3;\n        } else if (buf.startsWith(\"<![CDATA[\", lt)) {\n          const i = buf.indexOf(\"]]>\", lt + 9);\n          if (i < 0) return lt;\n          pos = i + 3;\n        } else if (buf.startsWith(\"<!DOCTYPE\", lt)) {\n          const br = buf.indexOf(\"[\", lt + 9);\n          const g = buf.indexOf(\">\", lt + 9);\n          if (br >= 0 && (g < 0 || br < g)) { // internal subset: skip to \"]>\"\n            SUBSET_END_RE.lastIndex = br + 1;\n            const m = SUBSET_END_RE.exec(buf);\n            if (m === null) return lt;\n            pos = m.index + m[0].length;\n          } else {\n            if (g < 0) return lt;\n            pos = g + 1;\n          }\n        } else {\n          const g = buf.indexOf(\">\", lt);\n          if (g < 0) return lt;\n          pos = g + 1;\n        }\n        continue;\n      }\n      if (c1 === 63) { // \"<?\": processing instruction\n        const i = buf.indexOf(\"?>\", lt + 2);\n        if (i < 0) return lt;\n        pos = i + 2;\n        continue;\n      }\n\n      let gt = buf.indexOf(\">\", lt);\n      if (gt < 0) return lt;\n      gt = tagEnd(buf, lt, gt);\n      if (gt < 0) return lt;\n\n      if (c1 === 47) { // closing tag\n        if (buf.startsWith(\"HealthData\", lt + 2)) closedRoot = true;\n        pos = gt + 1;\n        continue;\n      }\n\n      NAME_RE.lastIndex = lt + 1;\n      const nm = NAME_RE.exec(buf);\n      const name = nm === null ? \"\" : nm[0];\n      const self = buf.charCodeAt(gt - 1) === 47;\n\n      if (name === \"Workout\") {\n        if (self) {\n          counts.workouts++;\n          onElement({ name, attrs: parseAttrs(buf.substring(lt, gt)), children: [] });\n          pos = gt + 1;\n          continue;\n        }\n        const ce = buf.indexOf(\"<\/Workout>\", Math.max(gt + 1, lt + wSearch));\n        if (ce < 0) {\n          wSearch = Math.max(0, len - lt - 9);\n          return lt;\n        }\n        wSearch = 0;\n        counts.workouts++;\n        const block = buf.substring(lt, ce);\n        onElement({ name, attrs: parseAttrs(block.substring(0, gt - lt)), children: parseChildren(block, gt - lt + 1) });\n        pos = ce + 10;\n      } else if (name === \"Record\") { // type not the first attribute: slow path\n        const attrs = parseAttrs(buf.substring(lt, gt));\n        counts.records++;\n        if (WHITELIST.has(attrs.type)) onElement({ name, attrs, children: EMPTY });\n        pos = gt + 1;\n        if (!self) skipClose = \"<\/Record>\";\n      } else if (name === \"HealthData\") {\n        sawRoot = true;\n        if (self) closedRoot = true;\n        pos = gt + 1;\n      } else {\n        pos = gt + 1;\n        if (!self && name !== \"\") skipClose = \"<\/\" + name + \">\";\n      }\n    }\n  }\n\n  return {\n    push(text) {\n      if (ended) throw new Error(\"scanner already ended\");\n      const buf = tail === \"\" ? text : tail + text;\n      const pos = run(buf);\n      tail = pos >= buf.length ? \"\" : buf.slice(pos);\n    },\n    /** Flush. Throws if the document is cut off (unless `lenient`). */\n    end(lenient) {\n      if (!ended) ended = true;\n      const truncated = sawRoot && (!closedRoot || skipClose !== null || tail.trim() !== \"\");\n      if (truncated && !lenient) throw new Error(\"Truncated XML: the file ends before <\/HealthData>\");\n      return { sawRoot, closedRoot, truncated, records: counts.records, workouts: counts.workouts };\n    },\n    counts,\n    get sawRoot() { return sawRoot; },\n  };\n}\n\nreturn { decodeEntities, parseAttrs, createScanner };\n})();\n// ---- parser/build.js\n__m[\"parser/build.js\"] = (function () {\n// Turns scanner elements into WorkoutRows + sorted series (see src/contract.md).\n// Unit / date helpers are private here (same names and behaviour as the contract's core/units.js,\n// exported only so tests can reach them); the main agent dedupes against core/units.js later.\n\nconst NBSP_RE = /\u00a0/g;\nconst WORKOUT_PREFIX = \"HKWorkoutActivityType\";\nconst SERIES_KINDS = [\"hr\", \"rhr\", \"hrv\", \"vo2max\", \"mass\", \"walkHr\"];\nconst KIND_BY_TYPE = {\n  HKQuantityTypeIdentifierHeartRate: \"hr\",\n  HKQuantityTypeIdentifierRestingHeartRate: \"rhr\",\n  HKQuantityTypeIdentifierHeartRateVariabilitySDNN: \"hrv\",\n  HKQuantityTypeIdentifierVO2Max: \"vo2max\",\n  HKQuantityTypeIdentifierBodyMass: \"mass\",\n  HKQuantityTypeIdentifierWalkingHeartRateAverage: \"walkHr\",\n};\nconst DAY_MS = 86400000;\nconst EMPTY_EVENTS = [];\n\n// ---------------------------------------------------------------- units\n\nconst KM = { km: 1, mi: 1.609344, m: 0.001, yd: 0.0009144, ft: 0.0003048 };\nconst KCAL = { kcal: 1, Cal: 1, kJ: 1 / 4.184, cal: 0.001, J: 1 / 4184 };\nconst MIN = { min: 1, s: 1 / 60, sec: 1 / 60, hr: 60, h: 60 };\nconst METRES = { m: 1, cm: 0.01, km: 1000, ft: 0.3048, in: 0.0254, yd: 0.9144, mi: 1609.344, mm: 0.001 };\n\nfunction scale(table, value, unit) {\n  const f = table[unit];\n  return f === undefined || value === null || Number.isNaN(value) ? null : value * f;\n}\nfunction toKm(value, unit) { return scale(KM, value, unit); }\nfunction toKcal(value, unit) { return scale(KCAL, value, unit); }\nfunction toMin(value, unit) { return scale(MIN, value, unit); }\nfunction toM(value, unit) { return scale(METRES, value, unit); }\n\n/** \"4090 cm\" -> {value: 4090, unit: \"cm\"}; null when there is no leading number. */\nfunction parseQty(s) {\n  if (typeof s !== \"string\") return null;\n  const m = /^\\s*(-?\\d+(?:\\.\\d+)?(?:[eE][-+]?\\d+)?)\\s*(.*?)\\s*$/.exec(s);\n  return m === null ? null : { value: parseFloat(m[1]), unit: m[2] };\n}\n\n// ---------------------------------------------------------------- dates\n\nfunction dg(s, i) { return s.charCodeAt(i) - 48; }\n\n/** \"2026-11-24 05:37:53 +0000\" -> {ms, tzOffset} (tzOffset = the stamp's own offset, minutes east). null if malformed. */\nfunction parseHKDate(s) {\n  if (typeof s !== \"string\" || s.length < 19) return null;\n  const y = dg(s, 0) * 1000 + dg(s, 1) * 100 + dg(s, 2) * 10 + dg(s, 3);\n  const mo = dg(s, 5) * 10 + dg(s, 6);\n  const d = dg(s, 8) * 10 + dg(s, 9);\n  const h = dg(s, 11) * 10 + dg(s, 12);\n  const mi = dg(s, 14) * 10 + dg(s, 15);\n  const se = dg(s, 17) * 10 + dg(s, 18);\n  let off = 0;\n  if (s.length >= 25) {\n    off = (dg(s, 21) * 10 + dg(s, 22)) * 60 + dg(s, 23) * 10 + dg(s, 24);\n    if (s.charCodeAt(20) === 45) off = -off;\n  }\n  const ms = Date.UTC(y, mo - 1, d, h, mi, se) - off * 60000;\n  return Number.isNaN(ms) ? null : { ms, tzOffset: off };\n}\n\nconst dtfCache = new Map();\nconst offsetCache = new Map();\n\n/** Minutes east of UTC of an IANA zone at instant `ms` (cached per zone + hour). null for an unknown zone. */\nfunction zoneOffset(ms, zone) {\n  const hour = Math.floor(ms / 3600000);\n  const key = zone + \"|\" + hour;\n  let v = offsetCache.get(key);\n  if (v !== undefined) return v;\n  let dtf = dtfCache.get(zone);\n  if (dtf === undefined) {\n    try {\n      dtf = new Intl.DateTimeFormat(\"en-US\", {\n        timeZone: zone, hourCycle: \"h23\", year: \"numeric\", month: \"numeric\", day: \"numeric\",\n        hour: \"numeric\", minute: \"numeric\", second: \"numeric\",\n      });\n    } catch (e) { dtf = null; }\n    dtfCache.set(zone, dtf);\n  }\n  if (dtf === null) return null;\n  const p = {};\n  for (const part of dtf.formatToParts(new Date(ms))) p[part.type] = parseInt(part.value, 10);\n  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);\n  v = Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60000);\n  if (offsetCache.size > 20000) offsetCache.clear();\n  offsetCache.set(key, v);\n  return v;\n}\n\n/** \"YYYY-MM-DD\" of `ms` shifted by `tzOffset` minutes. */\nfunction localDay(ms, tzOffset) {\n  return new Date(ms + tzOffset * 60000).toISOString().slice(0, 10);\n}\n\n// ---------------------------------------------------------------- helpers\n\n/** Detach a short string from the (large) scanner buffer it was sliced from. */\nfunction copyStr(s) { return (s + \"\\u0000\").slice(0, -1); }\n\nfunction num(s) {\n  if (s === undefined || s === \"\") return null;\n  const v = parseFloat(s);\n  return Number.isNaN(v) ? null : v;\n}\n\nfunction isWhole(v, eps) { return Math.abs(v - Math.round(v)) < eps; }\n\nclass Grow {\n  constructor() { this.n = 0; this.t = new Float64Array(2048); this.v = new Float32Array(2048); }\n  push(t, v) {\n    if (this.n === this.t.length) {\n      const t2 = new Float64Array(this.n * 2); t2.set(this.t); this.t = t2;\n      const v2 = new Float32Array(this.n * 2); v2.set(this.v); this.v = v2;\n    }\n    this.t[this.n] = t;\n    this.v[this.n++] = v;\n  }\n}\n\n/** Sorted, exactly-sized {kind, times, values}. */\nfunction finishSeries(kind, g) {\n  const n = g.n;\n  const t = g.t.slice(0, n);\n  const v = g.v.slice(0, n);\n  let sorted = true;\n  for (let i = 1; i < n; i++) if (t[i] < t[i - 1]) { sorted = false; break; }\n  if (sorted) return { kind, times: t, values: v };\n  const idx = new Uint32Array(n);\n  for (let i = 0; i < n; i++) idx[i] = i;\n  idx.sort((a, b) => t[a] - t[b] || a - b);\n  const t2 = new Float64Array(n);\n  const v2 = new Float32Array(n);\n  for (let i = 0; i < n; i++) { t2[i] = t[idx[i]]; v2[i] = v[idx[i]]; }\n  return { kind, times: t2, values: v2 };\n}\n\n/** first index with times[i] >= x */\nfunction lowerBound(times, x) {\n  let lo = 0, hi = times.length;\n  while (lo < hi) { const mid = (lo + hi) >>> 1; if (times[mid] < x) lo = mid + 1; else hi = mid; }\n  return lo;\n}\n\nfunction dayMean(series, dayStart, dayEnd) {\n  const t = series.times, v = series.values;\n  let i = lowerBound(t, dayStart), sum = 0, n = 0;\n  for (; i < t.length && t[i] < dayEnd; i++) { sum += v[i]; n++; }\n  return n === 0 ? null : sum / n;\n}\n\nfunction distanceStatFor(type) {\n  if (type === \"Cycling\" || type === \"HandCycling\") return \"HKQuantityTypeIdentifierDistanceCycling\";\n  if (type === \"Swimming\") return \"HKQuantityTypeIdentifierDistanceSwimming\";\n  if (type === \"Rowing\") return \"HKQuantityTypeIdentifierDistanceRowing\";\n  return \"HKQuantityTypeIdentifierDistanceWalkingRunning\";\n}\n\n\n// ---------------------------------------------------------------- ext (rich workout detail)\n\nconst SPEED_KMH = { \"km/hr\": 1, \"km/h\": 1, \"m/s\": 3.6, \"mi/hr\": 1.609344, \"mph\": 1.609344 };\nconst STAT_RANGE = { // statistic id suffix -> ext key (avg/min/max objects)\n  RunningPower: \"runningPower\", CyclingPower: \"cyclingPower\", RunningSpeed: \"runningSpeed\", CyclingSpeed: \"cyclingSpeed\",\n};\nconst STAT_AVG = { // suffix -> ext key (average only)\n  RunningGroundContactTime: \"groundContact\", RunningVerticalOscillation: \"verticalOscillation\",\n  RunningStrideLength: \"strideLength\", CyclingCadence: \"cyclingCadence\", WaterTemperature: \"waterTempC\",\n};\nconst STAT_SUM = { StepCount: \"steps\", FlightsClimbed: \"flights\", SwimmingStrokeCount: \"swimStrokes\" };\n\nfunction r2(v) { return Math.round(v * 100) / 100; }\n\nfunction rangeOf(c, conv) {\n  const f = (x) => { const v = num(x); return v === null ? null : r2(conv ? v * conv : v); };\n  const avg = f(c.average);\n  if (avg === null) return null;\n  return { avg, min: f(c.minimum), max: f(c.maximum) };\n}\n\n/** Segment events overlap (km and mile splits interleaved). Follow the chains that start at the first segment\n *  (each next segment begins where the previous one ended) and keep the one whose typical duration matches\n *  minutes-per-km. Without a distance the chain with the most segments is kept. */\nfunction pickSegments(segs, durMin, distKm) {\n  if (segs.length < 2) return segs.map(({ t, sec }) => ({ t, sec }));\n  segs.sort((a, b) => a.t - b.t);\n  const t0 = segs[0].t;\n  const chains = [];\n  for (const s of segs) {\n    if (s.t - t0 > 2000) break;\n    const chain = [s];\n    for (;;) {\n      const last = chain[chain.length - 1];\n      const endT = last.t + last.sec * 1000;\n      let best = null, bd = 4000;\n      for (const n of segs) {\n        if (n.t <= last.t) continue;\n        const d = Math.abs(n.t - endT);\n        if (d < bd) { bd = d; best = n; }\n        else if (n.t - endT > 4000) break;\n      }\n      if (best === null) break;\n      chain.push(best);\n    }\n    chains.push(chain);\n  }\n  let pick = chains[0];\n  if (chains.length > 1) {\n    if (distKm !== null && distKm > 0 && durMin > 0) {\n      const pace = (durMin * 60) / distKm; // seconds per km\n      const score = (c) => {\n        const full = c.slice(0, Math.max(1, c.length - 1)).map((x) => x.sec).sort((a, b) => a - b);\n        return Math.abs(full[full.length >> 1] - pace);\n      };\n      let bs = Infinity;\n      for (const c of chains) { const sc = score(c); if (sc < bs) { bs = sc; pick = c; } }\n    } else {\n      for (const c of chains) if (c.length > pick.length) pick = c;\n    }\n  }\n  return pick.map(({ t, sec }) => ({ t, sec: Math.round(sec * 10) / 10 }));\n}\n\n/** Everything beyond the table columns, or null. */\nfunction buildExt(statsAll, meta, events, zoneGroup, effort, effortEst, durMin, distKm, endMs) {\n  const x = {};\n  let any = false, rawSteps = null;\n  const put = (k, v) => { if (v !== null && v !== undefined) { x[k] = v; any = true; } };\n  for (const id in statsAll) {\n    const c = statsAll[id];\n    const suf = id.startsWith(\"HKQuantityTypeIdentifier\") ? id.slice(24) : id;\n    if (STAT_RANGE[suf]) {\n      const isSpeed = suf.endsWith(\"Speed\");\n      const f = isSpeed ? SPEED_KMH[c.unit] : 1;\n      if (f !== undefined) put(STAT_RANGE[suf], rangeOf(c, isSpeed ? f : 0));\n    } else if (STAT_AVG[suf]) {\n      const v = num(c.average);\n      if (v !== null) put(STAT_AVG[suf], r2(v));\n    } else if (STAT_SUM[suf]) {\n      const v = num(c.sum);\n      if (v !== null) { put(STAT_SUM[suf], Math.round(v)); if (suf === \"StepCount\") rawSteps = v; }\n    }\n  }\n  if (x.steps !== undefined && durMin > 0) put(\"cadence\", Math.round(rawSteps / durMin));\n\n  if (meta.HKWeatherTemperature) {\n    const q = parseQty(meta.HKWeatherTemperature);\n    if (q !== null) {\n      const c = q.unit === \"degF\" ? (q.value - 32) / 1.8 : q.unit === \"degC\" ? q.value : null;\n      if (c !== null) put(\"tempC\", Math.round(c * 10) / 10);\n    }\n  }\n  if (meta.HKWeatherHumidity) {\n    const q = parseQty(meta.HKWeatherHumidity);\n    if (q !== null) put(\"humidityPct\", Math.round(q.value > 100 ? q.value / 100 : q.value <= 1 ? q.value * 100 : q.value));\n  }\n  if (meta.HKAverageMETs) { const q = parseQty(meta.HKAverageMETs); if (q !== null) put(\"mets\", r2(q.value)); }\n  if (meta.HKIndoorWorkout === \"0\" || meta.HKIndoorWorkout === \"1\") put(\"indoor\", meta.HKIndoorWorkout === \"1\");\n  if (meta.HKSWOLFScore) { const v = num(meta.HKSWOLFScore); if (v !== null) put(\"swolf\", v); }\n  if (meta.HKLapLength) { const q = parseQty(meta.HKLapLength); if (q !== null) { const m = toM(q.value, q.unit); if (m !== null) put(\"lapLengthM\", m); } }\n  if (meta.HKSwimmingLocationType) { const v = num(meta.HKSwimmingLocationType); if (v !== null) put(\"swimLocation\", v); } // 1 pool, 2 open water\n  if (effort !== null) put(\"effort\", effort);\n  if (effortEst !== null) put(\"effortEst\", effortEst);\n\n  if (zoneGroup !== null) {\n    const zones = [];\n    for (const z of zoneGroup.children) {\n      if (z.name !== \"WorkoutZone\") continue;\n      const m = toMin(num(z.attrs.duration) || 0, z.attrs.durationUnit || \"min\");\n      zones.push({ min: num(z.attrs.minimum), max: num(z.attrs.maximum), sec: Math.round((m || 0) * 600) / 10 });\n    }\n    if (zones.length) put(\"zones\", zones);\n  }\n\n  if (events.length) {\n    const segs = [], laps = [], marks = [];\n    for (const e of events) {\n      const d = parseHKDate(e.attrs.date);\n      if (d === null) continue;\n      const type = e.attrs.type;\n      if (type === \"HKWorkoutEventTypeSegment\" || type === \"HKWorkoutEventTypeLap\") {\n        const m = toMin(num(e.attrs.duration), e.attrs.durationUnit || \"min\");\n        if (m === null) continue;\n        (type.endsWith(\"Lap\") ? laps : segs).push({ t: d.ms, sec: m * 60 });\n      } else marks.push({ t: d.ms, pause: type === \"HKWorkoutEventTypePause\" });\n    }\n    if (segs.length) put(\"segments\", pickSegments(segs, durMin, distKm));\n    if (laps.length) put(\"laps\", laps.sort((a, b) => a.t - b.t).map((l) => ({ t: l.t, sec: Math.round(l.sec * 10) / 10 })));\n    if (marks.length) {\n      marks.sort((a, b) => a.t - b.t);\n      const pauses = [];\n      let from = null;\n      for (const m of marks) {\n        if (m.pause) { if (from === null) from = m.t; }\n        else if (from !== null) { if (m.t > from) pauses.push([from, m.t]); from = null; }\n      }\n      // a trailing Pause with no Resume is just the end of the workout\n      if (pauses.length) put(\"pauses\", pauses);\n    }\n  }\n  return any ? x : null;\n}\n\n// ---------------------------------------------------------------- builder\n\nfunction createBuilder() {\n  const grows = {};\n  for (const k of SERIES_KINDS) grows[k] = new Grow();\n  const rows = [];\n  const intern = new Map();\n  let kept = 0;\n  let finished = false;\n\n  function interned(s) {\n    let v = intern.get(s);\n    if (v === undefined) { v = copyStr(s); intern.set(v, v); }\n    return v;\n  }\n\n  function addRecord(a) {\n    const kind = KIND_BY_TYPE[a.type];\n    if (kind === undefined) return;\n    let value = parseFloat(a.value);\n    if (Number.isNaN(value)) return;\n    const d = parseHKDate(a.startDate);\n    if (d === null) return;\n    if (kind === \"mass\") {\n      const u = a.unit;\n      if (u === \"lb\") value *= 0.45359237;\n      else if (u === \"g\") value /= 1000;\n      else if (u === \"st\") value *= 6.35029318;\n    } else if (kind === \"hrv\" && a.unit === \"s\") {\n      value *= 1000;\n    }\n    grows[kind].push(d.ms, value);\n    kept++;\n  }\n\n  function addWorkout(el) {\n    const a = el.attrs;\n    const type = interned((a.workoutActivityType || \"Other\").startsWith(WORKOUT_PREFIX)\n      ? a.workoutActivityType.slice(WORKOUT_PREFIX.length) : a.workoutActivityType || \"Other\");\n    const source = interned((a.sourceName || \"\").replace(NBSP_RE, \" \"));\n    const sd = parseHKDate(a.startDate);\n    if (sd === null) return;\n    const ed = parseHKDate(a.endDate);\n    const start = sd.ms;\n    const end = ed === null ? start : ed.ms;\n\n    // children: statistics + metadata\n    const stats = {};\n    const meta = {};\n    let route = null, events = null, zoneGroup = null, effort = null, effortEst = null;\n    for (const c of el.children) {\n      if (c.name === \"WorkoutStatistics\") {\n        if (stats[c.attrs.type] === undefined) stats[c.attrs.type] = c.attrs;\n      } else if (c.name === \"WorkoutEvent\") {\n        (events || (events = [])).push(c);\n      } else if (c.name === \"WorkoutZoneGroup\") {\n        if (zoneGroup === null && c.attrs.type === \"HKQuantityTypeIdentifierHeartRate\") zoneGroup = c;\n      } else if (c.name === \"Record\") { // nested effort score (never added to the series)\n        const v = num(c.attrs.value);\n        if (v !== null) { if (c.attrs.type === \"HKQuantityTypeIdentifierWorkoutEffortScore\") effort = v; else effortEst = v; }\n      } else if (c.name === \"MetadataEntry\") {\n        if (meta[c.attrs.key] === undefined) meta[c.attrs.key] = c.attrs.value;\n      } else if (c.name === \"WorkoutRoute\") {\n        for (const k of c.children) if (k.name === \"FileReference\" && route === null) route = k.attrs.path;\n      } else if (c.name === \"FileReference\" && route === null) {\n        route = c.attrs.path;\n      }\n    }\n    if (route) {\n      const slash = route.lastIndexOf(\"/\");\n      route = copyStr(slash >= 0 ? route.slice(slash + 1) : route);\n    } else route = null;\n\n    // time zone\n    let tzOffset = null;\n    const zone = meta.HKTimeZone;\n    if (zone) tzOffset = zoneOffset(start, zone);\n    if (tzOffset === null) tzOffset = sd.tzOffset !== 0 ? sd.tzOffset : -new Date(start).getTimezoneOffset();\n\n    // duration\n    let durMin = num(a.duration);\n    durMin = durMin === null ? null : toMin(durMin, a.durationUnit || \"min\");\n    if (durMin === null) durMin = (end - start) / 60000;\n\n    // distance: preferred statistic for the type, else any Distance* statistic, else attribute\n    let distKm = null;\n    let ds = stats[distanceStatFor(type)];\n    if (ds === undefined) {\n      for (const k in stats) if (k.startsWith(\"HKQuantityTypeIdentifierDistance\")) { ds = stats[k]; break; }\n    }\n    if (ds !== undefined) {\n      const v = num(ds.sum);\n      if (v !== null) distKm = toKm(v, ds.unit);\n    }\n    if (distKm === null && a.totalDistance) {\n      const v = num(a.totalDistance);\n      if (v !== null) distKm = toKm(v, a.totalDistanceUnit || \"km\");\n    }\n    if (distKm !== null && !(distKm > 0)) distKm = null;\n\n    // energy\n    const energy = (id, attr, attrUnit) => {\n      const s = stats[\"HKQuantityTypeIdentifier\" + id];\n      if (s !== undefined) {\n        const v = num(s.sum);\n        if (v !== null) return toKcal(v, s.unit);\n      }\n      if (attr) {\n        const v = num(attr);\n        if (v !== null) return toKcal(v, attrUnit || \"kcal\");\n      }\n      return null;\n    };\n    const activeKcal = energy(\"ActiveEnergyBurned\", a.totalEnergyBurned, a.totalEnergyBurnedUnit);\n    const basalKcal = energy(\"BasalEnergyBurned\", null, null);\n    const totalKcal = activeKcal === null ? null : basalKcal === null ? activeKcal : activeKcal + basalKcal;\n\n    // heart rate\n    let avgHr = null, maxHr = null;\n    const hs = stats.HKQuantityTypeIdentifierHeartRate;\n    if (hs !== undefined) { avgHr = num(hs.average); maxHr = num(hs.maximum); }\n\n    // elevation\n    let elevM = null;\n    if (meta.HKElevationAscended) {\n      const q = parseQty(meta.HKElevationAscended);\n      if (q !== null) elevM = toM(q.value, q.unit);\n    }\n\n    // manual heuristic\n    let manual = meta.HKWasUserEntered === \"1\";\n    if (!manual && !source.includes(\"Watch\")) {\n      let hits = 0;\n      if (distKm !== null && isWhole(distKm, 1e-6)) hits++;\n      if (isWhole(durMin, 1e-6)) hits++;\n      if (activeKcal !== null && isWhole(activeKcal / 10, 1e-6)) hits++;\n      if (avgHr !== null && isWhole(avgHr / 5, 1e-6)) hits++;\n      manual = hits >= 2;\n    }\n\n    rows.push({\n      id: rows.length, type, source, manual, start, end, tzOffset,\n      localDay: localDay(start, tzOffset),\n      durMin, distKm, elevM, activeKcal, basalKcal, totalKcal, avgHr, maxHr,\n      paceMinKm: distKm !== null && durMin !== null ? durMin / distKm : null,\n      kcalPerKm: distKm !== null && activeKcal !== null ? activeKcal / distKm : null,\n      kcalPerMin: activeKcal !== null && durMin > 0 ? activeKcal / durMin : null,\n      rhrDay: null, hrvDay: null, massKg: null, route, dupOf: null,\n      ext: buildExt(stats, meta, events || EMPTY_EVENTS, zoneGroup, effort, effortEst, durMin, distKm, end),\n    });\n  }\n\n  // Quality of a row as the \"keeper\" of a duplicate group: not manual, Apple Watch, then how much data it carries.\n  function quality(r) {\n    return (r.manual ? 0 : 100) + (r.source.includes(\"Watch\") ? 10 : 0) +\n      (r.avgHr !== null ? 1 : 0) + (r.route ? 1 : 0) + (r.activeKcal !== null ? 1 : 0) + (r.distKm !== null ? 1 : 0);\n  }\n  // Two workouts of the same type from different sources are duplicates when they overlap by >= 50% of the shorter one.\n  // The primary is the best-quality row (earliest on ties); every other row of the group points at it via dupOf.\n  function markDuplicates() {\n    const byType = new Map();\n    for (const r of rows) {\n      let list = byType.get(r.type);\n      if (list === undefined) byType.set(r.type, list = []);\n      list.push(r);\n    }\n    for (const list of byType.values()) {\n      list.sort((a, b) => a.start - b.start || a.id - b.id);\n      const near = new Map(); // row \u2192 overlapping rows from other sources\n      for (let i = 0; i < list.length; i++) {\n        const a = list[i];\n        for (let j = i + 1; j < list.length && list[j].start < a.end; j++) {\n          const b = list[j];\n          if (a.source === b.source) continue;\n          const ov = Math.min(a.end, b.end) - b.start;\n          const shorter = Math.min(a.end - a.start, b.end - b.start);\n          if (!(shorter > 0) || ov < 0.5 * shorter) continue;\n          if (!near.has(a)) near.set(a, []);\n          if (!near.has(b)) near.set(b, []);\n          near.get(a).push(b); near.get(b).push(a);\n        }\n      }\n      if (!near.size) continue;\n      const order = [...near.keys()].sort((a, b) => quality(b) - quality(a) || a.start - b.start || a.id - b.id);\n      const claimed = new Set();\n      for (const p of order) {\n        if (claimed.has(p)) continue;\n        claimed.add(p); // p is a primary\n        for (const o of near.get(p)) {\n          if (claimed.has(o)) continue;\n          claimed.add(o);\n          o.dupOf = p.id;\n        }\n      }\n    }\n  }\n\n  return {\n    add(el) {\n      if (finished) throw new Error(\"builder already finished\");\n      if (el.name === \"Record\") addRecord(el.attrs);\n      else if (el.name === \"Workout\") addWorkout(el);\n    },\n    /** `extra` may override summary counters: {records, bytes, ms}. */\n    finish(extra) {\n      finished = true;\n      extra = extra || {};\n      const series = {};\n      for (const k of SERIES_KINDS) series[k] = finishSeries(k, grows[k]);\n\n      markDuplicates();\n      const { rhr, hrv, mass } = series;\n      for (const r of rows) {\n        const p = r.localDay.split(\"-\");\n        const dayStart = Date.UTC(+p[0], +p[1] - 1, +p[2]) - r.tzOffset * 60000;\n        r.rhrDay = dayMean(rhr, dayStart, dayStart + DAY_MS);\n        r.hrvDay = dayMean(hrv, dayStart, dayStart + DAY_MS);\n        const i = lowerBound(mass.times, r.start + 1) - 1; // last sample with time <= start\n        r.massKg = i >= 0 ? Math.round(mass.values[i] * 1000) / 1000 : null; // Float32 noise out\n      }\n\n      const byType = {};\n      const sources = {};\n      for (const r of rows) {\n        byType[r.type] = (byType[r.type] || 0) + 1;\n        sources[r.source] = (sources[r.source] || 0) + 1;\n      }\n      const summary = {\n        workouts: rows.length,\n        records: extra.records !== undefined ? extra.records : kept,\n        bytes: extra.bytes || 0,\n        ms: extra.ms || 0,\n        byType, sources,\n      };\n      return { rows, series, summary };\n    },\n  };\n}\n\nreturn { toKm, toKcal, toMin, toM, parseQty, parseHKDate, zoneOffset, localDay, createBuilder };\n})();\n// ---- parser/zip.js\n__m[\"parser/zip.js\"] = (function () {\n// Minimal zip reader: central directory through File.slice (random access, no whole-file read),\n// native DecompressionStream(\"deflate-raw\") for method 8. Handles ZIP64 and data descriptors\n// (sizes always come from the central directory, never from the local header).\n\nconst SIG_EOCD = 0x06054b50;\nconst SIG_EOCD64 = 0x06064b50;\nconst SIG_LOC64 = 0x07064b50;\nconst SIG_CEN = 0x02014b50;\nconst SIG_LOCAL = 0x04034b50;\n\nasync function readBytes(file, start, end) {\n  return new DataView(await file.slice(start, end).arrayBuffer());\n}\n\nfunction u64(dv, o) {\n  return dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296;\n}\n\n/** true when the file starts with a zip local-file or end-of-central-directory signature */\nasync function isZip(file) {\n  if (file.size < 22) return false;\n  const dv = await readBytes(file, 0, 4);\n  const sig = dv.getUint32(0, true);\n  return sig === SIG_LOCAL || sig === SIG_EOCD;\n}\n\n/** Parse the central directory. Returns [{name, method, flags, size, compressedSize, offset}]. */\nasync function listEntries(file) {\n  const tailLen = Math.min(file.size, 65557 + 20);\n  const tailStart = file.size - tailLen;\n  const tail = await readBytes(file, tailStart, file.size);\n  let eocd = -1;\n  for (let i = tailLen - 22; i >= 0; i--) {\n    if (tail.getUint32(i, true) === SIG_EOCD) {\n      const commentLen = tail.getUint16(i + 20, true);\n      if (i + 22 + commentLen <= tailLen) { eocd = i; break; }\n    }\n  }\n  if (eocd < 0) throw new Error(\"Not a zip file (no end-of-central-directory record)\");\n\n  let count = tail.getUint16(eocd + 10, true);\n  let cdSize = tail.getUint32(eocd + 12, true);\n  let cdOffset = tail.getUint32(eocd + 16, true);\n  if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {\n    // ZIP64: locator sits right before the EOCD record\n    let loc = -1;\n    if (eocd >= 20 && tail.getUint32(eocd - 20, true) === SIG_LOC64) loc = tailStart + eocd - 20;\n    if (loc < 0) throw new Error(\"Zip64 end-of-central-directory locator not found\");\n    const l = await readBytes(file, loc, loc + 20);\n    const eocd64Off = u64(l, 8);\n    const r = await readBytes(file, eocd64Off, eocd64Off + 56);\n    if (r.getUint32(0, true) !== SIG_EOCD64) throw new Error(\"Bad zip64 end-of-central-directory record\");\n    count = u64(r, 32);\n    cdSize = u64(r, 40);\n    cdOffset = u64(r, 48);\n  }\n\n  const cd = await readBytes(file, cdOffset, cdOffset + cdSize);\n  const bytes = new Uint8Array(cd.buffer, cd.byteOffset, cd.byteLength);\n  const utf8 = new TextDecoder(\"utf-8\");\n  const entries = [];\n  let p = 0;\n  while (p + 46 <= cd.byteLength && cd.getUint32(p, true) === SIG_CEN && entries.length < count) {\n    const flags = cd.getUint16(p + 8, true);\n    const method = cd.getUint16(p + 10, true);\n    let compressedSize = cd.getUint32(p + 20, true);\n    let size = cd.getUint32(p + 24, true);\n    const nameLen = cd.getUint16(p + 28, true);\n    const extraLen = cd.getUint16(p + 30, true);\n    const commentLen = cd.getUint16(p + 32, true);\n    let offset = cd.getUint32(p + 42, true);\n    const name = utf8.decode(bytes.subarray(p + 46, p + 46 + nameLen));\n    if (size === 0xffffffff || compressedSize === 0xffffffff || offset === 0xffffffff) {\n      // zip64 extra field (0x0001): only the fields that overflowed are present, in this order\n      let e = p + 46 + nameLen;\n      const eEnd = e + extraLen;\n      while (e + 4 <= eEnd) {\n        const id = cd.getUint16(e, true);\n        const len = cd.getUint16(e + 2, true);\n        if (id === 0x0001) {\n          let q = e + 4;\n          if (size === 0xffffffff) { size = u64(cd, q); q += 8; }\n          if (compressedSize === 0xffffffff) { compressedSize = u64(cd, q); q += 8; }\n          if (offset === 0xffffffff) { offset = u64(cd, q); q += 8; }\n          break;\n        }\n        e += 4 + len;\n      }\n    }\n    entries.push({ name, method, flags, size, compressedSize, offset });\n    p += 46 + nameLen + extraLen + commentLen;\n  }\n  return entries;\n}\n\n/**\n * Locate the first entry whose name matches `pattern` (shortest path wins on ties).\n * Returns null when there is none, else {name, size, compressedSize, stream()}.\n * stream() yields the uncompressed bytes as a ReadableStream<Uint8Array>.\n */\nasync function findEntry(file, pattern) {\n  const entries = await listEntries(file);\n  let best = null;\n  for (const e of entries) {\n    if (e.name.endsWith(\"/\") || !pattern.test(e.name)) continue;\n    if (best === null || e.name.length < best.name.length) best = e;\n  }\n  if (best === null) return null;\n  return entryHandle(file, best);\n}\n\n/**\n * The Health export XML inside a zip: export.xml (shortest path wins), else the largest .xml that isn't the\n * clinical-document export (export_cda.xml / *_cda.xml). Returns a handle or null.\n */\nasync function findExportEntry(file) {\n  const exact = await findEntry(file, /(^|\\/)export\\.xml$/i);\n  if (exact !== null) return exact;\n  let best = null;\n  for (const e of await listEntries(file)) {\n    if (e.name.endsWith(\"/\") || !/\\.xml$/i.test(e.name) || /_cda\\.xml$/i.test(e.name) || /(^|\\/)__MACOSX\\//.test(e.name)) continue;\n    if (best === null || e.size > best.size) best = e;\n  }\n  return best === null ? null : entryHandle(file, best);\n}\n\nfunction entryHandle(file, e) {\n  if (e.method !== 0 && e.method !== 8) throw new Error(\"Unsupported zip compression method \" + e.method);\n  return {\n    name: e.name,\n    method: e.method,\n    size: e.size,\n    compressedSize: e.compressedSize,\n    stream() {\n      // The local header repeats the name/extra lengths, which can differ from the central ones.\n      const readStream = async () => {\n        const h = await readBytes(file, e.offset, e.offset + 30);\n        if (h.getUint32(0, true) !== SIG_LOCAL) throw new Error(\"Bad zip local header for \" + e.name);\n        const dataStart = e.offset + 30 + h.getUint16(26, true) + h.getUint16(28, true);\n        return file.slice(dataStart, dataStart + e.compressedSize).stream();\n      };\n      // Return a stream immediately; it starts pulling from the slice on first read.\n      let inner = null;\n      const raw = new ReadableStream({\n        async pull(controller) {\n          if (inner === null) inner = (await readStream()).getReader();\n          const { done, value } = await inner.read();\n          if (done) controller.close(); else controller.enqueue(value);\n        },\n        cancel(reason) { return inner ? inner.cancel(reason) : undefined; },\n      });\n      if (e.method === 0) return raw;\n      if (typeof DecompressionStream === \"undefined\") throw new Error(\"This browser can\u2019t unzip files (no DecompressionStream)\");\n      return raw.pipeThrough(new DecompressionStream(\"deflate-raw\"));\n    },\n  };\n}\n\nreturn { isZip, listEntries, findEntry, findExportEntry, entryHandle };\n})();\n// ---- parser/gpx.js\n__m[\"parser/gpx.js\"] = (function () {\n// GPX -> typed arrays, regex based (no DOMParser: this runs in a worker).\n// parseGpx(text) -> {lat: Float32Array, lon: Float32Array, ele: Float32Array, t: Float64Array}\n// t is epoch ms; missing elevation / time are NaN.\n\nconst TRKPT_RE = /<trkpt\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/trkpt>)/g;\nconst LAT_RE = /\\blat\\s*=\\s*[\"']([^\"']+)[\"']/;\nconst LON_RE = /\\blon\\s*=\\s*[\"']([^\"']+)[\"']/;\nconst ELE_RE = /<ele>\\s*([^<\\s]+)\\s*<\\/ele>/;\nconst TIME_RE = /<time>\\s*([^<\\s]+)\\s*<\\/time>/;\n\nfunction parseGpx(text) {\n  const lat = [], lon = [], ele = [], t = [];\n  TRKPT_RE.lastIndex = 0;\n  let m;\n  while ((m = TRKPT_RE.exec(text)) !== null) {\n    const a = LAT_RE.exec(m[1]);\n    const o = LON_RE.exec(m[1]);\n    if (a === null || o === null) continue;\n    const la = parseFloat(a[1]);\n    const lo = parseFloat(o[1]);\n    if (Number.isNaN(la) || Number.isNaN(lo)) continue;\n    lat.push(la);\n    lon.push(lo);\n    const inner = m[2];\n    const e = inner === undefined ? null : ELE_RE.exec(inner);\n    const tm = inner === undefined ? null : TIME_RE.exec(inner);\n    ele.push(e === null ? NaN : parseFloat(e[1]));\n    t.push(tm === null ? NaN : Date.parse(tm[1]));\n  }\n  return {\n    lat: Float32Array.from(lat),\n    lon: Float32Array.from(lon),\n    ele: Float32Array.from(ele),\n    t: Float64Array.from(t),\n  };\n}\n\nreturn { parseGpx };\n})();\n// ---- parser/worker.js\n__m[\"parser/worker.js\"] = (function () {\n// Parser worker (protocol in src/contract.md).\n//   UI -> worker: {cmd:\"parse\", file, routes}   (cancel = worker.terminate())\n//                 {cmd:\"gpx\", id, file}          (extra: parse one GPX file -> {type:\"gpx\", id, lat, lon, ele, t})\n//   worker -> UI: progress..., workouts, series x6, done | error\nconst { createScanner } = __m[\"parser/xml-scan.js\"];\nconst { createBuilder } = __m[\"parser/build.js\"];\nconst { isZip, findExportEntry } = __m[\"parser/zip.js\"];\nconst { parseGpx } = __m[\"parser/gpx.js\"];\nconst PROGRESS_MS = 250;\nconst SNIFF_BYTES = 1 << 20; // a Health export shows <HealthData> within the first MB\n\nclass UserError extends Error {}\n\nasync function openXml(file) {\n  if (await isZip(file)) {\n    const entry = await findExportEntry(file);\n    if (entry === null) throw new UserError(\"No export.xml found in this zip. Is it an Apple Health export?\");\n    if (entry.method === 8 && typeof DecompressionStream === \"undefined\") {\n      throw new UserError(\"This browser can\u2019t unzip export.zip. Unzip it first, then drop export.xml (or the whole apple_health_export folder).\");\n    }\n    return { stream: entry.stream(), total: entry.size };\n  }\n  return { stream: file.stream(), total: file.size };\n}\n\nasync function parse(file) {\n  const t0 = performance.now();\n  const { stream, total } = await openXml(file);\n  const builder = createBuilder();\n  const scanner = createScanner((el) => builder.add(el));\n  const decoder = new TextDecoder(\"utf-8\");\n  const reader = stream.getReader();\n\n  let bytes = 0;\n  let lastReport = t0;\n  const progress = () => {\n    self.postMessage({ type: \"progress\", bytes, total, records: scanner.counts.records, workouts: scanner.counts.workouts });\n    lastReport = performance.now();\n  };\n  progress();\n\n  for (;;) {\n    const { done, value } = await reader.read();\n    if (done) break;\n    bytes += value.byteLength;\n    scanner.push(decoder.decode(value, { stream: true }));\n    if (!scanner.sawRoot && bytes >= SNIFF_BYTES) {\n      reader.cancel().catch(() => {});\n      throw new UserError(\"This does not look like an Apple Health export (no <HealthData> element).\");\n    }\n    if (performance.now() - lastReport >= PROGRESS_MS) progress();\n  }\n  scanner.push(decoder.decode());\n  const end = scanner.end(); // throws on truncated XML\n  if (!end.sawRoot) throw new UserError(\"This does not look like an Apple Health export (no <HealthData> element).\");\n\n  const ms = Math.round(performance.now() - t0);\n  const { rows, series, summary } = builder.finish({ records: end.records, bytes, ms });\n  progress();\n  self.postMessage({ type: \"workouts\", rows });\n  for (const kind of Object.keys(series)) {\n    const s = series[kind];\n    self.postMessage({ type: \"series\", kind, times: s.times, values: s.values }, [s.times.buffer, s.values.buffer]);\n  }\n  self.postMessage({ type: \"done\", summary });\n}\n\nself.onmessage = (ev) => {\n  const m = ev.data || {};\n  if (m.cmd === \"parse\") {\n    parse(m.file).catch((err) => {\n      self.postMessage({ type: \"error\", message: err && err.message ? String(err.message) : String(err) });\n    });\n  } else if (m.cmd === \"gpx\") {\n    m.file.text().then((text) => {\n      const g = parseGpx(text);\n      self.postMessage({ type: \"gpx\", id: m.id, lat: g.lat, lon: g.lon, ele: g.ele, t: g.t }, [g.lat.buffer, g.lon.buffer, g.ele.buffer, g.t.buffer]);\n    }).catch((err) => {\n      self.postMessage({ type: \"error\", message: \"GPX: \" + (err && err.message ? err.message : String(err)), id: m.id });\n    });\n  }\n};\n\nreturn {  };\n})();\n})();";</script>
 <script>(function(){
 "use strict";
 const __m = Object.create(null);
@@ -1262,6 +1276,10 @@ __m["core/store.js"] = (function () {
 // IndexedDB persistence ("health-explorer") and compact JSON save/load.
 const { hrSlice } = __m["core/model.js"];
 const DB = "health-explorer", STORE = "datasets";
+/** Bump when the stored dataset shape changes: older caches / JSON files are then discarded and the export re-parsed. */
+const DATASET_VERSION = 1;
+/** Newest datasets kept in IndexedDB (each is a full copy of an export). */
+const KEEP_DATASETS = 2;
 let dbp = null;
 
 function db() {
@@ -1287,7 +1305,7 @@ async function open(fileKey) {
   const v = await wrap(d.transaction(STORE).objectStore(STORE).index("fileKey").get(fileKey));
   return v || null;
 }
-/** Replaces any dataset with the same fileKey. Typed arrays are stored as-is (structured clone). */
+/** Replaces any dataset with the same fileKey, then prunes to the newest KEEP_DATASETS. Typed arrays are stored as-is (structured clone). */
 async function save(dataset) {
   const d = await db();
   const tx = d.transaction(STORE, "readwrite");
@@ -1296,7 +1314,43 @@ async function save(dataset) {
   const keys = await wrap(idx.getAllKeys(dataset.fileKey));
   for (const k of keys) s.delete(k);
   s.add(dataset);
+  // Prune: walk newest -> oldest by parsedAt and delete everything past the keep limit (the new one has the newest parsedAt).
+  await new Promise((res, rej) => {
+    let n = 0;
+    const req = s.index("parsedAt").openKeyCursor(null, "prev");
+    req.onsuccess = () => {
+      const c = req.result;
+      if (!c) return res();
+      if (++n > KEEP_DATASETS) s.delete(c.primaryKey);
+      c.continue();
+    };
+    req.onerror = () => rej(req.error);
+  });
   await done(tx);
+}
+/** True for the browser's "storage is full" error (name differs slightly across engines). */
+function isQuotaError(e) {
+  return !!e && (e.name === "QuotaExceededError" || e.code === 22 || e.name === "NS_ERROR_DOM_QUOTA_REACHED");
+}
+const isTyped = (a, C) => a instanceof C;
+/**
+ * Structural check of a dataset (restored from IndexedDB or loaded from JSON).
+ * Returns null when usable, else a short human reason ("older version", "rows malformed", ...).
+ */
+function validate(ds) {
+  if (!ds || typeof ds !== "object") return "not a dataset";
+  if (ds.version !== DATASET_VERSION) return `saved by a different version (${ds.version === undefined ? "none" : ds.version}, expected ${DATASET_VERSION})`;
+  if (!Array.isArray(ds.rows)) return "no workouts";
+  for (const r of ds.rows) {
+    if (!r || typeof r !== "object" || !Number.isFinite(r.id) || !Number.isFinite(r.start) || typeof r.localDay !== "string" || typeof r.type !== "string") {
+      return "workout rows are malformed";
+    }
+  }
+  if (ds.series !== undefined && (ds.series === null || typeof ds.series !== "object")) return "series are malformed";
+  for (const [k, s] of Object.entries(ds.series || {})) {
+    if (!s || !isTyped(s.times, Float64Array) || !isTyped(s.values, Float32Array) || s.times.length !== s.values.length) return `series “${k}” is malformed`;
+  }
+  return null;
 }
 /** Most recently parsed dataset (by parsedAt), or null. */
 async function latest() {
@@ -1353,7 +1407,7 @@ function fromCompactJSON(text) {
   return { version: o.version, fileKey: o.fileKey, parsedAt: o.parsedAt, summary: o.summary, rows: o.rows, series };
 }
 
-return { open, save, latest, clear, hrFor, toCompactJSON, fromCompactJSON };
+return { DATASET_VERSION, KEEP_DATASETS, open, save, isQuotaError, validate, latest, clear, hrFor, toCompactJSON, fromCompactJSON };
 })();
 // ---- ui/popover.js
 __m["ui/popover.js"] = (function () {
@@ -1365,7 +1419,12 @@ const CSS = `
 .he-pop .mi{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:var(--label);font:inherit;font-size:15px;letter-spacing:-.24px;text-align:left;padding:9px 12px;border-radius:12px;cursor:pointer}
 .he-pop .mi:hover:not([disabled]){background:var(--fill)}
 .he-pop .mi[disabled]{opacity:.45;cursor:default}
-.he-pop .mi:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.he-pop .mi:focus-visible,.he-pop .tf input:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+@media(pointer:coarse){
+  .he-pop .mi{min-height:44px;padding:11px 14px}
+  .he-pop .mi input[type=checkbox]{width:22px;height:22px}
+  .he-pop .tf input{min-height:44px}
+}
 .he-pop .mi input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--blue);flex:none}
 .he-pop .mi.danger{color:var(--red)}
 .he-pop .sep{height:1px;background:var(--glass-rim);margin:6px 8px;opacity:.7}
@@ -1392,7 +1451,7 @@ function popover(anchor, render, opts) {
   injectPopoverCss();
   const el = document.createElement("div");
   el.className = "he-pop glass";
-  el.setAttribute("role", "menu");
+  el.setAttribute("role", "dialog"); // a small non-modal panel of buttons / checkboxes, not a strict menu
   if (opts && opts.label) el.setAttribute("aria-label", opts.label);
   document.body.appendChild(el);
   let isOpen = false;
@@ -1408,7 +1467,22 @@ function popover(anchor, render, opts) {
     el.style.top = Math.max(12, top) + "px";
   }
   const onDown = (e) => { if (!el.contains(e.target) && !anchor.contains(e.target)) close(); };
-  const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus(); } };
+  const focusables = () => [...el.querySelectorAll("button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex='-1'])")];
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(true); return; }
+    if (!el.contains(document.activeElement)) return;
+    // keep Tab inside the panel and let the arrow keys step through the items
+    const list = focusables();
+    if (!list.length) return;
+    const i = list.indexOf(document.activeElement);
+    if (e.key === "Tab") {
+      const j = i + (e.shiftKey ? -1 : 1);
+      if (j < 0 || j >= list.length) { e.preventDefault(); list[(j + list.length) % list.length].focus(); }
+    } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && document.activeElement.type !== "number") {
+      e.preventDefault();
+      list[(Math.max(i, 0) + (e.key === "ArrowDown" ? 1 : -1) + list.length) % list.length].focus();
+    }
+  };
   const onResize = () => close();
   function open() {
     if (isOpen) return;
@@ -1421,19 +1495,22 @@ function popover(anchor, render, opts) {
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", onResize);
-    const f = el.querySelector("button,input");
-    if (f && opts && opts.focus !== false) f.focus({ preventScroll: true });
+    const f = focusables()[0];
+    if (f && !(opts && opts.focus === false)) f.focus({ preventScroll: true });
   }
-  function close() {
+  /** Close; focus goes back to the trigger when asked, or when it was inside the panel (an outside press keeps its own target). */
+  function close(refocus) {
     if (!isOpen) return;
+    const inside = el.contains(document.activeElement);
     isOpen = false;
     el.classList.remove("open");
     anchor.setAttribute("aria-expanded", "false");
     document.removeEventListener("pointerdown", onDown, true);
     document.removeEventListener("keydown", onKey, true);
     window.removeEventListener("resize", onResize);
+    if (refocus === true || inside) anchor.focus({ preventScroll: true });
   }
-  anchor.setAttribute("aria-haspopup", "true");
+  anchor.setAttribute("aria-haspopup", "dialog");
   anchor.setAttribute("aria-expanded", "false");
   anchor.addEventListener("click", () => (isOpen ? close() : open()));
   return { el, open, close, toggle: () => (isOpen ? close() : open()), isOpen: () => isOpen, place, destroy() { close(); el.remove(); } };
@@ -1464,6 +1541,10 @@ const CSS = `
 .fx-type-btn[aria-expanded=true] svg{transform:rotate(180deg)}
 .fx-type-btn.on{color:var(--blue)}
 .he-pop.fx-type-pop .mi .c-n{margin-left:auto;padding-left:12px;color:var(--label-3);font-size:13px;font-variant-numeric:tabular-nums}
+@media(pointer:coarse){
+  .fx-dates input{min-height:44px;padding:8px 14px}
+  .fx-type-btn{min-height:44px}
+}
 @media (max-width:700px){
   .fx .seg{max-width:none;flex-basis:100%}
   .fx-type-btn{flex:1 1 100%;justify-content:space-between}
@@ -1582,7 +1663,7 @@ function mount(root, ctx) {
       el.appendChild(lab);
     }
     paintTypes(state.get().filters.types || [], true);
-  }, { label: "Activity type", focus: false });
+  }, { label: "Activity type" });
   function paintTypes(types, force) {
     const lbl = !types.length ? "All types" : types.length === 1 ? typeLabel(types[0]) : `${typeLabel(types[0])} +${types.length - 1}`;
     typeBtn.firstChild.textContent = lbl;
@@ -1844,7 +1925,17 @@ const CSS = `
 .fx-table tbody td{box-sizing:border-box}
 .fx-table tbody tr.spacer td{height:0;padding:0;border:0}
 .fx-table tbody tr.spacer{pointer-events:none}
-.fx-pick{width:18px;height:18px;margin:0 12px 0 0;vertical-align:-3px;accent-color:var(--blue);cursor:pointer;flex:none}
+.fx-pickl{display:inline-flex;align-items:center;margin:0 12px 0 0;vertical-align:-3px;cursor:pointer;flex:none}
+.fx-pick{width:18px;height:18px;margin:0;accent-color:var(--blue);cursor:pointer;flex:none}
+@media(pointer:coarse){
+  /* the padded label is the 44px hit area; negative margins keep the row layout unchanged */
+  .fx-pickl{padding:13px;margin:-13px -1px -13px -13px}
+  .fx-bar .btn,.fx-sortbar select,.fx-sortbar .btn{min-height:44px}
+}
+.fx-sortbar{display:none;align-items:center;gap:8px;margin-right:auto;min-width:0}
+.fx-sortbar select{font:inherit;font-size:14px;font-weight:600;color:var(--label);background:var(--fill);border:1px solid var(--glass-rim);border-radius:999px;padding:8px 12px;min-width:0;max-width:52vw;color-scheme:light dark}
+.fx-sortbar select:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.fx-sortbar .btn{padding:8px 14px;font-size:14px}
 .fx-table td.pri{font-weight:600}
 @media (min-width:761px){
 .fx-table td[data-label=Source]{max-width:150px}
@@ -1853,12 +1944,16 @@ const CSS = `
 .fx-table :is(th,td):last-child{padding-right:18px}
 }
 .fx-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:0 0 10px}
-.fx-bar .btn{padding:8px 16px;font-size:14px}
+.fx-bar{flex-wrap:wrap}
+.fx-bar .btn{padding:8px 16px;font-size:14px;white-space:nowrap}
 .fx-empty{border-radius:22px;padding:34px 22px;text-align:center;color:var(--label-2);display:flex;flex-direction:column;align-items:center;gap:14px}
 .fx-empty[hidden]{display:none}
 .fx-empty > *{position:relative;z-index:1}
 .fx-empty p{margin:0;font-size:17px}
 @media (max-width:760px){
+  .fx-sortbar{display:flex;flex:1 1 100%}
+  .fx-sortbar select{flex:1 1 auto;max-width:none}
+  .fx-bar{justify-content:flex-end}
   .fx-table.cards tbody tr:not(.spacer){height:132px;box-sizing:border-box;overflow:hidden;align-content:start}
   .fx-table.cards tbody tr.spacer{display:block;padding:0;border:0;grid-template-columns:none}
   .fx-table.cards tbody tr.spacer td{display:block;height:0}
@@ -1883,7 +1978,7 @@ function mount(root, ctx) {
   root.textContent = "";
   const holder = document.createElement("div");
   holder.innerHTML =
-    '<div class="fx-bar"><button type="button" class="btn ghost" data-cols>Columns</button><button type="button" class="btn ghost" data-csv>Export CSV</button></div>' +
+    '<div class="fx-bar"><div class="fx-sortbar"><select aria-label="Sort by" data-sortby></select><button type="button" class="btn ghost" data-sortdir></button></div><button type="button" class="btn ghost" data-cols>Columns</button><button type="button" class="btn ghost" data-csv>Export CSV</button></div>' +
     '<div class="table glass cards fx-table"><table><thead><tr></tr></thead><tbody></tbody></table></div>' +
     '<div class="fx-empty glass" hidden></div>';
   root.appendChild(holder);
@@ -1891,12 +1986,13 @@ function mount(root, ctx) {
   const headRow = wrap.querySelector("thead tr");
   const tbody = wrap.querySelector("tbody");
   const emptyEl = holder.querySelector(".fx-empty");
+  const sortSel = holder.querySelector("[data-sortby]"), sortDir = holder.querySelector("[data-sortdir]");
 
   let sorted = [], srcRef = null, sortSig = "", idxById = new Map();
   let colsSig = "", cols = [], units = "km";
   let rowH = 48, headH = 44, mobile = false;
   let cursorId = null, ranges = "", lastSel = "", dirty = true, raf = 0, selSet = new Set(), detailId = null;
-  let firstRender = true;
+  let firstRender = true, tabId = null;
 
   const toast = (t) => { const u = ctx.ui; if (u && u.toast) u.toast(t); };
   const total = () => (ctx.data.rows || []).length;
@@ -1922,7 +2018,7 @@ function mount(root, ctx) {
   function rowHtml(r, i) {
     const inSel = selSet.has(r.id);
     const on = inSel || r.id === detailId;
-    let h = `<tr data-id="${r.id}" data-i="${i}" tabindex="${r.id === cursorId ? 0 : -1}"${on ? ' class="sel"' : ""}>`;
+    let h = `<tr data-id="${r.id}" data-i="${i}" tabindex="${r.id === tabId ? 0 : -1}"${on ? ' class="sel"' : ""}>`;
     for (const k of cols) {
       const c = COLS[k];
       const cls = [c.cls, c.num ? "num" : "", c.muted ? "muted" : "", c.card ? "" : "mx"].filter(Boolean).join(" ");
@@ -1930,7 +2026,7 @@ function mount(root, ctx) {
       if (k === "source") body = esc(body);
       else if (k === "type" && r.manual) body = esc(body);
       else body = esc(body);
-      if (k === "start") body = `<input type="checkbox" class="fx-pick" aria-label="Add to compare"${inSel ? " checked" : ""}><span>${body}</span>`;
+      if (k === "start") body = `<label class="fx-pickl"><input type="checkbox" class="fx-pick" aria-label="Add to compare"${inSel ? " checked" : ""}></label><span>${body}</span>`;
       h += `<td class="${cls}" data-label="${esc(c.label(units))}"${k === "source" ? ` title="${esc(c.text(r, units))}"` : ""}>${body}</td>`;
     }
     return h + "</tr>";
@@ -1956,6 +2052,9 @@ function mount(root, ctx) {
     dirty = false; ranges = sig;
     const hadFocus = tbody.contains(document.activeElement);
     const pad = (h) => (h > 0 ? `<tr class="spacer" aria-hidden="true" style="height:${h}px"><td colspan="${cols.length}"></td></tr>` : "");
+    // roving tabindex: the cursor row is the Tab stop, or the first rendered row when there is no cursor (or it is scrolled out of the window)
+    const ci = cursorId !== null && idxById.has(cursorId) ? idxById.get(cursorId) : -1;
+    tabId = n ? sorted[ci >= first && ci < last ? ci : first].id : null;
     let html = pad(first * rowH);
     for (let i = first; i < last; i++) html += rowHtml(sorted[i], i);
     html += pad((n - last) * rowH);
@@ -1987,6 +2086,25 @@ function mount(root, ctx) {
     if (tr) { tr.tabIndex = 0; tr.focus({ preventScroll: true }); }
   }
 
+  // Card mode hides the header row, so the same sort is offered as a select + direction toggle (shown below 760px by CSS).
+  sortSel.innerHTML = COLUMN_KEYS.map((k) => `<option value="${k}"></option>`).join("");
+  sortSel.addEventListener("change", () => onSort(sortSel.value, false, true));
+  sortDir.addEventListener("click", () => {
+    const cur = state.get().sort || [];
+    if (cur.length) state.set({ sort: [{ ...cur[0], dir: -cur[0].dir }, ...cur.slice(1)] });
+    else state.set({ sort: [{ key: sortSel.value, dir: -COLS[sortSel.value].def }] });
+  });
+  function paintSortBar(s) {
+    const top = (s.sort || [])[0];
+    [...sortSel.options].forEach((o) => { o.textContent = COLS[o.value].label(units); });
+    if (top && COLS[top.key]) sortSel.value = top.key;
+    else sortSel.selectedIndex = -1;
+    const dir = top ? top.dir : 0;
+    sortDir.textContent = dir < 0 ? "↓ Desc" : "↑ Asc";
+    sortDir.setAttribute("aria-label", dir < 0 ? "Sort direction: descending. Switch to ascending" : "Sort direction: ascending. Switch to descending");
+    sortDir.disabled = !top;
+  }
+
   // ------------------------------------------------------------ refresh
   function refresh() {
     const s = state.get();
@@ -2011,6 +2129,7 @@ function mount(root, ctx) {
     if (!want.includes("start")) want.unshift("start");
     const csig = want.join(",") + "|" + units + "|" + sig + "|" + mobile;
     if (csig !== colsSig) { colsSig = csig; cols = want; buildHead(s); dirty = true; }
+    paintSortBar(s);
     selSet = new Set(s.selection || []);
     const prevDetail = detailId;
     detailId = s.detail === undefined ? null : s.detail;
@@ -2061,7 +2180,7 @@ function mount(root, ctx) {
     reset.type = "button"; reset.className = "mi"; reset.textContent = "Reset to default";
     reset.addEventListener("click", () => { state.set({ columns: DEFAULT_COLUMNS.slice() }); colsPop.close(); });
     el.append(sep, reset);
-  }, { label: "Visible columns", focus: false });
+  }, { label: "Visible columns" });
 
   csvBtn.addEventListener("click", () => {
     const s = state.get();
@@ -2084,12 +2203,13 @@ function mount(root, ctx) {
   }
   function openDetail(id) { cursorId = id; state.set({ detail: id }); }
 
-  function onSort(key, additive) {
+  function onSort(key, additive, pick) {
     const cur = state.get().sort || [];
     const i = cur.findIndex((x) => x.key === key);
     let next;
     if (additive) next = i >= 0 ? cur.map((x) => (x.key === key ? { ...x, dir: -x.dir } : x)) : [...cur, { key, dir: COLS[key].def }];
-    else if (i === 0) next = [{ key, dir: -cur[0].dir }];
+    else if (i === 0 && !pick) next = [{ key, dir: -cur[0].dir }];
+    else if (i === 0) return;
     else next = [{ key, dir: COLS[key].def }];
     state.set({ sort: next });
   }
@@ -2104,12 +2224,18 @@ function mount(root, ctx) {
     if (!tr) return;
     const id = Number(tr.dataset.id);
     cursorId = id;
+    if (e.target.closest(".fx-pickl") && !e.target.closest(".fx-pick")) return; // the label re-dispatches a click on the checkbox
     if (e.target.closest(".fx-pick")) {
       if (!toggleCompare(id)) e.target.checked = false;
       return;
     }
     if (e.metaKey || e.ctrlKey || e.shiftKey) { e.preventDefault(); toggleCompare(id); return; }
     openDetail(id);
+  });
+
+  tbody.addEventListener("focusin", (e) => {
+    const tr = e.target.closest && e.target.closest("tr[data-id]");
+    if (tr) cursorId = Number(tr.dataset.id);
   });
 
   tbody.addEventListener("keydown", (e) => {
@@ -2240,7 +2366,7 @@ __m["ui/charts.js"] = (function () {
 // SVG uses a viewBox equal to the host's pixel width (1 unit = 1 px, so text stays crisp) and
 // is redrawn by a ResizeObserver. Colours are CSS variables, so light/dark follow the theme.
 const { fmtNum } = __m["core/format.js"];
-const { linreg } = __m["core/stats.js"];
+const { linreg, mean, sd } = __m["core/stats.js"];
 const SERIES_COLORS = [
   "var(--blue)", "var(--orange)", "var(--teal)", "var(--red)", "var(--green)", "var(--yellow)",
   "color-mix(in srgb,var(--blue) 55%,var(--red))", "color-mix(in srgb,var(--teal) 55%,var(--green))",
@@ -2323,15 +2449,9 @@ function niceTicks(min, max, count = 5, opts) {
  * Returns {yt, yfmt}.
  */
 function yScale(y0, y1, count, yo) {
-  if (ok(yo.step) && yo.step > 0) {
-    const yt = stepTicks(y0, y1, yo.step, count);
-    return { yt, yfmt: yo.fmt || stepFmt(yo.step) };
-  }
   if (yo.tight) {
-    const r = yScaleLoose(y0, y1, count, yo);
-    const ticks = r.yt.ticks.filter((t) => t >= y0 - 1e-9 && t <= y1 + 1e-9);
-    if (y1 > y0 && ticks.length >= 2) return { yt: { ticks, step: r.yt.step, lo: y0, hi: y1 }, yfmt: r.yfmt };
-    return r;
+    const a = axisScale(y0, y1, { max: clamp(count, 4, 7), fmt: yo.fmt });
+    return { yt: a, yfmt: a.fmt };
   }
   return yScaleLoose(y0, y1, count, yo);
 }
@@ -2354,29 +2474,59 @@ function yScaleLoose(y0, y1, count, yo) {
   }
   return last;
 }
+const NICE_MULT = [1, 2, 2.5, 5];
+const decimalsOf = (step) => { for (let d = 0; d <= 8; d++) { const x = step * Math.pow(10, d); if (Math.abs(x - Math.round(x)) < 1e-6) return d; } return 8; };
 /**
- * Opt-in "stepped" axis: ticks are whole multiples of `step` (2.5 → 50, 52.5, 55…). The domain is the data min/max rounded
- * out to `step` (tight, no forced zero). When that gives more than `maxTicks` ticks the tick spacing grows by a whole
- * multiplier (×2, ×4, ×10…), so every tick is still a multiple of `step`. → {ticks, step, lo, hi}
+ * Shared axis helper (charts and the 3D surface). The axis spans exactly min..max (the "limits"); ticks are whole multiples of
+ * an automatically chosen "nice" step (1, 2, 2.5 or 5 × 10^n, the smallest giving at most `max` ticks, normally 4–7) that lie
+ * within the limits. Label precision follows the step (2.5 → one decimal, 5 → none). A custom `fmt` (e.g. m:ss pace) is kept, and the
+ * step grows until its labels are distinct. opts: {max=7, fmt, integer}. → {ticks, step, lo, hi, fmt}
  */
-function stepTicks(min, max, step, maxTicks = 6) {
-  if (!ok(min) || !ok(max) || !(step > 0)) return { ticks: [0, 1], step: 1, lo: 0, hi: 1 };
-  if (min > max) { const t = min; min = max; max = t; }
-  const lo = Math.floor(min / step + 1e-9) * step;
-  let hi = Math.ceil(max / step - 1e-9) * step;
-  if (hi - lo < step * 0.5) hi = lo + step;
-  const clean = (v) => +v.toFixed(10);
-  let s = step, first = lo;
-  for (const m of [1, 2, 4, 10, 20, 40, 100, 200, 400, 1000, 4000, 10000]) {
-    s = step * m;
-    first = Math.ceil(lo / s - 1e-9) * s;
-    if (Math.floor((hi - first) / s + 1e-9) + 1 <= Math.max(2, maxTicks)) break;
+function axisScale(min, max, opts) {
+  const o = opts || {};
+  let lo = ok(min) ? min : 0, hi = ok(max) ? max : 1;
+  if (lo > hi) { const t = lo; lo = hi; hi = t; }
+  if (!(hi > lo)) { const d = lo === 0 ? 1 : Math.abs(lo) * 0.05; lo -= d; hi += d; }
+  const maxT = Math.max(2, Math.round(o.max || 7));
+  const e0 = Math.floor(Math.log10((hi - lo) / maxT)) - 1;
+  // prefer 3..maxT ticks, then allow two more, and only then settle for a bare pair
+  for (const [minN, capN] of [[3, maxT], [3, maxT + 2], [2, maxT]]) {
+    for (let e = e0; e < e0 + 14; e++) {
+      for (const m of NICE_MULT) {
+        const step = +(m * Math.pow(10, e)).toPrecision(12);
+        if (o.integer && step < 1) continue;
+        const first = Math.ceil(lo / step - 1e-9), last = Math.floor(hi / step + 1e-9), n = last - first + 1;
+        if (n < minN || n > capN) continue;
+        const ticks = [];
+        for (let i = first; i <= last; i++) ticks.push(+(i * step).toFixed(10));
+        const dp = decimalsOf(step);
+        const fmt = o.fmt || ((v) => fmtNum(v, dp));
+        if (o.fmt && new Set(ticks.map(fmt)).size !== ticks.length) continue;
+        return { ticks, step, lo, hi, fmt };
+      }
+    }
   }
-  const ticks = [];
-  for (let t = first; t <= hi + 1e-9; t += s) ticks.push(clean(t));
-  return { ticks, step: s, lo: clean(lo), hi: clean(hi) };
+  return { ticks: [lo, hi], step: hi - lo, lo, hi, fmt: o.fmt || ((v) => fmtNum(v, 1)) };
 }
-function stepFmt(step) { const dp = step % 1 === 0 ? 0 : 1; return (v) => fmtNum(v, Number.isInteger(+v.toFixed(9)) ? 0 : dp); }
+/**
+ * One shared outlier rule for every view: a value is kept when it is within `zThr` sample SDs of the mean AND inside Tukey's fences
+ * (Q1 − 3·IQR, Q3 + 3·IQR) of those. → {kept (sorted values), lo, hi (min/max of kept), isOut(v), n}. Non-numbers are ignored.
+ */
+function outlierSplit(values, zThr = 3) {
+  const all = (values || []).filter((v) => ok(v) && typeof v === "number");
+  if (!all.length) return { kept: [], lo: 0, hi: 1, n: 0, isOut: () => false };
+  const mu = mean(all), s = sd(all);
+  let v = all.filter((x) => !(s > 0) || Math.abs(x - mu) / s <= zThr).sort((a, b) => a - b);
+  if (v.length >= 4) {
+    const q = (f) => { const i = (v.length - 1) * f, a = Math.floor(i), b = Math.ceil(i); return v[a] + (v[b] - v[a]) * (i - a); };
+    const q1 = q(0.25), q3 = q(0.75), k = 3 * (q3 - q1);
+    const t = v.filter((x) => x >= q1 - k && x <= q3 + k);
+    if (t.length) v = t;
+  }
+  if (!v.length) v = all.slice().sort((a, b) => a - b);
+  const lo = v[0], hi = v[v.length - 1];
+  return { kept: v, lo, hi, n: all.length, isOut: (x) => ok(x) && (x < lo || x > hi) };
+}
 function dpFor(step) { return step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step) - 1e-9)); }
 function defFmt(step) { const dp = dpFor(step); return (v) => fmtNum(v, dp); }
 
@@ -2436,7 +2586,13 @@ function makeChart(host, kind, opts0, draw) {
   };
   svg.addEventListener("pointermove", (e) => { if (view && view.hit) { const [x, y] = pos(e); setCur(view.hit(x, y)); } });
   svg.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse" && view && view.hit) { const [x, y] = pos(e); setCur(view.hit(x, y)); } });
-  svg.addEventListener("pointerleave", () => { if (document.activeElement !== svg) setCur(null); });
+  // Touch/pen: pointerleave fires right after pointerup, which would hide a tapped tooltip at once. Only a mouse leaving hides it;
+  // for touch it stays until the next pointerdown outside the chart, or a scroll.
+  svg.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && document.activeElement !== svg) setCur(null); });
+  const outside = (e) => { if (cur && !wrap.contains(e.target)) setCur(null); };
+  const onScroll = () => { if (cur && document.activeElement !== svg) setCur(null); }; // a keyboard-focused chart keeps its tooltip (focus() itself can scroll)
+  document.addEventListener("pointerdown", outside, true);
+  window.addEventListener("scroll", onScroll, { passive: true, capture: true });
   svg.addEventListener("blur", () => setCur(null));
   svg.addEventListener("focus", () => { if (!cur && view && view.kbd) setCur(view.kbd(null, "focus")); });
   svg.addEventListener("click", (e) => {
@@ -2465,7 +2621,11 @@ function makeChart(host, kind, opts0, draw) {
   return {
     el: wrap,
     update(n) { opts = { ...opts, ...(n || {}) }; redraw(); },
-    destroy() { dead = true; if (ro) ro.disconnect(); wrap.remove(); },
+    destroy() {
+      dead = true; if (ro) ro.disconnect(); wrap.remove();
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("scroll", onScroll, { capture: true });
+    },
   };
 }
 
@@ -2498,8 +2658,9 @@ const labW = (labels) => labels.reduce((m, l) => Math.max(m, String(l).length), 
 /* ------------------------------------------------------------------- line */
 
 /**
- * line(host, {series:[{name,color,points:[[x,y|null]]}], x:{fmt,min,max,integer,ticks}, y:{fmt,tipFmt,min,max,step?,tight?},
- *   y.step (e.g. 2.5): ticks are whole multiples of it and the domain is the data min..max rounded out to it; y.tight: domain = data min..max.
+ * line(host, {series:[{name,color,points:[[x,y|null,yv?]]}], x:{fmt,min,max,integer,ticks}, y:{fmt,tipFmt,min,max,tight?},
+ *   points[2] (yv) is the true value when y was clamped to the axis: tooltip, aria and onPoint show it, marked "(off-scale)".
+ *   y.tight: domain = data min..max, with automatic nice ticks inside it (see axisScale).
  *   height=220, onPoint({series,seriesIndex,x,y,index}), selected?:x})
  * Null y values break the line (one <path class="hx-ln"> per run); single-point runs draw a dot.
  */
@@ -2508,7 +2669,7 @@ function line(host, opts) {
     const H = o.height || 220, xo = o.x || {}, yo = o.y || {};
     const series = (o.series || []).map((s, i) => {
       const vp = [];
-      (s.points || []).forEach((p, idx) => { if (ok(p[0]) && ok(p[1])) vp.push([p[0], p[1], idx]); });
+      (s.points || []).forEach((p, idx) => { if (ok(p[0]) && ok(p[1])) vp.push([p[0], p[1], idx, ok(p[2]) ? p[2] : p[1]]); });
       let sorted = true;
       for (let i2 = 1; i2 < vp.length; i2++) if (vp[i2][0] < vp[i2 - 1][0]) { sorted = false; break; }
       if (!sorted) vp.sort((a, b) => a[0] - b[0]);
@@ -2592,7 +2753,7 @@ function line(host, opts) {
     const aria = "Line chart. " + series.slice(0, 4).map((s) => {
       if (!s.vp.length) return `${s.name || "Series"}: no data`;
       let mn = Infinity, mx = -Infinity;
-      for (const p of s.vp) { if (p[1] < mn) mn = p[1]; if (p[1] > mx) mx = p[1]; }
+      for (const p of s.vp) { if (p[3] < mn) mn = p[3]; if (p[3] > mx) mx = p[3]; }
       return `${s.name || "Series"}: ${s.vp.length} points, ${tfmt(mn)} to ${tfmt(mx)}`;
     }).join("; ");
     return {
@@ -2630,14 +2791,14 @@ function line(host, opts) {
       },
       tip(it) {
         let s = `<div class="t-h">${esc(xfmt(it.x))}</div>`;
-        for (const r of it.rows) s += `<div class="t-r"><span class="dot" style="background:${r.s.color}"></span>${multi || r.s.name ? esc(r.s.name) : ""}<b>${esc(tfmt(r.p[1]))}</b></div>`;
+        for (const r of it.rows) s += `<div class="t-r"><span class="dot" style="background:${r.s.color}"></span>${multi || r.s.name ? esc(r.s.name) : ""}<b>${esc(tfmt(r.p[3]))}${r.p[3] !== r.p[1] ? " (off-scale)" : ""}</b></div>`;
         return { html: s, x: sx(it.x), y: sy(it.rows[0].p[1]) };
       },
-      text: (it) => `${xfmt(it.x)}: ` + it.rows.map((r) => `${r.s.name} ${tfmt(r.p[1])}`).join(", "),
+      text: (it) => `${xfmt(it.x)}: ` + it.rows.map((r) => `${r.s.name} ${tfmt(r.p[3])}${r.p[3] !== r.p[1] ? " (off-scale)" : ""}`).join(", "),
       activate(it) {
         if (!o.onPoint) return;
         const r = it.rows[0];
-        o.onPoint({ series: r.s.name, seriesIndex: r.s.i, x: r.p[0], y: r.p[1], index: r.p[2] });
+        o.onPoint({ series: r.s.name, seriesIndex: r.s.i, x: r.p[0], y: r.p[3], index: r.p[2], offScale: r.p[3] !== r.p[1] });
       },
     };
   });
@@ -2733,7 +2894,8 @@ function bars(host, opts) {
 
 /**
  * scatter(host, {points:[{x,y,xv?,yv?,color,id,label?}],  (xv/yv: true values shown in the tooltip when y is clamped to the axis)
- *   x:{fmt,label,min,max}, y:{fmt,label,min,max},
+ *   x:{fmt,tipFmt,label,min,max,tight}, y:{fmt,tipFmt,label,min,max,tight},
+ *   tight: the axis spans exactly the data min..max with automatic nice ticks inside it (axisScale),
  *   fit?: {slope,intercept,r2?} | true, onClick(id), height=260})
  * fit === true computes the least-squares line and r² from the points.
  */
@@ -2747,11 +2909,12 @@ function scatter(host, opts) {
     if (ok(xo.min)) x0 = Math.min(x0, xo.min); if (ok(xo.max)) x1 = Math.max(x1, xo.max);
     if (ok(yo.min)) y0 = Math.min(y0, yo.min); if (ok(yo.max)) y1 = Math.max(y1, yo.max);
     const { yt, yfmt } = yScale(y0, y1, Math.max(3, Math.round(H / 52)), yo);
-    const xt0 = niceTicks(x0, x1, 6);
-    const xfmt = xo.fmt || defFmt(xt0.step);
     const ml = labW(yt.ticks.map(yfmt)), mr = 16, mt = yo.label ? 22 : 10, mb = xo.label ? 42 : 26;
     const pw = Math.max(40, W - ml - mr), ph = H - mt - mb;
-    const xt = niceTicks(x0, x1, clamp(Math.floor(pw / 80), 2, 8));
+    let xt, xfmt;
+    if (xo.tight) { xt = axisScale(x0, x1, { max: clamp(Math.floor(pw / 70), 3, 7), fmt: xo.fmt }); xfmt = xt.fmt; }
+    else { xt = niceTicks(x0, x1, clamp(Math.floor(pw / 80), 2, 8)); xfmt = xo.fmt || defFmt(niceTicks(x0, x1, 6).step); }
+    const xtip = xo.tipFmt || xfmt, ytip = yo.tipFmt || yfmt;
     const sx = (x) => ml + ((x - xt.lo) / (xt.hi - xt.lo || 1)) * pw;
     const sy = (y) => mt + ph - ((y - yt.lo) / (yt.hi - yt.lo || 1)) * ph;
     let html = yAxis(yt.ticks, yfmt, sy, ml, W, mr);
@@ -2800,10 +2963,10 @@ function scatter(host, opts) {
       tip(it) {
         const p = P[it.i];
         const s = (p.label ? `<div class="t-h">${esc(p.label)}</div>` : "") +
-          `<div class="t-r">${esc(xo.label || "x")}<b>${esc(xfmt(ok(p.xv) ? p.xv : p.x))}</b>${ok(p.xv) && p.xv !== p.x ? " (off-scale)" : ""}</div><div class="t-r">${esc(yo.label || "y")}<b>${esc(yfmt(ok(p.yv) ? p.yv : p.y))}</b>${ok(p.yv) && p.yv !== p.y ? " (off-scale)" : ""}</div>`;
+          `<div class="t-r">${esc(xo.label || "x")}<b>${esc(xtip(ok(p.xv) ? p.xv : p.x))}</b>${ok(p.xv) && p.xv !== p.x ? " (off-scale)" : ""}</div><div class="t-r">${esc(yo.label || "y")}<b>${esc(ytip(ok(p.yv) ? p.yv : p.y))}</b>${ok(p.yv) && p.yv !== p.y ? " (off-scale)" : ""}</div>`;
         return { html: s, x: px[it.i], y: py[it.i] };
       },
-      text: (it) => `${P[it.i].label ? P[it.i].label + ": " : ""}${xfmt(ok(P[it.i].xv) ? P[it.i].xv : P[it.i].x)}, ${yfmt(ok(P[it.i].yv) ? P[it.i].yv : P[it.i].y)}`,
+      text: (it) => `${P[it.i].label ? P[it.i].label + ": " : ""}${xtip(ok(P[it.i].xv) ? P[it.i].xv : P[it.i].x)}, ${ytip(ok(P[it.i].yv) ? P[it.i].yv : P[it.i].y)}`,
       activate(it) { if (o.onClick) o.onClick(P[it.i].id); },
     };
   });
@@ -2811,28 +2974,27 @@ function scatter(host, opts) {
 
 /* -------------------------------------------------------------- histogram */
 
-/** histogram(host, {bins:[{x0,x1,n}], marker?:number, markerLabel?, x:{fmt}, height=200}) */
+/** histogram(host, {bins:[{x0,x1,n}], marker?:number, markerLabel?, x:{fmt,tipFmt,tight,min,max}, height=200}); x.min/max clip the axis (edge bins are cut) and x.tight uses axisScale ticks. */
 function histogram(host, opts) {
   return makeChart(host, "hist", opts, (o, W) => {
     const H = o.height || 200, xo = o.x || {};
     const B = o.bins || [];
     if (!B.length) return emptyView(W, H, "No data");
-    const x0 = B[0].x0, x1 = B[B.length - 1].x1;
+    const bx0 = B[0].x0, bx1 = B[B.length - 1].x1;
+    const x0 = ok(xo.min) ? clamp(xo.min, bx0, bx1) : bx0, x1 = ok(xo.max) ? clamp(xo.max, x0, bx1) : bx1;
     let nmax = 0;
     for (const b of B) if (b.n > nmax) nmax = b.n;
     const yt = niceTicks(0, Math.max(1, nmax), Math.max(3, Math.round(H / 48)), { integer: true });
     const yfmt = (v) => fmtNum(v, 0);
-    const xt0 = niceTicks(x0, x1, 6);
-    const xfmt = xo.fmt || (xo.step > 0 ? stepFmt(xo.step) : defFmt(xt0.step));
     const ml = labW(yt.ticks.map(yfmt)), mr = 14, mt = o.marker != null ? 22 : 10, mb = 26;
     const pw = Math.max(40, W - ml - mr), ph = H - mt - mb;
     const sx = (x) => ml + ((x - x0) / (x1 - x0 || 1)) * pw;
     const sy = (y) => mt + ph - (y / (yt.hi || 1)) * ph;
     let html = yAxis(yt.ticks, yfmt, sy, ml, W, mr);
     html += `<line class="hx-axis" x1="${ml}" x2="${W - mr}" y1="${mt + ph}" y2="${mt + ph}"/>`;
-    // x.step: ticks at whole multiples of the step across exactly x0..x1 (the bins' own span); widened by whole multipliers when crowded
-    const xlab = Math.max(...[x0, x1].map((v) => String(xfmt(v)).length), 3) * 6.4 + 22;
-    const xt = xo.step > 0 ? stepTicks(x0, x1, xo.step, clamp(Math.floor(pw / xlab), 2, 12)) : niceTicks(x0, x1, clamp(Math.floor(pw / 80), 2, 8));
+    let xt, xfmt;
+    if (xo.tight) { xt = axisScale(x0, x1, { max: clamp(Math.floor(pw / 62), 3, 7), fmt: xo.fmt }); xfmt = xt.fmt; }
+    else { xt = niceTicks(x0, x1, clamp(Math.floor(pw / 80), 2, 8)); xfmt = xo.fmt || defFmt(niceTicks(x0, x1, 6).step); }
     for (const t of xt.ticks) {
       if (t < x0 - 1e-9 || t > x1 + 1e-9) continue;
       const x = sx(t), anc = x < ml + 20 ? "start" : x > W - 30 ? "end" : "middle";
@@ -2841,7 +3003,8 @@ function histogram(host, opts) {
     }
     for (const b of B) {
       if (!b.n) continue;
-      const xa = sx(b.x0), xb = sx(b.x1), w = Math.max(0.5, xb - xa - (xb - xa > 4 ? 1.5 : 0));
+      if (b.x1 <= x0 || b.x0 >= x1) continue;
+      const xa = sx(Math.max(b.x0, x0)), xb = sx(Math.min(b.x1, x1)), w = Math.max(0.5, xb - xa - (xb - xa > 4 ? 1.5 : 0));
       html += `<rect class="hx-bar" x="${r1(xa + (xb - xa - w) / 2)}" y="${r1(sy(b.n))}" width="${r1(w)}" height="${r1(mt + ph - sy(b.n))}" rx="${Math.min(3, w / 2)}" style="fill:var(--teal);fill-opacity:.85"/>`;
     }
     if (o.marker != null && ok(o.marker) && o.marker >= x0 && o.marker <= x1) {
@@ -2849,10 +3012,11 @@ function histogram(host, opts) {
       html += `<line class="hx-dash" x1="${r1(mx)}" x2="${r1(mx)}" y1="${mt - 4}" y2="${mt + ph}"/>`;
       html += `<text x="${r1(mx)}" y="${mt - 8}" text-anchor="${mx > W - 60 ? "end" : "middle"}" style="fill:var(--blue);font-weight:600">${esc(o.markerLabel || xfmt(o.marker))}</text>`;
     }
+    const xtip = xo.tipFmt || xfmt;
     const at = (i) => ({ i });
     const nb = B.length;
     return {
-      h: H, html, aria: `Histogram, ${nb} bins from ${xfmt(x0)} to ${xfmt(x1)}, tallest bin ${nmax}`, legend: [],
+      h: H, html, aria: `Histogram, ${nb} bins from ${xtip(x0)} to ${xtip(x1)}, tallest bin ${nmax}`, legend: [],
       hit(px) { if (px < ml || px > W - mr) return null; const v = x0 + ((px - ml) / pw) * (x1 - x0); const i = B.findIndex((b) => v >= b.x0 && v < b.x1); return i < 0 ? (v >= x1 ? at(nb - 1) : null) : at(i); },
       kbd(c, key) {
         if (!c) return at(nb - 1);
@@ -2862,8 +3026,8 @@ function histogram(host, opts) {
         return at(clamp(i, 0, nb - 1));
       },
       show(it, g) { const b = B[it.i]; g.innerHTML = `<rect class="hx-hl" x="${r1(sx(b.x0))}" y="${mt}" width="${r1(Math.max(1, sx(b.x1) - sx(b.x0)))}" height="${ph}" rx="3"/>`; },
-      tip(it) { const b = B[it.i]; return { html: `<div class="t-h">${esc(xfmt(b.x0))} – ${esc(xfmt(b.x1))}</div><div class="t-r">Workouts<b>${b.n}</b></div>`, x: (sx(b.x0) + sx(b.x1)) / 2, y: sy(b.n) }; },
-      text: (it) => `${xfmt(B[it.i].x0)} to ${xfmt(B[it.i].x1)}: ${B[it.i].n}`,
+      tip(it) { const b = B[it.i]; return { html: `<div class="t-h">${esc(xtip(b.x0))} – ${esc(xtip(b.x1))}</div><div class="t-r">Workouts<b>${b.n}</b></div>`, x: (sx(b.x0) + sx(b.x1)) / 2, y: sy(b.n) }; },
+      text: (it) => `${xtip(B[it.i].x0)} to ${xtip(B[it.i].x1)}: ${B[it.i].n}`,
       activate() {},
     };
   });
@@ -2943,7 +3107,7 @@ function route(host, tracks, extra) {
   };
 }
 
-return { SERIES_COLORS, niceTicks, stepTicks, line, bars, scatter, histogram, route };
+return { SERIES_COLORS, niceTicks, axisScale, outlierSplit, line, bars, scatter, histogram, route };
 })();
 // ---- ui/map.js
 __m["ui/map.js"] = (function () {
@@ -3044,7 +3208,7 @@ function mapLinks(tracks, travelMode = "walking") {
 }
 
 const CSS = `
-.rm{position:relative;border-radius:22px;overflow:hidden;height:clamp(260px,46vh,420px);background:var(--fill);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;outline:none;isolation:isolate}
+.rm{position:relative;border-radius:22px;overflow:hidden;height:clamp(260px,46vh,420px);background:var(--fill);touch-action:pan-y pinch-zoom;user-select:none;-webkit-user-select:none;cursor:grab;outline:none;isolation:isolate}
 .rm.drag{cursor:grabbing}
 .rm:focus-visible{box-shadow:0 0 0 2px var(--blue)}
 .rm .rm-tiles{position:absolute;inset:0;overflow:hidden;z-index:0}
@@ -3061,6 +3225,12 @@ const CSS = `
 .rm .rm-attr{position:absolute;right:8px;bottom:6px;font:500 10px var(--font);color:#1c1c1e;background:rgba(255,255,255,.7);padding:1px 6px;border-radius:6px;z-index:3;pointer-events:none;max-width:70%;text-align:right}
 .rm .rm-note{position:absolute;left:10px;right:10px;bottom:28px;z-index:3;font:500 12px var(--font);padding:7px 12px;border-radius:14px;text-align:center}
 .rm .rm-note[hidden]{display:none}
+.rm .rm-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;max-width:80%;font:600 14px var(--font);padding:9px 16px;border-radius:14px;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s}
+.rm .rm-hint.on{opacity:1}
+@media(pointer:coarse){
+  .rm .rm-seg button{min-height:44px;padding:5px 16px}
+  .rm .rm-zoom button{width:44px;height:44px}
+}
 .rm-links{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px;font-weight:600}
 .rm-links a{color:var(--blue);text-decoration:none}
 .rm-links a:hover{text-decoration:underline}
@@ -3146,14 +3316,15 @@ function slippy(wrap, opts) {
   el.className = "rm";
   el.tabIndex = 0;
   el.setAttribute("role", "application");
-  el.setAttribute("aria-label", "Route map. Drag to pan, scroll or pinch to zoom, plus and minus keys zoom.");
+  el.setAttribute("aria-label", "Route map. Drag to pan (two fingers on touch screens), scroll or pinch to zoom, plus and minus keys zoom.");
   el.innerHTML = '<div class="rm-tiles"></div><canvas></canvas>' +
     '<div class="rm-seg glass" role="group" aria-label="Map style"><button type="button" data-style="map">Map</button><button type="button" data-style="satellite">Satellite</button></div>' +
     '<div class="rm-zoom glass"><button type="button" data-z="1" aria-label="Zoom in">+</button><button type="button" data-z="-1" aria-label="Zoom out">−</button><button type="button" data-z="0" aria-label="Fit route" style="font-size:15px">⤢</button></div>' +
-    '<div class="rm-note glass" hidden>Map tiles could not be loaded. Showing the route only.</div><div class="rm-attr"></div>';
+    '<div class="rm-note glass" hidden>Map tiles could not be loaded. Showing the route only.</div><div class="rm-attr"></div>' +
+    '<div class="rm-hint glass" role="status" aria-live="polite"></div>';
   wrap.appendChild(el);
   const tilesEl = el.querySelector(".rm-tiles"), canvas = el.querySelector("canvas"), g = canvas.getContext("2d");
-  const attr = el.querySelector(".rm-attr"), note = el.querySelector(".rm-note");
+  const attr = el.querySelector(".rm-attr"), note = el.querySelector(".rm-note"), hint = el.querySelector(".rm-hint");
   let linksEl = null;
 
   let tracks = [];
@@ -3226,7 +3397,7 @@ function slippy(wrap, opts) {
     const n = Math.pow(2, zt);
     const x0 = Math.floor(ox / ts), x1 = Math.floor((ox + W) / ts);
     const y0 = Math.max(0, Math.floor(oy / ts)), y1 = Math.min(n - 1, Math.floor((oy + H) / ts));
-    const layers = style === "satellite" ? 2 : 1;
+    const layers = tileUrls(style, theme, 0, 0, 0).length;
     const need = new Set();
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const xw = ((x % n) + n) % n;
@@ -3337,12 +3508,22 @@ function slippy(wrap, opts) {
   const ptrs = new Map();
   let pinch = null;
   const local = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const touches = new Set();  // pointer ids of touch pointers (they pan with two fingers only; one finger scrolls the drawer)
+  let hintTimer = 0, oneMoved = 0;
+  const showHint = () => {
+    hint.textContent = "Use two fingers to move the map";
+    hint.classList.add("on");
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => hint.classList.remove("on"), 1400);
+  };
   const onDown = (e) => {
     if (e.target.closest(".rm-seg,.rm-zoom")) return;
-    el.setPointerCapture(e.pointerId);
+    try { el.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or already-released pointer */ }
     ptrs.set(e.pointerId, local(e));
+    if (e.pointerType === "touch") touches.add(e.pointerId);
+    oneMoved = 0;
     el.classList.add("drag");
-    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1 }; }
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 }; hint.classList.remove("on"); }
   };
   const onMove = (e) => {
     if (!ptrs.has(e.pointerId)) return;
@@ -3351,8 +3532,17 @@ function slippy(wrap, opts) {
     if (ptrs.size >= 2 && pinch) {
       const [a, b] = [...ptrs.values()];
       const d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
-      zoomAt(z + Math.log2(d / pinch.d), (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const s = S();
+      cx -= (mx - pinch.cx) / s; cy -= (my - pinch.cy) / s;   // two-finger pan
+      pinch.cx = mx; pinch.cy = my;
+      clampCenter();
+      zoomAt(z + Math.log2(d / pinch.d), mx, my);
       pinch.d = d;
+    } else if (e.pointerType === "touch") {
+      // one finger: leave the drag to the page (it scrolls the drawer) and tell the user how to move the map
+      oneMoved += Math.hypot(p[0] - old[0], p[1] - old[1]);
+      if (oneMoved > 8) showHint();
     } else {
       const s = S();
       cx -= (p[0] - old[0]) / s; cy -= (p[1] - old[1]) / s;
@@ -3361,6 +3551,7 @@ function slippy(wrap, opts) {
   };
   const onUp = (e) => {
     ptrs.delete(e.pointerId);
+    touches.delete(e.pointerId);
     if (ptrs.size < 2) pinch = null;
     if (!ptrs.size) el.classList.remove("drag");
   };
@@ -3520,7 +3711,7 @@ function suitability(row, elevM) {
  */
 function estimateFromRow(row, hrRest, hrMax, elevM) {
   const s = suitability(row, elevM);
-  if (!s.ok || !(hrMax > hrRest) || !(row.avgHr > hrRest)) return null;
+  if (!s.ok || !Number.isFinite(hrMax) || !Number.isFinite(hrRest) || !(hrMax > hrRest) || !(row.avgHr > hrRest)) return null;
   const hrr = pctHrr(row.avgHr, hrRest, hrMax);
   if (hrr < SUITABLE.minHrr || hrr > SUITABLE.maxHrr) return null;
   const v = (s.kmh * 1000) / 60;
@@ -3845,6 +4036,26 @@ const CSS = `
 .wk-vo2-note{font-size:12px;color:var(--label-2);margin-top:8px;line-height:1.4}
 .wk-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 @media(min-width:900px){.wk-cols.two{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* two-across tiles are squares (they grow only if their content needs more room) */
+@media(min-width:900px){.wk-cols.two > .wk-card,.wk-cols.two > div > .wk-card{aspect-ratio:1/1}}
+/* details + VO2max share one row; the stat cells are condensed to fit a square */
+.wk-top .wk-card{display:flex;flex-direction:column}
+.wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 10px;align-content:start}
+@media(min-width:420px){.wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:900px){.wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 12px}.wk-top [data-sec=details] .wk-c .wk-v{font-size:26px}.wk-top [data-sec=details] .wk-c .wk-l{font-size:13px}}
+.wk-top [data-sec=details] .wk-c .wk-l{font-size:12px}
+.wk-top [data-sec=details] .wk-c .wk-v{font-size:22px;margin-top:1px}
+.wk-top [data-sec=details] .wk-c .wk-v small{font-size:11px;margin-left:2px}
+.wk-top [data-sec=details] .wk-c .wk-s{font-size:11px}
+.wk-top .wk-vo2 .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.wk-top .wk-vo2 .wk-c .wk-v{font-size:24px}
+.wk-top .wk-vo2-in{margin-top:auto}
+.wk-top.one{grid-template-columns:minmax(0,1fr)}
+.wk-top.one > .wk-card,.wk-top.one > div > .wk-card{aspect-ratio:auto}
+.wk-top.one [data-sec=details] .wk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(min-width:620px){.wk-top.one [data-sec=details] .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:900px){.wk-top.one [data-sec=details] .wk-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.wk-top.one [data-sec=details] .wk-c .wk-v{font-size:26px}
 .wk-tbl{width:100%;border-collapse:collapse;font-size:15px}
 .wk-tbl th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--label-2);text-align:right;padding:0 6px 6px}
 .wk-tbl th:first-child,.wk-tbl td:first-child{text-align:left}
@@ -4067,7 +4278,7 @@ function mount(root, ctx) {
     const tile = (title, v, sub, key) => `<div class="wk-c" data-tile="${key}" style="--tone:var(--o2)"><span class="wk-l">${title}</span><b class="wk-v">${v === null ? "—" : fmtNum(v, 1)}</b><span class="wk-s">${sub}</span></div>`;
     const paint = () => {
       const { hrMax, hrRest } = val();
-      const c = hrMax > hrRest ? vo2Card(r, hrRest, hrMax, measured, gain) : null;
+      const c = Number.isFinite(hrMax) && Number.isFinite(hrRest) && hrMax > hrRest ? vo2Card(r, hrRest, hrMax, measured, gain) : null;
       const set = (k, t) => { el.querySelector(`[data-v="${k}"]`).textContent = t; };
       set("final", c ? fmtNum(c.final, 1) : "—");
       const n = c ? [c.acsm, c.minetti, c.watch].filter((v) => v !== null).length : 0;
@@ -4274,13 +4485,22 @@ function mount(root, ctx) {
     const mapSlot = document.createElement("div");
     mapSlot.className = "wk-mapslot";
     if (r.route) el.appendChild(mapSlot);
+    // details + VO2max sit side by side as two square tiles (stacked 1 per row on narrower screens)
+    const topCols = document.createElement("div");
+    topCols.className = "wk-cols two wk-top";
+    el.appendChild(topCols);
     const detailsSlot = document.createElement("div");
-    el.appendChild(detailsSlot);
+    detailsSlot.style.display = "contents";
+    topCols.appendChild(detailsSlot);
     detailsSlot.appendChild(detailsCard(r, x, units, null));
     const vo2Slot = document.createElement("div");
     vo2Slot.style.display = "contents";
-    el.appendChild(vo2Slot);
-    const putVo2 = (gain) => { vo2Slot.textContent = ""; try { const c = vo2CardEl(r, gain); if (c) vo2Slot.appendChild(c); } catch (e) { /* estimate is optional */ } };
+    topCols.appendChild(vo2Slot);
+    const putVo2 = (gain) => {
+      vo2Slot.textContent = "";
+      try { const c = vo2CardEl(r, gain); if (c) vo2Slot.appendChild(c); } catch (e) { /* estimate is optional */ }
+      topCols.classList.toggle("one", !vo2Slot.firstChild);
+    };
     putVo2(null);
 
     const formEl = formCard(r, x, units);
@@ -4466,6 +4686,11 @@ function valParts(key, v, units) {
     default: return { v: fmtNum(v, 1), unit: "" };
   }
 }
+/** Inverse of conv(): plotted (chart-space) value → stored km / min-per-km value. */
+function unconv(key, v, units) {
+  if (!ok(v) || units !== "mi") return v;
+  return key === "distKm" ? v * MI : key === "paceMinKm" ? v / MI : v;
+}
 const valText = (key, v, units) => { const p = valParts(key, v, units); return p.unit ? `${p.v} ${p.unit}` : p.v; };
 function axisFmt(key) {
   if (key === "paceMinKm") return (v) => { const s = Math.round(v * 60); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -4520,7 +4745,7 @@ function mount(root, ctx) {
 
   let chart = null, chartKind = null, tableLimit = 40, lastMs = 0, dirty = false, lastRows = null;
   let cache = { rows: null, key: "", out: null }, typeCache = { rows: null, order: [] };
-  let buckets = [], period = "week";
+  let buckets = [], period = "week", zoomKey = null, zoomRows = null, raf = 0;
   // Time-axis window over bucket indices. span null = whole range. i0 is fractional while panning.
   const MIN_SPAN = 4;
   let zoom = { i0: 0, span: null }, full = null;
@@ -4611,6 +4836,7 @@ function mount(root, ctx) {
     period = a.period;
     syncControls(a);
     const rows = filteredRows(s);
+    if (cache.key !== zoomKey || cache.rows !== zoomRows) { zoom = { i0: 0, span: null }; zoomKey = cache.key; zoomRows = cache.rows; }
     const selB = s.filters.bucket;
     const sel = $("sel");
     if (selB) {
@@ -4629,7 +4855,8 @@ function mount(root, ctx) {
     buckets = aggregate(rows, { period: a.period, mode: a.mode, metric: key, groupBy: grouped ? "type" : null });
     const color = COLOR[key];
     const selectedKey = selB && selB.period === a.period ? selB.key : null;
-    const uText = (v) => valText(key, v, units);
+    // Chart values are already in display units (conv()); valText expects stored km units, so undo conv() first.
+    const uText = (v) => valText(key, unconv(key, v, units), units);
 
     // ---- tiles
     const cur = summarise(rows, key, a.period);
@@ -4727,7 +4954,13 @@ function mount(root, ctx) {
     zoom.span = Math.max(MIN_SPAN, zoom.span);
     zoom.i0 = Math.max(0, Math.min(n - zoom.span, zoom.i0));
   }
+  /** Coalesce gesture-driven repaints to one per animation frame. */
+  function schedulePaint() {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; paintChart(); });
+  }
   function paintChart() {
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
     if (!full) return;
     clampZoom();
     const n = buckets.length, [w0, w1] = windowFor(n);
@@ -4757,7 +4990,7 @@ function mount(root, ctx) {
     pos.setAttribute("aria-valuetext", n ? `${buckets[w0].label} to ${buckets[w1].label}` : "");
   }
   /** Zoom by factor (<1 = in) around fraction f (0..1) of the visible window. */
-  function zoomBy(factor, f = 0.5) {
+  function zoomBy(factor, f = 0.5, defer = false) {
     const n = buckets.length;
     if (n <= MIN_SPAN) return;
     const [w0, w1] = windowFor(n), cur = zoom.span && zoom.span < n ? zoom.span : n;
@@ -4765,12 +4998,12 @@ function mount(root, ctx) {
     const anchor = (zoom.span ? zoom.i0 : w0) + f * cur;
     zoom = span >= n ? { i0: 0, span: null } : { span, i0: anchor - f * span };
     void w1;
-    paintChart();
+    if (defer) schedulePaint(); else paintChart();
   }
   function panBy(dBuckets) {
     if (!zoom.span) return;
     zoom.i0 += dBuckets;
-    paintChart();
+    schedulePaint();
   }
   const zel = { out: $("zoom").querySelector('[data-z="out"]'), in: $("zoom").querySelector('[data-z="in"]'),
     reset: $("zoom").querySelector('[data-z="reset"]'), pos: $("zoom").querySelector('[data-z="pos"]') };
@@ -4787,7 +5020,7 @@ function mount(root, ctx) {
   const visSpan = () => { const [w0, w1] = windowFor(buckets.length); return w1 - w0 + 1; };
   cb.addEventListener("wheel", (e) => {
     if (!buckets.length) return;
-    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.01), frac(e.clientX)); return; }
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.01), frac(e.clientX), true); return; }
     const dx = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
     if (zoom.span && Math.abs(dx) > Math.abs(e.deltaY) * (e.shiftKey ? 0 : 1)) { e.preventDefault(); panBy((dx / plotW()) * visSpan()); }
   }, { passive: false });
@@ -4795,7 +5028,10 @@ function mount(root, ctx) {
   let drag = null, pinch = null, suppressClick = false;
   cb.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    // A mouse is a single pointer: drop any stale ids left by a lost pointerup.
+    if (e.pointerType === "mouse") { ptrs.clear(); pinch = null; drag = null; }
     ptrs.set(e.pointerId, e.clientX);
+    try { cb.setPointerCapture(e.pointerId); } catch (_) {}
     if (ptrs.size === 1) drag = { x: e.clientX, i0: zoom.i0, moved: false, id: e.pointerId };
     else if (ptrs.size === 2) {
       const xs = [...ptrs.values()], dist = Math.abs(xs[0] - xs[1]);
@@ -4805,6 +5041,7 @@ function mount(root, ctx) {
   });
   cb.addEventListener("pointermove", (e) => {
     if (!ptrs.has(e.pointerId)) return;
+    if (e.pointerType === "mouse" && e.buttons === 0) { endPtr(e); return; } // button released outside; pointerup never arrived
     ptrs.set(e.pointerId, e.clientX);
     if (pinch && ptrs.size === 2) {
       const xs = [...ptrs.values()], dist = Math.max(10, Math.abs(xs[0] - xs[1]));
@@ -4812,16 +5049,16 @@ function mount(root, ctx) {
       const anchor = pinch.i0 + pinch.f * pinch.span;
       zoom = span >= n ? { i0: 0, span: null } : { span, i0: anchor - pinch.f * span };
       suppressClick = true;
-      paintChart();
+      schedulePaint();
       return;
     }
     if (!drag || !zoom.span) return;
     const dx = e.clientX - drag.x;
     if (!drag.moved && Math.abs(dx) < 6) return;
-    if (!drag.moved) { drag.moved = true; try { cb.setPointerCapture(drag.id); } catch (_) {} cb.classList.add("panning"); }
+    if (!drag.moved) { drag.moved = true; cb.classList.add("panning"); }
     suppressClick = true;
     zoom.i0 = drag.i0 - (dx / plotW()) * visSpan();
-    paintChart();
+    schedulePaint();
   });
   const endPtr = (e) => {
     ptrs.delete(e.pointerId);
@@ -4830,6 +5067,7 @@ function mount(root, ctx) {
   };
   cb.addEventListener("pointerup", endPtr);
   cb.addEventListener("pointercancel", endPtr);
+  cb.addEventListener("lostpointercapture", endPtr);
   cb.addEventListener("click", (e) => { if (suppressClick) { e.stopPropagation(); e.preventDefault(); suppressClick = false; } }, true);
   cb.addEventListener("keydown", (e) => {
     if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomBy(0.5); }
@@ -4877,7 +5115,7 @@ function mount(root, ctx) {
   return {
     update() { render(); },
     lastMs: () => lastMs,
-    destroy() { unsub(); if (chart) chart.destroy(); el.remove(); },
+    destroy() { unsub(); if (raf) cancelAnimationFrame(raf); if (chart) chart.destroy(); el.remove(); },
   };
 }
 
@@ -5050,6 +5288,10 @@ function periodRows(rows, filters, from, to) {
 
 const PERIOD_METRICS = ["count", "distKm", "durMin", "activeKcal", "totalKcal", "elevM", "paceMinKm", "kcalPerKm", "avgHr"];
 const PERIOD_CHARTS = ["count", "distKm", "durMin", "activeKcal", "paceMinKm", "kcalPerKm"];
+const MI_KM = 1.609344;
+/** Factor from stored units (km, min/km) to the plotted units. */
+const chartConv = (key, units) => (units === "mi" ? (key === "distKm" ? 1 / MI_KM : key === "paceMinKm" ? MI_KM : 1) : 1);
+const unitSuffix = (key, units) => (key === "distKm" && units === "mi" ? " (mi)" : key === "paceMinKm" ? (units === "mi" ? " (min/mi)" : " (min/km)") : "");
 const shortDate = (r) => fmtDate(r.start, r.tzOffset).slice(0, 6);
 
 function mount(root, ctx) {
@@ -5234,16 +5476,16 @@ function mount(root, ctx) {
     for (const key of COMPARE_CHARTS) {
       if (sel.every((r) => !has(r[key]))) continue;
       const def = METRICS[key];
-      const { card, host } = chartCard(def.label + (key === "distKm" && units === "mi" ? " (mi)" : ""));
+      const { card, host } = chartCard(def.label + unitSuffix(key, units));
       grid.appendChild(card);
-      const conv = key === "distKm" && units === "mi" ? 1 / 1.609344 : 1;
-      const yf = key === "paceMinKm" ? (v) => fmtDur(v) : key === "durMin" ? (v) => fmtDur(v) : (v) => fmtNum(v * conv, key === "distKm" ? 1 : 0);
+      const conv = chartConv(key, units);
+      const yf = key === "paceMinKm" || key === "durMin" ? (v) => fmtDur(v) : (v) => fmtNum(v, key === "distKm" ? 1 : 0);
       charts.push(bars(host, {
         buckets: sel.map((r, i) => ({
           key: String(r.id), label: `${i + 1} · ${shortDate(r)}`,
-          parts: [{ group: typeLabel(r.type), value: has(r[key]) ? (key === "distKm" ? r[key] * conv : r[key]) : null, color: SERIES_COLORS[i % SERIES_COLORS.length] }],
+          parts: [{ group: typeLabel(r.type), value: has(r[key]) ? r[key] * conv : null, color: SERIES_COLORS[i % SERIES_COLORS.length] }],
         })),
-        y: { fmt: yf, tipFmt: (v) => fmtVal(key, key === "distKm" ? v / conv : v, units) },
+        y: { fmt: yf, tipFmt: (v) => fmtVal(key, v / conv, units) },
         height: 190,
         onClick: (k) => state.set({ detail: Number(k) }),
       }));
@@ -5408,10 +5650,10 @@ function mount(root, ctx) {
     for (const key of PERIOD_CHARTS) {
       const r = res.find((x) => x.key === key);
       if (r.a.value === null && r.b.value === null) continue;
-      const conv = key === "distKm" && units === "mi" ? 1 / 1.609344 : 1;
-      const { card, host } = chartCard(r.def.label);
+      const conv = chartConv(key, units);
+      const { card, host } = chartCard(r.def.label + unitSuffix(key, units));
       grid.appendChild(card);
-      const yf = key === "paceMinKm" || key === "durMin" ? (v) => fmtDur(v) : (v) => fmtNum(v * conv, key === "distKm" ? 1 : 0);
+      const yf = key === "paceMinKm" || key === "durMin" ? (v) => fmtDur(v) : (v) => fmtNum(v, key === "distKm" ? 1 : 0);
       charts.push(bars(host, {
         buckets: [["A", r.a, SERIES_COLORS[0]], ["B", r.b, SERIES_COLORS[1]]].map(([k, x, color]) => ({
           key: k, label: k === "A" ? "Period A" : "Period B",
@@ -5427,8 +5669,37 @@ function mount(root, ctx) {
   /* ---- render ---- */
 
   const visible = () => !root.closest("[hidden]");
+  function focusSpec(a) {
+    if (!a || a === document.body || !el.contains(a)) return null;
+    const g = a.closest("[role=radiogroup]");
+    if (g && g.getAttribute("aria-label")) return { q: `[role=radiogroup][aria-label="${g.getAttribute("aria-label")}"] button.on`, i: 0 };
+    const lbl = a.getAttribute && a.getAttribute("aria-label");
+    if (lbl && /^(BUTTON|INPUT|SELECT)$/.test(a.tagName)) {
+      const q = `${a.tagName.toLowerCase()}[aria-label="${lbl.replace(/"/g, '\\"')}"]`;
+      return { q, i: [...el.querySelectorAll(q)].indexOf(a) };
+    }
+    if (a.tagName === "BUTTON" && a.classList.contains("fc-inv")) {
+      const tr = a.closest("tr[data-metric]");
+      if (tr) return { q: `tr[data-metric="${tr.dataset.metric}"] .fc-inv`, i: 0 };
+    }
+    return null;
+  }
   function render() {
     if (destroyed) return;
+    const sx = window.scrollX, sy = window.scrollY, h = el.offsetHeight;
+    const fs = focusSpec(document.activeElement);
+    const sc = el.querySelector(".fc-scroll"), scl = sc ? sc.scrollLeft : 0;
+    if (h) el.style.minHeight = h + "px";
+    try { doRender(); } finally { el.style.minHeight = ""; }
+    const sc2 = el.querySelector(".fc-scroll");
+    if (sc2 && scl) sc2.scrollLeft = scl;
+    if (fs) {
+      const list = el.querySelectorAll(fs.q), t = list[Math.min(Math.max(fs.i, 0), list.length - 1)];
+      if (t && t.focus) t.focus({ preventScroll: true });
+    }
+    if (window.scrollY !== sy || window.scrollX !== sx) window.scrollTo(sx, sy);
+  }
+  function doRender() {
     dirty = false;
     token++;
     cleanCharts();
@@ -5474,10 +5745,10 @@ __m["ui/surface3d.js"] = (function () {
 //
 const { fmtNum } = __m["core/format.js"];
 const { median } = __m["core/stats.js"];
-const { niceTicks, stepTicks } = __m["ui/charts.js"];
+const { axisScale, outlierSplit } = __m["ui/charts.js"];
 const CSS = `
 .s3{position:relative;min-width:0;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none}
-.s3 canvas{display:block;width:100%;touch-action:none;cursor:grab;outline:none;-webkit-tap-highlight-color:transparent;border-radius:14px}
+.s3 canvas{display:block;width:100%;touch-action:pan-y;cursor:grab;outline:none;-webkit-tap-highlight-color:transparent;border-radius:14px}
 .s3 canvas.drag{cursor:grabbing}
 .s3 canvas:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .s3 .s3-reset{position:absolute;top:6px;right:6px;z-index:2;border:1px solid var(--glass-rim);background:var(--fill);color:var(--label-2);border-radius:999px;font:600 12px var(--font);padding:4px 11px;cursor:pointer}
@@ -5504,24 +5775,6 @@ const ok = (v) => typeof v === "number" && v === v && v !== Infinity && v !== -I
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
-/** Robust axis range: min..max of the values inside Tukey's fences (Q1 − 3·IQR, Q3 + 3·IQR, "far out" values), so outliers never set the scale. */
-function robustRange(vals) {
-  const v = vals.filter(ok).sort((a, b) => a - b);
-  if (!v.length) return { lo: 0, hi: 1 };
-  if (v.length < 4) return { lo: v[0], hi: v[v.length - 1] };
-  const q = (f) => { const i = (v.length - 1) * f, a = Math.floor(i), b = Math.ceil(i); return v[a] + (v[b] - v[a]) * (i - a); };
-  const q1 = q(0.25), q3 = q(0.75), k = 3 * (q3 - q1);
-  const inr = v.filter((x) => x >= q1 - k && x <= q3 + k);
-  return inr.length ? { lo: inr[0], hi: inr[inr.length - 1] } : { lo: v[0], hi: v[v.length - 1] };
-}
-/** Ticks for an axis that spans exactly lo..hi (no rounding out to "nice" bounds). With `step`, ticks are multiples of it and the ends round out to it. */
-function tightTicks(lo, hi, count, step) {
-  if (step > 0) return stepTicks(lo, hi, step, count + 1);
-  if (!(hi > lo)) return niceTicks(lo, hi, count);
-  const n = niceTicks(lo, hi, count);
-  const ticks = n.ticks.filter((t) => t >= lo - 1e-9 && t <= hi + 1e-9);
-  return ticks.length >= 2 ? { ticks, step: n.step, lo, hi } : n;
-}
 const DEFAULT_VIEW = { yaw: -0.66, pitch: 0.5 };
 const PITCH_MIN = 0.07, PITCH_MAX = 1.5;
 const ZS = 0.62;
@@ -5593,11 +5846,14 @@ function surface3d(host, opts0) {
   function build() {
     const P0 = (o.points || []).filter((p) => ok(p.x) && ok(p.y) && ok(p.z));
     if (P0.length < 3) { model = { P: P0, empty: true }; return; }
-    // every axis spans the recorded min..max with outliers ignored; outlying workouts are drawn at the edge (raw value in the tooltip)
-    const rx = robustRange(P0.map((p) => p.x)), ry = robustRange(P0.map((p) => p.y)), rz = robustRange(P0.map((p) => p.z));
-    const nt = W && W < 520 ? 4 : 5;
-    const xt = tightTicks(rx.lo, rx.hi, nt, o.x && o.x.step), yt = tightTicks(ry.lo, ry.hi, nt, o.y && o.y.step);
-    const zt = tightTicks(rz.lo, rz.hi, 5, o.z && o.z.step);
+    // every axis spans the recorded min..max with outliers excluded (shared outlierSplit at the σ threshold `zThr`, or an explicit
+    // axis.range {lo,hi}); outlying workouts are drawn at the edge (raw value in the tooltip). Ticks are automatic nice steps within the limits.
+    const zThr = ok(o.zThr) ? o.zThr : 3;
+    const rng = (a, key) => { const r = a && a.range; if (r && ok(r.lo) && ok(r.hi)) return { lo: r.lo, hi: r.hi }; const sp = outlierSplit(P0.map((p) => p[key]), zThr); return { lo: sp.lo, hi: sp.hi }; };
+    const rx = rng(o.x, "x"), ry = rng(o.y, "y"), rz = rng(o.z, "z");
+    const nt = W && W < 520 ? 5 : 6;
+    const xt = axisScale(rx.lo, rx.hi, { max: nt, fmt: o.x && o.x.fmt }), yt = axisScale(ry.lo, ry.hi, { max: nt, fmt: o.y && o.y.fmt });
+    const zt = axisScale(rz.lo, rz.hi, { max: 6, fmt: o.z && o.z.fmt });
     const P = P0.map((p) => ({ ...p, x: clamp(p.x, xt.lo, xt.hi), y: clamp(p.y, yt.lo, yt.hi), z: clamp(p.z, zt.lo, zt.hi), raw: p }));
     const nb = clamp(Math.round(o.bins || 12), 2, 40);
     const grid = surfaceGrid(P, xt, yt, nb, nb, o.fill === undefined ? 2 : o.fill);
@@ -5645,7 +5901,7 @@ function surface3d(host, opts0) {
     }
     const { P, xt, yt, zt, grid } = model;
     const proj = camera();
-    const xf = (o.x && o.x.fmt) || ((v) => fmtNum(v, 0)), yf = (o.y && o.y.fmt) || ((v) => fmtNum(v, 0)), zf = (o.z && o.z.fmt) || ((v) => fmtNum(v, 0));
+    const xf = xt.fmt, yf = yt.fmt, zf = zt.fmt;
     const U = (x) => (x - xt.lo) / (xt.hi - xt.lo || 1) - 0.5, V = (y) => (y - yt.lo) / (yt.hi - yt.lo || 1) - 0.5;
     const Wz = (z) => ((z - zt.lo) / (zt.hi - zt.lo || 1) - 0.5) * ZS;
     const col = (z, mul = 1, a = 1) => rgba(ramp(stops, (z - zt.lo) / (zt.hi - zt.lo || 1)), a, mul);
@@ -5780,12 +6036,13 @@ function surface3d(host, opts0) {
     return { kind: "cell", cell, x, y };
   }
   function describe(h) {
-    const xf = (o.x && o.x.fmt) || ((v) => fmtNum(v, 0)), yf = (o.y && o.y.fmt) || ((v) => fmtNum(v, 0)), zf = (o.z && o.z.fmt) || ((v) => fmtNum(v, 0));
+    const m = model;
+    const xf = (o.x && o.x.tipFmt) || m.xt.fmt, yf = (o.y && o.y.tipFmt) || m.yt.fmt, zf = (o.z && o.z.tipFmt) || m.zt.fmt;
     const xl = (o.x && o.x.label) || "X", yl = (o.y && o.y.label) || "Y", zl = (o.z && o.z.label) || "Z";
     if (h.kind === "dot") {
       const p = h.p;
       const r = p.raw || p;
-      return { html: `<div class="t-h">${esc(p.label || "Workout")}</div><div class="t-r">${esc(zl)}<b>${esc(zf(r.z))}</b></div><div class="t-r">${esc(xl)}<b>${esc(xf(r.x))}</b></div><div class="t-r">${esc(yl)}<b>${esc(yf(r.y))}</b></div>` +
+      return { html: `<div class="t-h">${esc(p.label || "Workout")}</div><div class="t-r">${esc(zl)}<b>${esc(zf(r.z))}${r.z !== p.z ? " (off-scale)" : ""}</b></div><div class="t-r">${esc(xl)}<b>${esc(xf(r.x))}${r.x !== p.x ? " (off-scale)" : ""}</b></div><div class="t-r">${esc(yl)}<b>${esc(yf(r.y))}${r.y !== p.y ? " (off-scale)" : ""}</b></div>` +
         (p.id !== undefined && o.onPoint ? '<div class="t-n">Tap again to open</div>' : ""),
         text: `${p.label || "Workout"}: ${zl} ${zf(r.z)}, ${xl} ${xf(r.x)}, ${yl} ${yf(r.y)}` };
     }
@@ -5816,17 +6073,33 @@ function surface3d(host, opts0) {
   }
 
   const local = (e) => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * (W / (r.width || W)), (e.clientY - r.top) * (H / (r.height || H))]; };
+  // Mouse/pen drag rotates at once. Touch: the canvas is touch-action:pan-y, so the page scrolls on vertical drags. One finger rotates
+  // only once the drag is clearly horizontal (otherwise it is left to the page scroll); two fingers always rotate.
+  const touches = new Map();
+  const centroid = () => { let x = 0, y = 0; for (const t of touches.values()) { x += t.x; y += t.y; } return [x / touches.size, y / touches.size]; };
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== undefined && e.button > 0) return;
     cancelAnim();
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, yaw: view.yaw, pitch: view.pitch, moved: false, touch: e.pointerType !== "mouse" };
+    const touch = e.pointerType === "touch";
+    if (touch) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touch && drag && touches.size >= 2) { // second finger: continue as a two-finger rotate from the centroid
+      const [cx, cy] = centroid();
+      drag.two = true; drag.mode = "rotate"; drag.moved = true; drag.x = cx; drag.y = cy; drag.yaw = view.yaw; drag.pitch = view.pitch;
+      canvas.classList.add("drag"); setHover(null);
+      return;
+    }
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, yaw: view.yaw, pitch: view.pitch, moved: false, touch, mode: touch ? "undecided" : "rotate", two: false };
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
   });
   canvas.addEventListener("pointermove", (e) => {
-    if (drag && drag.id === e.pointerId) {
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; canvas.classList.add("drag"); setHover(null); }
-      if (drag.moved) {
+    if (e.pointerType === "touch" && touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (drag && (drag.id === e.pointerId || (drag.two && touches.has(e.pointerId)))) {
+      const [px, py] = drag.two ? centroid() : [e.clientX, e.clientY];
+      const dx = px - drag.x, dy = py - drag.y;
+      if (drag.mode === "undecided" && Math.hypot(dx, dy) > 8) drag.mode = Math.abs(dx) > 1.5 * Math.abs(dy) ? "rotate" : "scroll";
+      if (drag.mode === "scroll") { drag.moved = true; return; }
+      if (drag.mode === "rotate" && !drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; canvas.classList.add("drag"); setHover(null); }
+      if (drag.mode === "rotate" && drag.moved) {
         view.yaw = drag.yaw + dx * 0.009;
         view.pitch = clamp(drag.pitch + dy * 0.007, PITCH_MIN, PITCH_MAX);
         schedule();
@@ -5836,11 +6109,13 @@ function surface3d(host, opts0) {
     if (e.pointerType === "mouse") { const [x, y] = local(e); setHover(hit(x, y)); }
   });
   const end = (e) => {
+    touches.delete(e.pointerId);
     if (!drag || drag.id !== e.pointerId) return;
     const d = drag;
     drag = null;
     canvas.classList.remove("drag");
     try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    if (d.mode === "scroll") return;
     if (d.moved) { if (o.onView) o.onView({ yaw: view.yaw, pitch: view.pitch }); return; }
     if (e.type === "pointercancel") return;
     const [x, y] = local(e);
@@ -5925,7 +6200,7 @@ function surface3d(host, opts0) {
   };
 }
 
-return { robustRange, DEFAULT_VIEW, surfaceGrid, surface3d };
+return { DEFAULT_VIEW, surfaceGrid, surface3d };
 })();
 // ---- ui/calibration.js
 __m["ui/calibration.js"] = (function () {
@@ -5933,7 +6208,7 @@ __m["ui/calibration.js"] = (function () {
 // watch vs manual/other sources, and which workouts are outliers. Uses ctx.data.filtered() rows.
 const { fmtNum, fmtDur, fmtDate, fmtDist } = __m["core/format.js"];
 const { median, mean, sd, rollingMedian, histogram, linreg } = __m["core/stats.js"];
-const { line, scatter, histogram: histChart } = __m["ui/charts.js"];
+const { line, scatter, histogram: histChart, axisScale, outlierSplit } = __m["ui/charts.js"];
 const { surface3d } = __m["ui/surface3d.js"];
 const { typeLabel } = __m["ui/filters.js"];
 const CSS = `
@@ -6004,20 +6279,6 @@ function kcalPerMinOf(r) {
   return has(r.activeKcal) && has(r.durMin) && r.durMin > 0 ? r.activeKcal / r.durMin : null;
 }
 
-/**
- * Values that set the kcal/km axis range: within the σ threshold AND inside Tukey's fences (Q1 − 3·IQR, Q3 + 3·IQR, "far out" values).
- * The σ rule alone lets moderate outliers through because a single huge value inflates the SD, so the axis would still
- * stretch to them. Everything outside is drawn at the edge (trend, scatter) or counted as off-scale (histogram).
- */
-function axisKept(points, zThr) {
-  const v = points.filter((p) => Math.abs(p.z) <= zThr).map((p) => p.v).sort((a, b) => a - b);
-  if (v.length < 4) return v;
-  const q = (f) => { const i = (v.length - 1) * f, a = Math.floor(i), b = Math.ceil(i); return v[a] + (v[b] - v[a]) * (i - a); };
-  const q1 = q(0.25), q3 = q(0.75), k = 3 * (q3 - q1);
-  const out = v.filter((x) => x >= q1 - k && x <= q3 + k);
-  return out.length ? out : v;
-}
-
 /** Rows (of `type`, or all when null) that have a usable kcal/km, oldest first. */
 function calibRows(rows, type) {
   const out = [];
@@ -6028,19 +6289,21 @@ function calibRows(rows, type) {
 
 /**
  * Distribution of kcal/km over rows (nulls skipped): median ("personal constant"), mean, sd, and a z-score
- * and % deviation from `constant` (default: the median) per row. outliers = |z| > z, biggest first.
- * → {n, median, mean, sd, cv, constant, points:[{row, v, dev, z}], outliers}
+ * and % deviation from `constant` (default: the median) per row. outliers come from the shared outlierSplit (beyond z SDs, or
+ * far outside Tukey's fences), biggest |z| first; `split` ({kept, lo, hi, isOut}) sets the axis limits everywhere.
+ * → {n, median, mean, sd, cv, constant, points:[{row, v, dev, z, out}], outliers, split}
  */
 function calibrationStats(rows, { z = OUTLIER_Z, constant = null } = {}) {
   const vals = [];
   for (const r of rows) { const v = kcalPerKmOf(r); if (v !== null) vals.push({ row: r, v }); }
-  if (!vals.length) return { n: 0, median: null, mean: null, sd: null, cv: null, constant: null, points: [], outliers: [] };
+  if (!vals.length) return { n: 0, median: null, mean: null, sd: null, cv: null, constant: null, points: [], outliers: [], split: outlierSplit([], z) };
   const arr = vals.map((p) => p.v);
   const med = median(arr), mu = mean(arr), s = sd(arr);
   const c = has(constant) ? constant : med;
-  const points = vals.map((p) => ({ row: p.row, v: p.v, dev: c ? ((p.v - c) / c) * 100 : null, z: s > 0 ? (p.v - mu) / s : 0 }));
-  const outliers = points.filter((p) => Math.abs(p.z) > z).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
-  return { n: vals.length, median: med, mean: mu, sd: s, cv: mu ? (s / mu) * 100 : null, constant: c, points, outliers };
+  const split = outlierSplit(arr, z);
+  const points = vals.map((p) => ({ row: p.row, v: p.v, dev: c ? ((p.v - c) / c) * 100 : null, z: s > 0 ? (p.v - mu) / s : 0, out: split.isOut(p.v) }));
+  const outliers = points.filter((p) => p.out).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+  return { n: vals.length, median: med, mean: mu, sd: s, cv: mu ? (s / mu) * 100 : null, constant: c, points, outliers, split };
 }
 
 /** Least-squares of y on x over rows where both are present. → {n, slope, intercept, r2, r, pts:[{row,x,y}]} */
@@ -6090,33 +6353,20 @@ function niceBinWidth(values) {
 }
 
 /**
- * Bin width for the kcal/km histogram: a whole multiple of `step` (2.5 → 2.5, 5, 10, 25, 50…), the smallest that gives at most
- * `maxBins` bins over the data's min..max, so bin edges always land on ticks that are multiples of 2.5.
+ * Histogram bin width: a nice step (1/2/2.5/5 × 10^n, from the shared axisScale) sized for the bulk of the data (2nd..98th percentile,
+ * about `maxBins` bins) but never more than ~240 bins across the full min..max.
  */
-function stepBinWidth(values, step = 2.5, maxBins = 20) {
-  const a = values.filter(has);
-  if (a.length < 2) return step;
-  const range = Math.max(...a) - Math.min(...a);
-  for (const m of [1, 2, 4, 10, 20, 40, 100, 200, 400, 1000]) if (range / (step * m) <= maxBins) return step * m;
-  return step * 1000;
-}
-/**
- * Histogram bin width: sized for the bulk of the data (2nd..98th percentile, so one wild outlier does not turn the bars into
- * a few fat blocks) but never more than ~240 bins across the full min..max, and always a whole multiple of 2.5.
- */
-function histBinWidth(values, step = 2.5) {
+function histBinWidth(values, maxBins = 20) {
   const a = values.filter(has).sort((x, y) => x - y);
-  if (a.length < 2) return step;
+  if (a.length < 2) return 1;
   const q = (p) => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))];
-  let bw = stepBinWidth([q(0.02), q(0.98)], step);
+  let bw = axisScale(q(0.02), q(0.98), { max: maxBins }).step;
   while ((a[a.length - 1] - a[0]) / bw > 240) bw *= 2;
   return bw;
 }
-/** Axis label for kcal/km style values on a 2.5 grid: whole numbers bare, halves with one decimal (50, 52.5, 55). */
-const fmt25 = (v) => fmtNum(v, Number.isInteger(Math.round(v * 1e6) / 1e6) ? 0 : 1);
-/** Value formatter for a metric of X_AXES (pace as m:ss). */
-function axisFmt(key) {
-  return key === "paceMinKm" ? (v) => fmtDur(v) : (v) => fmtNum(v, key === "massKg" ? 1 : 0);
+/** Full-precision value formatter (tooltips) for a metric of AXES_3D; tick labels take their precision from the axis step (pace stays m:ss). */
+function axisTipFmt(key) {
+  return key === "paceMinKm" ? (v) => fmtDur(v) : key === "kcalPerKm" ? (v) => fmtNum(v, 1) : key === "kcalPerMin" ? (v) => fmtNum(v, 2) : (v) => fmtNum(v, key === "massKg" ? 1 : 0);
 }
 
 /* ---------------------------------------------------------------- view */
@@ -6234,7 +6484,7 @@ function mount(root, ctx) {
       tiles.appendChild(ui.tile({ tone: "kcal", title: "Median kcal/km", value: fmtNum(st.median, 1), unit: "kcal/km", sub: `${st.n} workouts${nExcluded ? ` · ${nExcluded} without distance or energy skipped` : ""}`,
         delta: constAdopted !== null ? { text: `Adopted ${fmtNum(constAdopted, 1)}`, good: null } : null }));
       tiles.appendChild(ui.tile({ tone: "blue", title: "Spread (SD)", value: fmtNum(st.sd, 1), unit: "kcal/km", sub: `CV ${fmtNum(st.cv, 1)}% of the mean ${fmtNum(st.mean, 1)}` }));
-      tiles.appendChild(ui.tile({ tone: "red", title: `Outliers (>${zThr}σ)`, value: String(st.outliers.length), unit: "", sub: st.outliers.length ? "listed below" : "none at this threshold" }));
+      tiles.appendChild(ui.tile({ tone: "red", title: `Outliers (>${zThr}σ)`, value: String(st.outliers.length), unit: "", sub: st.outliers.length ? "listed below, drawn at the axis edge" : "none at this threshold" }));
       tiles.appendChild(ui.tile({ tone: "o2", title: "kcal/kg/km", value: mass.n ? fmtNum(mass.value, 3) : "—", unit: "", sub: mass.n ? `median over ${mass.n} with body mass` : "no body mass joined" }));
     }
     el.appendChild(tiles);
@@ -6257,28 +6507,30 @@ function mount(root, ctx) {
     g1.className = "chart-grid";
     el.appendChild(g1);
     const vals = st.points.map((p) => p.v);
-    // axis range = non-outlier values (current σ rule); outliers stay in the data but are clamped / counted as off-scale
-    const kept = axisKept(st.points, zThr);
+    // axis limits = min/max of the non-outlier values (shared outlierSplit at the current σ); outliers stay in the data but are
+    // clamped to the edge (trend, scatter) or counted as off-scale (histogram), and the tooltip keeps their true value
+    const split = st.split, kept = split.kept;
     const inr = kept.length ? kept : vals;
-    const lo = Math.min(...inr), hi = Math.max(...inr), off = vals.length - kept.length;
+    const lo = split.lo, hi = split.hi, off = st.outliers.length;
     const offTxt = off && kept.length ? ` · +${off} off` : "";
+    const f1 = (v) => fmtNum(v, 1);
     {
       const { card, host } = chartCard("kcal/km distribution", `${typeLabel(type)} · ${inr.length} · ${fmtNum(lo, 1)}–${fmtNum(hi, 1)}${offTxt}`);
       g1.appendChild(card);
-      // x spans the data's actual min..max, bin edges and ticks sit on multiples of 2.5
-      const bw = histBinWidth(inr);
-      charts.push(histChart(host, { bins: histogram(inr, bw), marker: st.constant, markerLabel: constAdopted !== null ? "adopted" : "median", x: { step: 2.5, fmt: fmt25 }, height: 200 }));
+      // x spans the kept values' min..max; bin width and ticks are automatic nice steps
+      charts.push(histChart(host, { bins: histogram(inr, histBinWidth(inr)), marker: st.constant, markerLabel: constAdopted !== null ? "adopted" : "median", x: { tight: true, min: lo, max: hi, tipFmt: f1 }, height: 200 }));
     }
     {
       const { card, host } = chartCard("kcal/km over time", `rolling median of ${win}${off && kept.length ? ` · ${off} off-scale (at edge)` : ""}`);
       g1.appendChild(card);
       const roll = rollingMedian(vals, win);
+      const cl = (v) => Math.min(hi, Math.max(lo, v));
       charts.push(line(host, {
         series: [
-          { name: "Workout", color: "var(--label-3)", points: st.points.map((p) => [p.row.start, Math.min(hi, Math.max(lo, p.v))]) },
-          { name: `Median of last ${win}`, color: "var(--orange)", points: st.points.map((p, i) => [p.row.start, roll[i] == null ? null : Math.min(hi, Math.max(lo, roll[i]))]) },
+          { name: "Workout", color: "var(--label-3)", points: st.points.map((p) => [p.row.start, cl(p.v), p.v]) },
+          { name: `Median of last ${win}`, color: "var(--orange)", points: st.points.map((p, i) => [p.row.start, roll[i] == null ? null : cl(roll[i]), roll[i]]) },
         ],
-        x: { fmt: dayLabel }, y: { step: 2.5, tight: true, fmt: fmt25 }, height: 200,
+        x: { fmt: dayLabel }, y: { tight: true, min: lo, max: hi, tipFmt: f1 }, height: 200,
         onPoint: (p) => { const pt = st.points[p.index]; if (pt) openDetail(pt.row.id); },
       }));
       const ctl = document.createElement("div");
@@ -6310,9 +6562,11 @@ function mount(root, ctx) {
       g.append(l, sel(label, value, onChange));
       return g;
     };
-    // kcal/km ticks sit on the 2.5 grid on whichever axis it is put
-    const axis3 = (a) => a.key === "kcalPerKm" ? { label: a.label, step: 2.5, fmt: fmt25 }
-      : { label: a.unit && a.unit !== a.label ? `${a.label} (${a.unit})` : a.label, fmt: a.key === "kcalPerMin" ? (v) => fmtNum(v, 1) : axisFmt(a.key) };
+    // tick steps are automatic (axisScale); only pace keeps its m:ss labels, and tooltips get full precision
+    const axis3 = (a) => ({
+      label: a.key === "kcalPerKm" ? a.label : a.unit && a.unit !== a.label ? `${a.label} (${a.unit})` : a.label,
+      fmt: a.key === "paceMinKm" ? (v) => fmtDur(v) : undefined, tipFmt: axisTipFmt(a.key),
+    });
     if (!is3) {
       // any two metrics; picking the one the other axis shows swaps them
       const set2 = (which, v) => {
@@ -6323,6 +6577,8 @@ function mount(root, ctx) {
     }
     const xAxis = AXES_3D.find((a) => a.key === xKey), yAxis = AXES_3D.find((a) => a.key === yKey);
     const outIds = new Set(st.outliers.map((p) => p.row.id));
+    const aX = AXES_3D.find((a) => a.key === ax), aY = AXES_3D.find((a) => a.key === ay), aZ = AXES_3D.find((a) => a.key === az);
+    const tgt = is3 ? aZ : yAxis; // what the correlation table ranks against: the 3D height metric, or the 2D Y metric
     if (is3) {
       // choosing a metric another axis already shows swaps the two, so the three axes stay distinct
       const set3 = (which, v) => {
@@ -6337,17 +6593,19 @@ function mount(root, ctx) {
     }
     if (!is3) {
       const rel = relation(cr, xAxis, yAxis);
-      // a kcal/km axis spans the non-outlier range; outlying workouts sit at its edge (true value in the tooltip)
-      const ky = yKey === "kcalPerKm" && kept.length > 0, kx = xKey === "kcalPerKm" && kept.length > 0;
-      const cl = (v) => Math.min(hi, Math.max(lo, v));
-      const offS = rel.pts.filter((p) => (ky && (p.y < lo || p.y > hi)) || (kx && (p.x < lo || p.x > hi))).length;
+      // every axis spans the min..max of its non-outlier values (shared outlierSplit); outlying workouts sit at the edge, drawn red,
+      // with the true value in the tooltip
+      const spx = outlierSplit(rel.pts.map((p) => p.x), zThr), spy = outlierSplit(rel.pts.map((p) => p.y), zThr);
+      const cx = (v) => Math.min(spx.hi, Math.max(spx.lo, v)), cy = (v) => Math.min(spy.hi, Math.max(spy.lo, v));
+      const clamped = (p) => spx.isOut(p.x) || spy.isOut(p.y);
+      const offS = rel.pts.filter(clamped).length;
       const { card, host } = chartCard(`${yAxis.label} vs ${xAxis.label}`, (rel.n > 1 ? `r² ${fmtNum(rel.r2, 2)} · n ${rel.n}` : `n ${rel.n}`) + (offS ? ` · ${offS} off-scale (at edge)` : ""));
       el.appendChild(card);
       const xo = axis3(xAxis), yo = axis3(yAxis);
       charts.push(scatter(host, {
-        points: rel.pts.map((p) => ({ x: kx ? cl(p.x) : p.x, xv: p.x, y: ky ? cl(p.y) : p.y, yv: p.y, id: p.row.id, color: outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
-        x: { fmt: xo.fmt, label: xo.label },
-        y: ky ? { step: 2.5, tight: true, fmt: fmt25, label: yo.label } : { fmt: yo.fmt, label: yo.label },
+        points: rel.pts.map((p) => ({ x: cx(p.x), xv: p.x, y: cy(p.y), yv: p.y, id: p.row.id, color: clamped(p) || outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
+        x: { fmt: xo.fmt, tipFmt: xo.tipFmt, label: xo.label, tight: true, min: spx.lo, max: spx.hi },
+        y: { fmt: yo.fmt, tipFmt: yo.tipFmt, label: yo.label, tight: true, min: spy.lo, max: spy.hi },
         fit: rel.n > 1 ? { slope: rel.slope, intercept: rel.intercept, r2: rel.r2 } : undefined,
         onClick: openDetail, height: 280,
       }));
@@ -6364,24 +6622,27 @@ function mount(root, ctx) {
         card.appendChild(d);
       }
     } else {
-      const aX = AXES_3D.find((a) => a.key === ax), aY = AXES_3D.find((a) => a.key === ay), aZ = AXES_3D.find((a) => a.key === az);
       const pts = [];
       for (const r of cr) {
         const x = aX.get(r), y = aY.get(r), z = aZ.get(r);
         if (has(x) && has(y) && has(z)) pts.push({ x, y, z, id: r.id, label: dayLabel(r.start) });
       }
+      // each axis spans its non-outlier min..max at the current σ threshold (shared outlierSplit); outliers sit at the edge
+      const rs = ["x", "y", "z"].map((k) => outlierSplit(pts.map((p) => p[k]), zThr));
+      const offN = pts.filter((p) => rs[0].isOut(p.x) || rs[1].isOut(p.y) || rs[2].isOut(p.z)).length;
+      const offTxt3 = offN ? ` · ${offN} off-scale (at edge)` : "";
       const { card, host } = chartCard(`${aZ.label} by ${aX.label} × ${aY.label}`, `n ${pts.length}`);
       card.dataset.s3 = "1";
       el.appendChild(card);
       const sf = surface3d(host, {
         points: pts,
-        x: axis3(aX), y: axis3(aY), z: axis3(aZ),
+        x: { ...axis3(aX), range: rs[0] }, y: { ...axis3(aY), range: rs[1] }, z: { ...axis3(aZ), range: rs[2] }, zThr,
         bins: 12, view: view3 || undefined, onView: (v) => { view3 = v; }, onPoint: openDetail,
       });
       charts.push(sf);
       const inf = sf.info();
       const head = card.querySelector(".c-h span:last-child");
-      if (head) head.textContent = `n ${pts.length} · ${inf.measured} cells`;
+      if (head) head.textContent = `n ${pts.length} · ${inf.measured} cells${offTxt3}`;
       const d = document.createElement("div");
       d.className = "fk-note";
       d.dataset.fit3 = "1";
@@ -6398,11 +6659,11 @@ function mount(root, ctx) {
       const sc = document.createElement("div");
       sc.className = "fk-scroll";
       wrap.appendChild(sc);
-      let html = `<table><thead><tr><th>${esc(yAxis.label)} against</th><th class="num">n</th><th class="num">Slope</th><th class="num">r</th><th class="num">r²</th></tr></thead><tbody>`;
+      let html = `<table><thead><tr><th>${esc(tgt.label)} against</th><th class="num">n</th><th class="num">Slope</th><th class="num">r</th><th class="num">r²</th></tr></thead><tbody>`;
       for (const a of AXES_3D) {
-        if (a.key === yKey) continue;
-        const rr = relation(cr, a, yAxis);
-        html += `<tr data-x="${a.key}" tabindex="0" class="${a.key === (dim === "3d" ? ax : xKey) ? "on" : ""}"><td>${esc(a.label)}</td><td class="num">${rr.n}</td>` +
+        if (a.key === tgt.key) continue;
+        const rr = relation(cr, a, tgt);
+        html += `<tr data-x="${a.key}" tabindex="0" class="${a.key === (is3 ? ax : xKey) ? "on" : ""}"><td>${esc(a.label)}</td><td class="num">${rr.n}</td>` +
           `<td class="num">${rr.n > 1 ? fmtNum(rr.slope, 3) : "—"}</td><td class="num">${rr.n > 1 ? fmtNum(rr.r, 2) : "—"}</td><td class="num">${rr.n > 1 ? fmtNum(rr.r2, 3) : "—"}</td></tr>`;
       }
       sc.innerHTML = html + "</tbody></table>";
@@ -6496,7 +6757,7 @@ function mount(root, ctx) {
   };
 }
 
-return { OUTLIER_Z, X_AXES, Y_AXES, AXES_3D, kcalPerKmOf, kcalPerMinOf, axisKept, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, stepBinWidth, histBinWidth, fmt25, mount };
+return { OUTLIER_Z, X_AXES, Y_AXES, AXES_3D, kcalPerKmOf, kcalPerMinOf, calibRows, calibrationStats, relation, kcalPerKgKm, sourceClass, sourceGroups, niceBinWidth, histBinWidth, mount };
 })();
 // ---- parser/zip.js
 __m["parser/zip.js"] = (function () {
@@ -6611,10 +6872,26 @@ async function findEntry(file, pattern) {
   return entryHandle(file, best);
 }
 
+/**
+ * The Health export XML inside a zip: export.xml (shortest path wins), else the largest .xml that isn't the
+ * clinical-document export (export_cda.xml / *_cda.xml). Returns a handle or null.
+ */
+async function findExportEntry(file) {
+  const exact = await findEntry(file, /(^|\/)export\.xml$/i);
+  if (exact !== null) return exact;
+  let best = null;
+  for (const e of await listEntries(file)) {
+    if (e.name.endsWith("/") || !/\.xml$/i.test(e.name) || /_cda\.xml$/i.test(e.name) || /(^|\/)__MACOSX\//.test(e.name)) continue;
+    if (best === null || e.size > best.size) best = e;
+  }
+  return best === null ? null : entryHandle(file, best);
+}
+
 function entryHandle(file, e) {
   if (e.method !== 0 && e.method !== 8) throw new Error("Unsupported zip compression method " + e.method);
   return {
     name: e.name,
+    method: e.method,
     size: e.size,
     compressedSize: e.compressedSize,
     stream() {
@@ -6635,12 +6912,14 @@ function entryHandle(file, e) {
         },
         cancel(reason) { return inner ? inner.cancel(reason) : undefined; },
       });
-      return e.method === 0 ? raw : raw.pipeThrough(new DecompressionStream("deflate-raw"));
+      if (e.method === 0) return raw;
+      if (typeof DecompressionStream === "undefined") throw new Error("This browser can’t unzip files (no DecompressionStream)");
+      return raw.pipeThrough(new DecompressionStream("deflate-raw"));
     },
   };
 }
 
-return { isZip, listEntries, findEntry, entryHandle };
+return { isZip, listEntries, findEntry, findExportEntry, entryHandle };
 })();
 // ---- ui/settings.js
 __m["ui/settings.js"] = (function () {
@@ -6679,7 +6958,7 @@ __m["main.js"] = (function () {
 const { buildShell, ui } = __m["ui/shell.js"];
 const { createState } = __m["core/state.js"];
 const { applyFilters, hrSlice } = __m["core/model.js"];
-const { save: saveDs, latest: latestDs, clear: clearDs, toCompactJSON, fromCompactJSON } = __m["core/store.js"];
+const { save: saveDs, latest: latestDs, clear: clearDs, toCompactJSON, fromCompactJSON, validate: validateDs, isQuotaError, DATASET_VERSION } = __m["core/store.js"];
 const { defaultFilters, mount: mountFilters } = __m["ui/filters.js"];
 const { mount: mountTable, DEFAULT_COLUMNS, COLUMN_KEYS } = __m["ui/table.js"];
 const { mount: mountDetail } = __m["ui/detail.js"];
@@ -6701,10 +6980,11 @@ function createWorker() {
 }
 
 const VIEWS = ["workouts", "compare", "aggregates", "calibration"];
-const LS_UNITS = "he.units", LS_COLS = "he.columns";
+const LS_UNITS = "he.units", LS_COLS = "he.columns", LS_VO2 = "he.vo2max"; // LS_VO2 is owned by ui/detail.js; main only clears it
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } };
+const lsRemove = (k) => { try { localStorage.removeItem(k); } catch (e) { /* storage blocked */ } };
 const fmtInt = (n) => Number(n).toLocaleString("en");
 
 const shell = buildShell(document.body);
@@ -6946,9 +7226,30 @@ function unload() {
   window.__he.ready = false;
 }
 
-async function persist(ds) {
-  try { await saveDs(ds); window.__he.saved = true; }
-  catch (e) { window.__he.saved = false; ui.toast("Couldn’t keep this export for next time (browser storage is unavailable)."); }
+let persistPromise = Promise.resolve(); // latest save in flight; Clear data awaits it so a late save can't resurrect cleared data
+let askedPersist = false;
+function persist(ds) {
+  const run = async () => {
+    try {
+      await saveDs(ds);
+      window.__he.saved = true;
+      if (!askedPersist) { askedPersist = true; try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { /* optional */ } }
+    } catch (e) {
+      window.__he.saved = false;
+      ui.toast(isQuotaError(e)
+        ? "Couldn’t keep this export for next time: the browser’s storage is full. Free some space, or clear data and load a smaller export."
+        : "Couldn’t keep this export for next time (browser storage is unavailable).");
+    }
+  };
+  persistPromise = persistPromise.then(run, run);
+  return persistPromise;
+}
+async function clearAllData() {
+  await persistPromise.catch(() => {}); // let any pending save finish first, then wipe it
+  try { await clearDs(); } catch (e) { /* nothing stored */ }
+  lsRemove(LS_VO2);
+  unload();
+  ui.toast("Cleared. Nothing is stored on this device.");
 }
 
 /* ---------------------------------------------------------------- parse */
@@ -6982,7 +7283,7 @@ function startParse(file, gpxFiles) {
       parseWorker = null;
       try { w.terminate(); } catch (e) { /* gone */ }
       shell.progress.hide();
-      const ds = { version: 1, fileKey: `${file.name}|${file.size}|${file.lastModified}`, parsedAt: Date.now(), summary, rows, series };
+      const ds = { version: DATASET_VERSION, fileKey: `${file.name}|${file.size}|${file.lastModified}`, parsedAt: Date.now(), summary, rows, series };
       window.__he.parseMs = Math.round(performance.now() - t0);
       resetRoutes(gpxFiles, /\.zip$/i.test(file.name) ? file : null);
       loadDataset(ds);
@@ -6999,6 +7300,11 @@ async function loadJson(file) {
   try {
     const ds = fromCompactJSON(await file.text());
     if (!ds || !Array.isArray(ds.rows)) throw new Error("no workouts in file");
+    const bad = validateDs(ds);
+    if (bad) throw new Error(bad + ". Load the original export.zip / export.xml again instead");
+    ds.parsedAt = Date.now(); // a loaded file is the newest dataset, whatever its saved parsedAt says
+    // A lite file (no heart rate) must not replace a full cached copy of the same export: give it its own key.
+    if (!(ds.series && ds.series.hr)) ds.fileKey = String(ds.fileKey || "json").replace(/\|lite$/, "") + "|lite";
     cancelParse();
     resetRoutes([], null);
     loadDataset(ds);
@@ -7092,7 +7398,7 @@ const menu = popover(menuBtn, (el) => {
   item("Choose export folder…", () => { const b = shell.dropzone.el.querySelector("[data-pick-dir]"); if (b) b.click(); });
   item("Save compact dataset (.json)", () => download(toCompactJSON(data.dataset, { includeHr: true }), "health-explorer-dataset.json", "application/json"), { disabled: !loaded });
   item("Save compact, without heart rate", () => download(toCompactJSON(data.dataset, { includeHr: false }), "health-explorer-dataset-lite.json", "application/json"), { disabled: !loaded });
-  item("Clear data", async () => { try { await clearDs(); } catch (e) { /* nothing stored */ } unload(); ui.toast("Cleared. Nothing is stored on this device."); }, { danger: true, disabled: !loaded });
+  item("Clear data", clearAllData, { danger: true, disabled: !loaded });
   sep();
   head("Maps");
   const lab = document.createElement("label");
@@ -7119,7 +7425,13 @@ shell.setView(state.get().view);
 (async () => {
   try {
     const ds = await latestDs();
-    if (ds && Array.isArray(ds.rows) && ds.rows.length && !loaded && !parseWorker) {
+    const bad = ds ? validateDs(ds) : null;
+    if (bad && !loaded && !parseWorker) {
+      // Cache written by another version of the app (or damaged): drop it and ask for the export again.
+      try { await clearDs(); } catch (e) { /* ignore */ }
+      noticeBanner = ui.banner(banners, { tone: "info", html: `<div><b>Your saved data needs refreshing.</b> It was ${esc(bad)}, so it was discarded. Choose <b>export.zip</b> or <b>export.xml</b> again to re-read it.</div>` });
+      window.__he.cacheDiscarded = bad;
+    } else if (ds && Array.isArray(ds.rows) && ds.rows.length && !loaded && !parseWorker) {
       resetRoutes([], null);
       loadDataset(ds);
       window.__he.restored = true;

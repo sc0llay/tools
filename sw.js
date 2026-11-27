@@ -1,7 +1,7 @@
 // Offline support for every tool on this site.
 // Pages load from the network when online (so updates arrive) and fall back to the saved copy offline.
 // When you add or change a tool, add its files to FILES and bump VERSION.
-const VERSION = "tools-v24";
+const VERSION = "tools-v25";
 const FILES = [
   "./",
   "index.html",
@@ -48,12 +48,13 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(req)
-      .then(res => {
-        if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
-        return res;
-      })
-      .catch(() => caches.match(req, { ignoreSearch: true }))
-  );
+  const cached = () => caches.match(req, { ignoreSearch: true });
+  // Revalidate past the HTTP cache so a deploy shows up straight away.
+  const net = fetch(req, { cache: "no-cache" }).then(res => {
+    if (res.ok) { const copy = res.clone(); e.waitUntil(caches.open(VERSION).then(c => c.put(req, copy))); }
+    return res;
+  });
+  // On a slow connection, serve the cached copy after 3.5 s (if there is one).
+  const slow = new Promise(r => setTimeout(r, 3500)).then(() => cached()).then(hit => hit || net);
+  e.respondWith(Promise.race([net, slow]).catch(() => cached().then(hit => hit || net)));
 });
