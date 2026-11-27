@@ -2732,7 +2732,7 @@ function bars(host, opts) {
 /* ---------------------------------------------------------------- scatter */
 
 /**
- * scatter(host, {points:[{x,y,yv?,color,id,label?}],  (yv: true value shown in the tooltip when y is clamped to the axis)
+ * scatter(host, {points:[{x,y,xv?,yv?,color,id,label?}],  (xv/yv: true values shown in the tooltip when y is clamped to the axis)
  *   x:{fmt,label,min,max}, y:{fmt,label,min,max},
  *   fit?: {slope,intercept,r2?} | true, onClick(id), height=260})
  * fit === true computes the least-squares line and r² from the points.
@@ -2800,10 +2800,10 @@ function scatter(host, opts) {
       tip(it) {
         const p = P[it.i];
         const s = (p.label ? `<div class="t-h">${esc(p.label)}</div>` : "") +
-          `<div class="t-r">${esc(xo.label || "x")}<b>${esc(xfmt(p.x))}</b></div><div class="t-r">${esc(yo.label || "y")}<b>${esc(yfmt(ok(p.yv) ? p.yv : p.y))}</b>${ok(p.yv) && p.yv !== p.y ? " (off-scale)" : ""}</div>`;
+          `<div class="t-r">${esc(xo.label || "x")}<b>${esc(xfmt(ok(p.xv) ? p.xv : p.x))}</b>${ok(p.xv) && p.xv !== p.x ? " (off-scale)" : ""}</div><div class="t-r">${esc(yo.label || "y")}<b>${esc(yfmt(ok(p.yv) ? p.yv : p.y))}</b>${ok(p.yv) && p.yv !== p.y ? " (off-scale)" : ""}</div>`;
         return { html: s, x: px[it.i], y: py[it.i] };
       },
-      text: (it) => `${P[it.i].label ? P[it.i].label + ": " : ""}${xfmt(P[it.i].x)}, ${yfmt(ok(P[it.i].yv) ? P[it.i].yv : P[it.i].y)}`,
+      text: (it) => `${P[it.i].label ? P[it.i].label + ": " : ""}${xfmt(ok(P[it.i].xv) ? P[it.i].xv : P[it.i].x)}, ${yfmt(ok(P[it.i].yv) ? P[it.i].yv : P[it.i].y)}`,
       activate(it) { if (o.onClick) o.onClick(P[it.i].id); },
     };
   });
@@ -6295,26 +6295,35 @@ function mount(root, ctx) {
     el.appendChild(ctl);
     const is3 = dim === "3d";
     seg(ctl, [{ value: "2d", label: "2D" }, { value: "3d", label: "3D" }], dim, (v) => { dim = v; render(); }, "Chart dimension").style.minWidth = "110px";
+    const sel = (label, value, onChange) => {
+      const s2 = document.createElement("select");
+      s2.className = "fk-sel";
+      s2.setAttribute("aria-label", label);
+      for (const a of AXES_3D) { const op = document.createElement("option"); op.value = a.key; op.textContent = a.label; s2.appendChild(op); }
+      s2.value = value;
+      s2.onchange = () => onChange(s2.value);
+      return s2;
+    };
+    const grp = (txt, label, value, onChange) => {
+      const g = document.createElement("div"); g.className = "fk-selg";
+      const l = document.createElement("label"); l.textContent = txt;
+      g.append(l, sel(label, value, onChange));
+      return g;
+    };
+    // kcal/km ticks sit on the 2.5 grid on whichever axis it is put
+    const axis3 = (a) => a.key === "kcalPerKm" ? { label: a.label, step: 2.5, fmt: fmt25 }
+      : { label: a.unit && a.unit !== a.label ? `${a.label} (${a.unit})` : a.label, fmt: a.key === "kcalPerMin" ? (v) => fmtNum(v, 1) : axisFmt(a.key) };
     if (!is3) {
-      const yl = document.createElement("label"); yl.textContent = "Y"; ctl.appendChild(yl);
-      seg(ctl, Y_AXES.map((a) => ({ value: a.key, label: a.label })), yKey, (v) => { yKey = v; render(); }, "Y axis");
-    }
-    const xAxis = X_AXES.find((a) => a.key === xKey), yAxis = Y_AXES.find((a) => a.key === yKey);
-    const outIds = new Set(st.outliers.map((p) => p.row.id));
-    if (!is3) {
-      const xl = document.createElement("label"); xl.textContent = "vs"; ctl.appendChild(xl);
-      const xs = seg(ctl, X_AXES.map((a) => ({ value: a.key, label: a.label })), xKey, (v) => { xKey = v; render(); }, "X axis");
-      xs.style.minWidth = "min(100%,620px)";
-    } else {
-      const sel = (label, value, onChange) => {
-        const s2 = document.createElement("select");
-        s2.className = "fk-sel";
-        s2.setAttribute("aria-label", label);
-        for (const a of AXES_3D) { const op = document.createElement("option"); op.value = a.key; op.textContent = a.label; s2.appendChild(op); }
-        s2.value = value;
-        s2.onchange = () => onChange(s2.value);
-        return s2;
+      // any two metrics; picking the one the other axis shows swaps them
+      const set2 = (which, v) => {
+        if (which === "y") { if (v === xKey) xKey = yKey; yKey = v; } else { if (v === yKey) yKey = xKey; xKey = v; }
+        render();
       };
+      ctl.append(grp("Y", "Y axis", yKey, (v) => set2("y", v)), grp("vs", "X axis", xKey, (v) => set2("x", v)));
+    }
+    const xAxis = AXES_3D.find((a) => a.key === xKey), yAxis = AXES_3D.find((a) => a.key === yKey);
+    const outIds = new Set(st.outliers.map((p) => p.row.id));
+    if (is3) {
       // choosing a metric another axis already shows swaps the two, so the three axes stay distinct
       const set3 = (which, v) => {
         const cur = { ax, ay, az };
@@ -6324,25 +6333,21 @@ function mount(root, ctx) {
         ({ ax, ay, az } = cur);
         render();
       };
-      const grp = (txt, label, value, which) => {
-        const g = document.createElement("div"); g.className = "fk-selg";
-        const l = document.createElement("label"); l.textContent = txt;
-        g.append(l, sel(label, value, (v) => set3(which, v)));
-        return g;
-      };
-      ctl.append(grp("Height", "3D height axis", az, "az"), grp("over", "3D X axis", ax, "ax"), grp("×", "3D Y axis", ay, "ay"));
+      ctl.append(grp("Height", "3D height axis", az, (v) => set3("az", v)), grp("over", "3D X axis", ax, (v) => set3("ax", v)), grp("×", "3D Y axis", ay, (v) => set3("ay", v)));
     }
     if (!is3) {
       const rel = relation(cr, xAxis, yAxis);
-      const kpk = yKey === "kcalPerKm" && kept.length > 0;
-      const offS = kpk ? rel.pts.filter((p) => p.y < lo || p.y > hi).length : 0;
+      // a kcal/km axis spans the non-outlier range; outlying workouts sit at its edge (true value in the tooltip)
+      const ky = yKey === "kcalPerKm" && kept.length > 0, kx = xKey === "kcalPerKm" && kept.length > 0;
+      const cl = (v) => Math.min(hi, Math.max(lo, v));
+      const offS = rel.pts.filter((p) => (ky && (p.y < lo || p.y > hi)) || (kx && (p.x < lo || p.x > hi))).length;
       const { card, host } = chartCard(`${yAxis.label} vs ${xAxis.label}`, (rel.n > 1 ? `r² ${fmtNum(rel.r2, 2)} · n ${rel.n}` : `n ${rel.n}`) + (offS ? ` · ${offS} off-scale (at edge)` : ""));
       el.appendChild(card);
-      const xf = axisFmt(xKey);
+      const xo = axis3(xAxis), yo = axis3(yAxis);
       charts.push(scatter(host, {
-        points: rel.pts.map((p) => ({ x: p.x, y: kpk ? Math.min(hi, Math.max(lo, p.y)) : p.y, yv: p.y, id: p.row.id, color: outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
-        x: { fmt: xf, label: `${xAxis.label} (${xAxis.unit})` },
-        y: kpk && kept.length ? { step: 2.5, tight: true, fmt: fmt25, label: yAxis.label } : { fmt: (v) => fmtNum(v, yKey === "kcalPerMin" ? 1 : 0), label: yAxis.label },
+        points: rel.pts.map((p) => ({ x: kx ? cl(p.x) : p.x, xv: p.x, y: ky ? cl(p.y) : p.y, yv: p.y, id: p.row.id, color: outIds.has(p.row.id) ? "var(--red)" : "var(--blue)", label: dayLabel(p.row.start) })),
+        x: { fmt: xo.fmt, label: xo.label },
+        y: ky ? { step: 2.5, tight: true, fmt: fmt25, label: yo.label } : { fmt: yo.fmt, label: yo.label },
         fit: rel.n > 1 ? { slope: rel.slope, intercept: rel.intercept, r2: rel.r2 } : undefined,
         onClick: openDetail, height: 280,
       }));
@@ -6359,9 +6364,6 @@ function mount(root, ctx) {
         card.appendChild(d);
       }
     } else {
-      // kcal/km ticks sit on the 2.5 grid on whichever axis it is put
-      const axis3 = (a) => a.key === "kcalPerKm" ? { label: a.label, step: 2.5, fmt: fmt25 }
-        : { label: a.unit && a.unit !== a.label ? `${a.label} (${a.unit})` : a.label, fmt: a.key === "kcalPerMin" ? (v) => fmtNum(v, 1) : axisFmt(a.key) };
       const aX = AXES_3D.find((a) => a.key === ax), aY = AXES_3D.find((a) => a.key === ay), aZ = AXES_3D.find((a) => a.key === az);
       const pts = [];
       for (const r of cr) {
@@ -6397,14 +6399,15 @@ function mount(root, ctx) {
       sc.className = "fk-scroll";
       wrap.appendChild(sc);
       let html = `<table><thead><tr><th>${esc(yAxis.label)} against</th><th class="num">n</th><th class="num">Slope</th><th class="num">r</th><th class="num">r²</th></tr></thead><tbody>`;
-      for (const a of X_AXES) {
+      for (const a of AXES_3D) {
+        if (a.key === yKey) continue;
         const rr = relation(cr, a, yAxis);
         html += `<tr data-x="${a.key}" tabindex="0" class="${a.key === (dim === "3d" ? ax : xKey) ? "on" : ""}"><td>${esc(a.label)}</td><td class="num">${rr.n}</td>` +
           `<td class="num">${rr.n > 1 ? fmtNum(rr.slope, 3) : "—"}</td><td class="num">${rr.n > 1 ? fmtNum(rr.r, 2) : "—"}</td><td class="num">${rr.n > 1 ? fmtNum(rr.r2, 3) : "—"}</td></tr>`;
       }
       sc.innerHTML = html + "</tbody></table>";
       el.appendChild(wrap);
-      const pick = (tr) => { if (tr && tr.dataset.x) { if (dim === "3d") { if (tr.dataset.x === ay) ay = ax; ax = tr.dataset.x; } else xKey = tr.dataset.x; render(); } };
+      const pick = (tr) => { if (tr && tr.dataset.x) { if (dim === "3d") { const v = tr.dataset.x; if (v === ay) ay = ax; else if (v === az) az = ax; ax = v; } else xKey = tr.dataset.x; render(); } };
       wrap.onclick = (e) => pick(e.target.closest("tr[data-x]"));
       wrap.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { const tr = e.target.closest && e.target.closest("tr[data-x]"); if (tr) { e.preventDefault(); pick(tr); } } };
       note("Day resting HR, HRV and body mass are the day's context joined to each workout. A high r² means that factor explains much of the kcal/km spread; near zero means it does not.");
