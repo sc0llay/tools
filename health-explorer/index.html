@@ -451,7 +451,7 @@ const THEMES = ["auto", "light", "dark"];
 const VIEWS = [
   { value: "workouts", label: "Workouts" },
   { value: "compare", label: "Compare" },
-  { value: "aggregates", label: "Aggregates" },
+  { value: "aggregates", label: "Averages" },
   { value: "calibration", label: "Calibration" },
 ];
 
@@ -1064,7 +1064,7 @@ function bucketLabel(key, period) {
   if (period === "year") return key;
   if (period === "month") return MON[+key.slice(5, 7) - 1] + " " + key.slice(0, 4);
   const d = `${+key.slice(8, 10)} ${MON[+key.slice(5, 7) - 1]} ${key.slice(2, 4)}`;
-  return period === "week" ? "w/c " + d : d;
+  return d;
 }
 
 const has = (x) => x !== null && x !== undefined && x === x;
@@ -1355,283 +1355,6 @@ function fromCompactJSON(text) {
 
 return { open, save, latest, clear, hrFor, toCompactJSON, fromCompactJSON };
 })();
-// ---- ui/filters.js
-__m["ui/filters.js"] = (function () {
-// Shared filter bar (Agent D). mount(root, ctx): type chips with counts, date presets, source/manual toggle.
-// Writes state.filters through the store and reflects external changes (e.g. aggregate bucket clicks).
-const { applyFilters } = __m["core/model.js"];
-const CSS = `
-.fx{display:flex;flex-direction:column;gap:10px}
-.fx-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
-.fx .seg{margin:0;flex:1 1 280px;max-width:400px;min-width:0}
-.fx-dates{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.fx-dates[hidden],.fx-extras[hidden]{display:none}
-.fx-dates label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--label-2)}
-.fx-dates input{font:inherit;font-size:14px;color:var(--label);color-scheme:light dark;background:var(--fill);border:1px solid var(--glass-rim);
-  border-radius:999px;padding:6px 12px;min-width:0}
-.fx-dates input:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-.fx-extras{display:flex;flex-wrap:wrap;gap:8px}
-@media (max-width:700px){
-  .fx-types{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -4px;padding:2px 4px;scroll-snap-type:x proximity;scroll-padding-inline:8px;overscroll-behavior-x:contain}
-  .fx-types::-webkit-scrollbar{display:none}
-  .fx .seg{max-width:none;flex-basis:100%}
-}`;
-
-function inject(id, css) {
-  if (document.getElementById(id)) return;
-  const s = document.createElement("style");
-  s.id = id; s.textContent = css;
-  document.head.appendChild(s);
-}
-
-const TYPE_LABELS = {
-  TraditionalStrengthTraining: "Strength",
-  FunctionalStrengthTraining: "Functional strength",
-  MindAndBody: "Mind & body",
-  StairClimbing: "Stairs",
-};
-/** "TraditionalStrengthTraining" → "Strength"; unknown camel-case types are split into words. */
-function typeLabel(t) {
-  if (t === null || t === undefined || t === "") return "—";
-  if (TYPE_LABELS[t]) return TYPE_LABELS[t];
-  const s = String(t).replace(/([a-z])([A-Z])/g, "$1 $2");
-  return s.charAt(0) + s.slice(1).toLowerCase().replace(/\bhiit\b/, "HIIT");
-}
-
-/** The Filters a fresh session starts with (also what "Reset filters" restores). */
-function defaultFilters() {
-  return { types: [], from: null, to: null, sources: [], hideManual: false, dedupe: false, distMin: null, distMax: null, similarTo: null, bucket: null };
-}
-
-const PRESETS = [
-  { value: "all", label: "All" }, { value: "12m", label: "12 mo" }, { value: "90d", label: "90 d" },
-  { value: "30d", label: "30 d" }, { value: "custom", label: "Custom" },
-];
-const SOURCES = [
-  { value: "all", label: "All" }, { value: "auto", label: "Auto" }, { value: "watch", label: "Watch" }, { value: "manual", label: "Manual" },
-];
-
-const pad = (n) => (n < 10 ? "0" : "") + n;
-function dayStr(d) { return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; }
-function shift(day, { days = 0, years = 0 }) {
-  const [y, m, d] = day.split("-").map(Number);
-  const dt = new Date(Date.UTC(y + years, m - 1, d + days));
-  return dayStr(dt);
-}
-const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
-
-function mount(root, ctx) {
-  inject("fx-filters-css", CSS);
-  const { state } = ctx;
-  const ui = ctx.ui;
-  root.textContent = "";
-  const wrap = document.createElement("div");
-  wrap.className = "fx";
-  wrap.innerHTML =
-    '<div class="chips fx-types" role="group" aria-label="Activity type"></div>' +
-    '<div class="fx-row"><div class="fx-date-seg"></div><div class="fx-dates" hidden>' +
-    '<label>From <input type="date" data-k="from"></label><label>To <input type="date" data-k="to"></label></div>' +
-    '<div class="fx-src-seg"></div></div>' +
-    '<div class="fx-extras" hidden></div>';
-  root.appendChild(wrap);
-  const typesEl = wrap.querySelector(".fx-types");
-  if (ui.edgeFade) ui.edgeFade(typesEl);
-  const datesEl = wrap.querySelector(".fx-dates");
-  const extrasEl = wrap.querySelector(".fx-extras");
-  const inputs = { from: datesEl.querySelector('[data-k="from"]'), to: datesEl.querySelector('[data-k="to"]') };
-
-  const setF = (patch) => state.set((s) => ({ filters: { ...s.filters, ...patch } }));
-
-  // ---- data-derived helpers (recomputed when the row array changes)
-  let rowsRef = null, anchor = null, watchSources = [], otherSources = [];
-  const chips = new Map();
-  let allChip = null;
-  function onRows(rows) {
-    rowsRef = rows;
-    const counts = {}, srcs = new Set();
-    anchor = null;
-    for (const r of rows) {
-      counts[r.type] = (counts[r.type] || 0) + 1;
-      srcs.add(r.source);
-      if (anchor === null || r.localDay > anchor) anchor = r.localDay;
-    }
-    watchSources = [...srcs].filter((x) => /watch/i.test(x));
-    otherSources = [...srcs].filter((x) => !/watch/i.test(x));
-    const order = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || (a < b ? -1 : 1));
-    typesEl.textContent = "";
-    chips.clear();
-    allChip = ui.chip("All", null, true, () => setF({ types: [] }));
-    typesEl.appendChild(allChip);
-    for (const t of order) {
-      const c = ui.chip(typeLabel(t), 0, false, (on) => {
-        const cur = state.get().filters.types || [];
-        setF({ types: on ? [...cur.filter((x) => x !== t), t] : cur.filter((x) => x !== t) });
-      });
-      c.dataset.type = t;
-      chips.set(t, c);
-      typesEl.appendChild(c);
-    }
-  }
-
-  // ---- date presets
-  function presetFrom(v) {
-    if (!anchor) return null;
-    return v === "12m" ? shift(anchor, { years: -1 }) : v === "90d" ? shift(anchor, { days: -90 }) : shift(anchor, { days: -30 });
-  }
-  function detectPreset(f) {
-    if (!f.from && !f.to) return "all";
-    if (!f.to) for (const v of ["12m", "90d", "30d"]) if (f.from === presetFrom(v)) return v;
-    return "custom";
-  }
-  let customMode = false;
-  const dateSeg = ui.segmented(wrap.querySelector(".fx-date-seg"), PRESETS, "all", (v) => {
-    if (v === "custom") { customMode = true; paintDates(state.get().filters); return; }
-    customMode = false;
-    setF(v === "all" ? { from: null, to: null } : { from: presetFrom(v), to: null });
-  }, { label: "Date range" });
-  function paintDates(f) {
-    datesEl.hidden = !customMode;
-    dateSeg.set(customMode ? "custom" : detectPreset(f));
-    if (inputs.from.value !== (f.from || "")) inputs.from.value = f.from || "";
-    if (inputs.to.value !== (f.to || "")) inputs.to.value = f.to || "";
-  }
-  for (const k of ["from", "to"]) inputs[k].addEventListener("change", () => setF({ [k]: inputs[k].value || null }));
-
-  // ---- source / manual
-  const srcSeg = ui.segmented(wrap.querySelector(".fx-src-seg"), SOURCES, "auto", (v) => {
-    if (v === "all") setF({ sources: [], hideManual: false });
-    else if (v === "auto") setF({ sources: [], hideManual: true });
-    else if (v === "watch") setF({ sources: watchSources.slice(), hideManual: true });
-    else setF({ sources: otherSources.slice(), hideManual: false });
-  }, { label: "Workout source" });
-  const srcTips = { All: "Every entry", Auto: "Hide manual entries", Watch: "Apple Watch workouts only", Manual: "Entries from non-Watch sources (Shortcuts, Health, WorkoutLogger…)" };
-  srcSeg.el.querySelectorAll("button").forEach((b) => { b.title = srcTips[b.textContent] || ""; });
-  function detectSource(f) {
-    const src = f.sources || [];
-    if (!src.length) return f.hideManual ? "auto" : "all";
-    if (watchSources.length && sameSet(src, watchSources)) return "watch";
-    if (otherSources.length && sameSet(src, otherSources)) return "manual";
-    return null;
-  }
-
-  // ---- extras: toggles and removable pills for filters set elsewhere
-  let extrasSig = "";
-  function paintExtras(f) {
-    const dups = rowsRef ? rowsRef.reduce((n, r) => n + (r.dupOf !== null && r.dupOf !== undefined ? 1 : 0), 0) : 0;
-    const items = [];
-    if (dups || f.dedupe) items.push(["Hide duplicates", dups, !!f.dedupe, () => setF({ dedupe: !state.get().filters.dedupe })]);
-    if (f.bucket) items.push([`Period ${f.bucket.key} ✕`, null, true, () => setF({ bucket: null })]);
-    if (f.similarTo !== null && f.similarTo !== undefined) items.push([`Similar to #${f.similarTo} ✕`, null, true, () => setF({ similarTo: null })]);
-    if (f.distMin != null || f.distMax != null) items.push([`Distance ${f.distMin ?? "…"}–${f.distMax ?? "…"} km ✕`, null, true, () => setF({ distMin: null, distMax: null })]);
-    const sig = JSON.stringify(items.map((i) => i.slice(0, 3)));
-    if (sig === extrasSig) return;
-    extrasSig = sig;
-    extrasEl.textContent = "";
-    for (const [label, count, on, fn] of items) extrasEl.appendChild(ui.chip(label, count, on, fn));
-    extrasEl.hidden = !items.length;
-  }
-
-  // ---- sync with state
-  let last = null, lastRows = null, prevRange = "";
-  function sync(force) {
-    const s = state.get(), f = s.filters, rows = ctx.data.rows || [];
-    if (!force && f === last && rows === lastRows) return;
-    last = f; lastRows = rows;
-    if (rows !== rowsRef) onRows(rows);
-    const types = f.types || [];
-    const counts = {};
-    for (const r of applyFilters(rows, { ...f, types: [] })) counts[r.type] = (counts[r.type] || 0) + 1;
-    allChip.set(!types.length);
-    for (const [t, c] of chips) c.set(types.includes(t), counts[t] || 0);
-    const range = (f.from || "") + "|" + (f.to || "");
-    const d = detectPreset(f);
-    if (d === "custom") customMode = true;
-    else if (range !== prevRange) customMode = false;
-    prevRange = range;
-    paintDates(f);
-    const sv = detectSource(f);
-    if (sv) srcSeg.set(sv);
-    paintExtras(f);
-  }
-  sync(true);
-  const unsub = state.subscribe(() => sync(false));
-  return { update() { sync(true); }, destroy() { unsub(); root.textContent = ""; } };
-}
-
-return { typeLabel, defaultFilters, mount };
-})();
-// ---- core/format.js
-__m["core/format.js"] = (function () {
-// Display formatting. null/NaN → "—".
-const { METRICS } = __m["core/model.js"];
-const MI = 1.609344;
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const bad = (x) => x === null || x === undefined || x !== x;
-const nf = new Map();
-function nfor(dp) {
-  let f = nf.get(dp);
-  if (!f) nf.set(dp, (f = new Intl.NumberFormat("en-GB", { minimumFractionDigits: dp, maximumFractionDigits: dp })));
-  return f;
-}
-function fmtNum(v, dp = 0) {
-  if (bad(v)) return "—";
-  const s = nfor(dp).format(v);
-  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
-}
-function fmtDist(km, units = "km") {
-  if (bad(km)) return "—";
-  return units === "mi" ? fmtNum(km / MI, 2) + " mi" : fmtNum(km, 2) + " km";
-}
-/** minutes → "42:10" or "1:02:03" (seconds rounded). */
-function fmtDur(min) {
-  if (bad(min)) return "—";
-  const s = Math.round(Math.abs(min) * 60);
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  const p = (n) => (n < 10 ? "0" : "") + n;
-  return (min < 0 && s ? "-" : "") + (h ? `${h}:${p(m)}:${p(sec)}` : `${m}:${p(sec)}`);
-}
-/** min/km → "5:31 /km" (or "8:53 /mi"). */
-function fmtPace(minPerKm, units = "km") {
-  if (bad(minPerKm)) return "—";
-  const v = units === "mi" ? minPerKm * MI : minPerKm;
-  const s = Math.round(v * 60);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} /${units === "mi" ? "mi" : "km"}`;
-}
-/** "24 Nov 2026, 05:37" local to tzOffset minutes. */
-function fmtDate(ms, tzOffset = 0) {
-  if (bad(ms)) return "—";
-  const d = new Date(ms + (tzOffset || 0) * 60000);
-  const p = (n) => (n < 10 ? "0" : "") + n;
-  return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-}
-/**
- * Difference a − b (b = baseline) in the metric's own unit. `metric` is a key or a METRICS entry.
- * → {text:"+0:12 /km", sign:-1|0|1}. sign is 0 when the displayed delta rounds to zero. Optional units "mi".
- */
-function fmtDelta(a, b, metric, units = "km") {
-  if (bad(a) || bad(b)) return { text: "—", sign: 0 };
-  const m = typeof metric === "string" ? METRICS[metric] : metric;
-  const key = m ? m.key : "";
-  let diff = a - b, body;
-  const mi = units === "mi";
-  if (key === "paceMinKm" || key === "durMin") {
-    if (key === "paceMinKm" && mi) diff *= MI;
-    const s = Math.round(Math.abs(diff) * 60);
-    body = fmtDur(s / 60) + (key === "paceMinKm" ? (mi ? " /mi" : " /km") : "");
-    if (!s) return { text: body, sign: 0 };
-  } else {
-    let dp = m ? m.dp : 2, unit = m ? m.unit : "";
-    if (key === "distKm" && mi) { diff /= MI; unit = "mi"; }
-    const abs = Math.abs(diff);
-    body = fmtNum(abs, dp) + (unit ? " " + unit : "");
-    if (Number(abs.toFixed(dp)) === 0) return { text: body, sign: 0 };
-  }
-  const sign = diff > 0 ? 1 : -1;
-  return { text: (sign > 0 ? "+" : "−") + body, sign };
-}
-
-return { fmtNum, fmtDist, fmtDur, fmtPace, fmtDate, fmtDelta };
-})();
 // ---- ui/popover.js
 __m["ui/popover.js"] = (function () {
 // Small anchored popover (menus, column picker). Closes on outside press, Escape, resize, or when the anchor leaves the DOM.
@@ -1717,6 +1440,320 @@ function popover(anchor, render, opts) {
 }
 
 return { injectPopoverCss, popover };
+})();
+// ---- ui/filters.js
+__m["ui/filters.js"] = (function () {
+// Shared filter bar (Agent D). mount(root, ctx): activity-type dropdown (multi-select, with counts), date presets, source/manual toggle.
+// Writes state.filters through the store and reflects external changes (e.g. aggregate bucket clicks).
+const { applyFilters } = __m["core/model.js"];
+const { popover } = __m["ui/popover.js"];
+const CSS = `
+.fx{display:flex;flex-direction:column;gap:10px}
+.fx-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.fx .seg{margin:0;flex:1 1 280px;max-width:400px;min-width:0}
+.fx-dates{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fx-dates[hidden],.fx-extras[hidden]{display:none}
+.fx-dates label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--label-2)}
+.fx-dates input{font:inherit;font-size:14px;color:var(--label);color-scheme:light dark;background:var(--fill);border:1px solid var(--glass-rim);
+  border-radius:999px;padding:6px 12px;min-width:0}
+.fx-dates input:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.fx-extras{display:flex;flex-wrap:wrap;gap:8px}
+.fx-type-btn{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:8px 14px 8px 16px;font-size:15px;font-weight:600}
+.fx-type-btn .fx-tl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fx-type-btn svg{width:14px;height:14px;flex:none;opacity:.7;transition:transform .15s}
+.fx-type-btn[aria-expanded=true] svg{transform:rotate(180deg)}
+.fx-type-btn.on{color:var(--blue)}
+.he-pop.fx-type-pop .mi .c-n{margin-left:auto;padding-left:12px;color:var(--label-3);font-size:13px;font-variant-numeric:tabular-nums}
+@media (max-width:700px){
+  .fx .seg{max-width:none;flex-basis:100%}
+  .fx-type-btn{flex:1 1 100%;justify-content:space-between}
+}`;
+
+function inject(id, css) {
+  if (document.getElementById(id)) return;
+  const s = document.createElement("style");
+  s.id = id; s.textContent = css;
+  document.head.appendChild(s);
+}
+
+const TYPE_LABELS = {
+  TraditionalStrengthTraining: "Strength",
+  FunctionalStrengthTraining: "Functional strength",
+  MindAndBody: "Mind & body",
+  StairClimbing: "Stairs",
+};
+/** "TraditionalStrengthTraining" → "Strength"; unknown camel-case types are split into words. */
+function typeLabel(t) {
+  if (t === null || t === undefined || t === "") return "—";
+  if (TYPE_LABELS[t]) return TYPE_LABELS[t];
+  const s = String(t).replace(/([a-z])([A-Z])/g, "$1 $2");
+  return s.charAt(0) + s.slice(1).toLowerCase().replace(/\bhiit\b/, "HIIT");
+}
+
+/** The Filters a fresh session starts with (also what "Reset filters" restores). */
+function defaultFilters() {
+  return { types: [], from: null, to: null, sources: [], hideManual: false, dedupe: false, distMin: null, distMax: null, similarTo: null, bucket: null };
+}
+
+const PRESETS = [
+  { value: "all", label: "All" }, { value: "12m", label: "12 mo" }, { value: "90d", label: "90 d" },
+  { value: "30d", label: "30 d" }, { value: "custom", label: "Custom" },
+];
+const SOURCES = [
+  { value: "all", label: "All" }, { value: "auto", label: "Auto" }, { value: "watch", label: "Watch" }, { value: "manual", label: "Manual" },
+];
+
+const pad = (n) => (n < 10 ? "0" : "") + n;
+function dayStr(d) { return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; }
+function shift(day, { days = 0, years = 0 }) {
+  const [y, m, d] = day.split("-").map(Number);
+  const dt = new Date(Date.UTC(y + years, m - 1, d + days));
+  return dayStr(dt);
+}
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+
+function mount(root, ctx) {
+  inject("fx-filters-css", CSS);
+  const { state } = ctx;
+  const ui = ctx.ui;
+  root.textContent = "";
+  const wrap = document.createElement("div");
+  wrap.className = "fx";
+  wrap.innerHTML =
+    '<div class="fx-row"><button type="button" class="btn ghost fx-type-btn" aria-label="Activity type"><span class="fx-tl">All types</span>' +
+    '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+    '<div class="fx-date-seg"></div><div class="fx-dates" hidden>' +
+    '<label>From <input type="date" data-k="from"></label><label>To <input type="date" data-k="to"></label></div>' +
+    '<div class="fx-src-seg"></div></div>' +
+    '<div class="fx-extras" hidden></div>';
+  root.appendChild(wrap);
+  const typeBtn = wrap.querySelector(".fx-type-btn");
+  const datesEl = wrap.querySelector(".fx-dates");
+  const extrasEl = wrap.querySelector(".fx-extras");
+  const inputs = { from: datesEl.querySelector('[data-k="from"]'), to: datesEl.querySelector('[data-k="to"]') };
+
+  const setF = (patch) => state.set((s) => ({ filters: { ...s.filters, ...patch } }));
+
+  // ---- data-derived helpers (recomputed when the row array changes)
+  let rowsRef = null, anchor = null, watchSources = [], otherSources = [];
+  let typeOrder = [], typeCounts = {};
+  function onRows(rows) {
+    rowsRef = rows;
+    const counts = {}, srcs = new Set();
+    anchor = null;
+    for (const r of rows) {
+      counts[r.type] = (counts[r.type] || 0) + 1;
+      srcs.add(r.source);
+      if (anchor === null || r.localDay > anchor) anchor = r.localDay;
+    }
+    watchSources = [...srcs].filter((x) => /watch/i.test(x));
+    otherSources = [...srcs].filter((x) => !/watch/i.test(x));
+    typeOrder = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || (a < b ? -1 : 1));
+  }
+
+  // ---- activity type dropdown (multi-select checkboxes; "All types" clears)
+  const typeItems = new Map();
+  let allItem = null;
+  const typePop = popover(typeBtn, (el) => {
+    el.classList.add("fx-type-pop");
+    typeItems.clear();
+    allItem = document.createElement("label");
+    allItem.className = "mi";
+    const acb = document.createElement("input");
+    acb.type = "checkbox"; acb.dataset.type = "";
+    acb.addEventListener("change", () => setF({ types: [] }));
+    allItem.append(acb, document.createTextNode("All types"));
+    const sep = document.createElement("div");
+    sep.className = "sep";
+    el.append(allItem, sep);
+    for (const t of typeOrder) {
+      const lab = document.createElement("label");
+      lab.className = "mi";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.dataset.type = t;
+      cb.addEventListener("change", () => {
+        const cur = state.get().filters.types || [];
+        setF({ types: cb.checked ? [...cur.filter((x) => x !== t), t] : cur.filter((x) => x !== t) });
+      });
+      const n = document.createElement("span");
+      n.className = "c-n";
+      lab.append(cb, document.createTextNode(typeLabel(t)), n);
+      typeItems.set(t, lab);
+      el.appendChild(lab);
+    }
+    paintTypes(state.get().filters.types || [], true);
+  }, { label: "Activity type", focus: false });
+  function paintTypes(types, force) {
+    const lbl = !types.length ? "All types" : types.length === 1 ? typeLabel(types[0]) : `${typeLabel(types[0])} +${types.length - 1}`;
+    typeBtn.firstChild.textContent = lbl;
+    typeBtn.classList.toggle("on", !!types.length);
+    typeBtn.title = types.length ? types.map(typeLabel).join(", ") : "All activity types";
+    if (!force && !typePop.isOpen()) return;
+    if (allItem) allItem.firstChild.checked = !types.length;
+    for (const [t, lab] of typeItems) {
+      lab.firstChild.checked = types.includes(t);
+      lab.lastChild.textContent = (typeCounts[t] || 0).toLocaleString("en");
+    }
+  }
+
+  // ---- date presets
+  function presetFrom(v) {
+    if (!anchor) return null;
+    return v === "12m" ? shift(anchor, { years: -1 }) : v === "90d" ? shift(anchor, { days: -90 }) : shift(anchor, { days: -30 });
+  }
+  function detectPreset(f) {
+    if (!f.from && !f.to) return "all";
+    if (!f.to) for (const v of ["12m", "90d", "30d"]) if (f.from === presetFrom(v)) return v;
+    return "custom";
+  }
+  let customMode = false;
+  const dateSeg = ui.segmented(wrap.querySelector(".fx-date-seg"), PRESETS, "all", (v) => {
+    if (v === "custom") { customMode = true; paintDates(state.get().filters); return; }
+    customMode = false;
+    setF(v === "all" ? { from: null, to: null } : { from: presetFrom(v), to: null });
+  }, { label: "Date range" });
+  function paintDates(f) {
+    datesEl.hidden = !customMode;
+    dateSeg.set(customMode ? "custom" : detectPreset(f));
+    if (inputs.from.value !== (f.from || "")) inputs.from.value = f.from || "";
+    if (inputs.to.value !== (f.to || "")) inputs.to.value = f.to || "";
+  }
+  for (const k of ["from", "to"]) inputs[k].addEventListener("change", () => setF({ [k]: inputs[k].value || null }));
+
+  // ---- source / manual
+  const srcSeg = ui.segmented(wrap.querySelector(".fx-src-seg"), SOURCES, "auto", (v) => {
+    if (v === "all") setF({ sources: [], hideManual: false });
+    else if (v === "auto") setF({ sources: [], hideManual: true });
+    else if (v === "watch") setF({ sources: watchSources.slice(), hideManual: true });
+    else setF({ sources: otherSources.slice(), hideManual: false });
+  }, { label: "Workout source" });
+  const srcTips = { All: "Every entry", Auto: "Hide manual entries", Watch: "Apple Watch workouts only", Manual: "Entries from non-Watch sources (Shortcuts, Health, WorkoutLogger…)" };
+  srcSeg.el.querySelectorAll("button").forEach((b) => { b.title = srcTips[b.textContent] || ""; });
+  function detectSource(f) {
+    const src = f.sources || [];
+    if (!src.length) return f.hideManual ? "auto" : "all";
+    if (watchSources.length && sameSet(src, watchSources)) return "watch";
+    if (otherSources.length && sameSet(src, otherSources)) return "manual";
+    return null;
+  }
+
+  // ---- extras: toggles and removable pills for filters set elsewhere
+  let extrasSig = "";
+  function paintExtras(f) {
+    const dups = rowsRef ? rowsRef.reduce((n, r) => n + (r.dupOf !== null && r.dupOf !== undefined ? 1 : 0), 0) : 0;
+    const items = [];
+    if (dups || f.dedupe) items.push(["Hide duplicates", dups, !!f.dedupe, () => setF({ dedupe: !state.get().filters.dedupe })]);
+    if (f.bucket) items.push([`Period ${f.bucket.key} ✕`, null, true, () => setF({ bucket: null })]);
+    if (f.similarTo !== null && f.similarTo !== undefined) items.push([`Similar to #${f.similarTo} ✕`, null, true, () => setF({ similarTo: null })]);
+    if (f.distMin != null || f.distMax != null) items.push([`Distance ${f.distMin ?? "…"}–${f.distMax ?? "…"} km ✕`, null, true, () => setF({ distMin: null, distMax: null })]);
+    const sig = JSON.stringify(items.map((i) => i.slice(0, 3)));
+    if (sig === extrasSig) return;
+    extrasSig = sig;
+    extrasEl.textContent = "";
+    for (const [label, count, on, fn] of items) extrasEl.appendChild(ui.chip(label, count, on, fn));
+    extrasEl.hidden = !items.length;
+  }
+
+  // ---- sync with state
+  let last = null, lastRows = null, prevRange = "";
+  function sync(force) {
+    const s = state.get(), f = s.filters, rows = ctx.data.rows || [];
+    if (!force && f === last && rows === lastRows) return;
+    last = f; lastRows = rows;
+    if (rows !== rowsRef) onRows(rows);
+    const types = f.types || [];
+    const counts = {};
+    for (const r of applyFilters(rows, { ...f, types: [] })) counts[r.type] = (counts[r.type] || 0) + 1;
+    typeCounts = counts;
+    paintTypes(types);
+    const range = (f.from || "") + "|" + (f.to || "");
+    const d = detectPreset(f);
+    if (d === "custom") customMode = true;
+    else if (range !== prevRange) customMode = false;
+    prevRange = range;
+    paintDates(f);
+    const sv = detectSource(f);
+    if (sv) srcSeg.set(sv);
+    paintExtras(f);
+  }
+  sync(true);
+  const unsub = state.subscribe(() => sync(false));
+  return { update() { sync(true); }, destroy() { unsub(); typePop.destroy(); root.textContent = ""; } };
+}
+
+return { typeLabel, defaultFilters, mount };
+})();
+// ---- core/format.js
+__m["core/format.js"] = (function () {
+// Display formatting. null/NaN → "—".
+const { METRICS } = __m["core/model.js"];
+const MI = 1.609344;
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const bad = (x) => x === null || x === undefined || x !== x;
+const nf = new Map();
+function nfor(dp) {
+  let f = nf.get(dp);
+  if (!f) nf.set(dp, (f = new Intl.NumberFormat("en-GB", { minimumFractionDigits: dp, maximumFractionDigits: dp })));
+  return f;
+}
+function fmtNum(v, dp = 0) {
+  if (bad(v)) return "—";
+  const s = nfor(dp).format(v);
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
+}
+function fmtDist(km, units = "km") {
+  if (bad(km)) return "—";
+  return units === "mi" ? fmtNum(km / MI, 2) + " mi" : fmtNum(km, 2) + " km";
+}
+/** minutes → "42:10" or "1:02:03" (seconds rounded). */
+function fmtDur(min) {
+  if (bad(min)) return "—";
+  const s = Math.round(Math.abs(min) * 60);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const p = (n) => (n < 10 ? "0" : "") + n;
+  return (min < 0 && s ? "-" : "") + (h ? `${h}:${p(m)}:${p(sec)}` : `${m}:${p(sec)}`);
+}
+/** min/km → "5:31 /km" (or "8:53 /mi"). */
+function fmtPace(minPerKm, units = "km") {
+  if (bad(minPerKm)) return "—";
+  const v = units === "mi" ? minPerKm * MI : minPerKm;
+  const s = Math.round(v * 60);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} /${units === "mi" ? "mi" : "km"}`;
+}
+/** "24 Nov 2026, 05:37" local to tzOffset minutes. */
+function fmtDate(ms, tzOffset = 0) {
+  if (bad(ms)) return "—";
+  const d = new Date(ms + (tzOffset || 0) * 60000);
+  const p = (n) => (n < 10 ? "0" : "") + n;
+  return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+/**
+ * Difference a − b (b = baseline) in the metric's own unit. `metric` is a key or a METRICS entry.
+ * → {text:"+0:12 /km", sign:-1|0|1}. sign is 0 when the displayed delta rounds to zero. Optional units "mi".
+ */
+function fmtDelta(a, b, metric, units = "km") {
+  if (bad(a) || bad(b)) return { text: "—", sign: 0 };
+  const m = typeof metric === "string" ? METRICS[metric] : metric;
+  const key = m ? m.key : "";
+  let diff = a - b, body;
+  const mi = units === "mi";
+  if (key === "paceMinKm" || key === "durMin") {
+    if (key === "paceMinKm" && mi) diff *= MI;
+    const s = Math.round(Math.abs(diff) * 60);
+    body = fmtDur(s / 60) + (key === "paceMinKm" ? (mi ? " /mi" : " /km") : "");
+    if (!s) return { text: body, sign: 0 };
+  } else {
+    let dp = m ? m.dp : 2, unit = m ? m.unit : "";
+    if (key === "distKm" && mi) { diff /= MI; unit = "mi"; }
+    const abs = Math.abs(diff);
+    body = fmtNum(abs, dp) + (unit ? " " + unit : "");
+    if (Number(abs.toFixed(dp)) === 0) return { text: body, sign: 0 };
+  }
+  const sign = diff > 0 ? 1 : -1;
+  return { text: (sign > 0 ? "+" : "−") + body, sign };
+}
+
+return { fmtNum, fmtDist, fmtDur, fmtPace, fmtDate, fmtDelta };
 })();
 // ---- ui/table.js
 __m["ui/table.js"] = (function () {
@@ -2461,8 +2498,13 @@ function line(host, opts) {
     let xticks;
     if (xo.ticks) xticks = xo.ticks;
     else {
-      const xt = niceTicks(x0, x1, clamp(Math.floor(pw / 125), 2, 8), { integer: !!xo.integer });
-      xticks = xt.ticks.filter((t) => t >= x0 - 1e-9 && t <= x1 + 1e-9);
+      // A window between round values can leave one in-range tick: ask for more until ≥ 3 land inside.
+      const want = Math.min(3, xo.integer ? Math.floor(x1 - x0) + 1 : 3);
+      for (let c = clamp(Math.floor(pw / 95), 3, 8); ; c++) {
+        const xt = niceTicks(x0, x1, c, { integer: !!xo.integer });
+        xticks = xt.ticks.filter((t) => t >= x0 - 1e-9 && t <= x1 + 1e-9);
+        if (xticks.length >= want || c >= 10 || (x1 - x0) / Math.max(1, xticks.length) < 1) break;
+      }
       if (!xticks.length) xticks = [x0];
     }
     for (const t of xticks) {
@@ -4061,7 +4103,8 @@ return { paceText, longDate, mount };
 })();
 // ---- ui/aggregates.js
 __m["ui/aggregates.js"] = (function () {
-// Aggregates view (Agent E): bucket / metric / mode controls, summary tiles, main chart, bucket table.
+// Averages view (internal id "aggregates"): bucket / metric / mode controls, summary tiles, main chart
+// (zoomable time axis: pinch / ctrl-or-⌘-scroll / +− buttons; pan by drag, sideways scroll or the slider), bucket table.
 // mount(root, ctx) → {update(), destroy(), lastMs()}. State: ctx.state agg {period, mode, metric, groupBy}, filters, units.
 const { aggregate } = __m["core/aggregate.js"];
 const { METRICS, applyFilters } = __m["core/model.js"];
@@ -4082,6 +4125,16 @@ const CSS = `
 .ag .tiles .tile .t-h{font-size:14px}
 .ag-chart{min-height:120px}
 .ag .chart .c-h span:last-child{text-transform:none;letter-spacing:0;font-weight:500;color:var(--label-3)}
+.ag-zoom{display:flex;align-items:center;gap:8px;margin-top:8px}
+.ag-zoom .btn{padding:4px 0;width:34px;font-size:17px;font-weight:600;line-height:1}
+.ag-zoom .btn.wide{width:auto;padding:4px 12px;font-size:13px}
+.ag-zoom .btn[disabled]{opacity:.35;cursor:default}
+.ag-zoom input[type=range]{flex:1 1 auto;min-width:0;accent-color:var(--blue);margin:0}
+.ag-zoom input[type=range][disabled]{opacity:.35}
+.ag-zoom .ag-zr{font-size:12px;color:var(--label-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ag-chart.zoomed .hx-svg{cursor:grab}
+.ag-chart.panning .hx-svg{cursor:grabbing}
+@media (max-width:700px){.ag-zoom .ag-zr{display:none}}
 .ag-more{display:flex;justify-content:center;padding:10px;position:relative;z-index:1}
 .ag .table td.pri{font-weight:600}
 .ag .table tbody tr[data-k]{cursor:pointer}
@@ -4152,7 +4205,11 @@ function mount(root, ctx) {
     '<div class="ag-row"><div class="chips" data-ag="opts"></div><div class="ag-sel" data-ag="sel" hidden></div></div>' +
     '<div data-ag="empty" hidden></div>' +
     '<div class="tiles auto" data-ag="tiles"></div>' +
-    '<div class="chart glass" data-ag="chart"><div class="c-h"><span data-ag="ct"></span><span data-ag="cs"></span></div><div class="ag-chart" data-ag="cbody"></div></div>' +
+    '<div class="chart glass" data-ag="chart"><div class="c-h"><span data-ag="ct"></span><span data-ag="cs"></span></div><div class="ag-chart" data-ag="cbody"></div>' +
+    '<div class="ag-zoom" data-ag="zoom"><button type="button" class="btn ghost" data-z="out" aria-label="Zoom out" title="Zoom out (−)">−</button>' +
+    '<input type="range" min="0" max="0" step="1" value="0" data-z="pos" aria-label="Scroll along the time axis">' +
+    '<button type="button" class="btn ghost" data-z="in" aria-label="Zoom in" title="Zoom in (+)">+</button>' +
+    '<button type="button" class="btn ghost wide" data-z="reset" title="Show the whole range (0)">Fit</button><span class="ag-zr" data-ag="zr"></span></div></div>' +
     '<div data-ag="tbl"></div>';
   root.appendChild(el);
   const $ = (n) => el.querySelector(`[data-ag="${n}"]`);
@@ -4177,6 +4234,9 @@ function mount(root, ctx) {
   let chart = null, chartKind = null, tableLimit = 40, lastMs = 0, dirty = false, lastRows = null;
   let cache = { rows: null, key: "", out: null }, typeCache = { rows: null, order: [] };
   let buckets = [], period = "week";
+  // Time-axis window over bucket indices. span null = whole range. i0 is fractional while panning.
+  const MIN_SPAN = 4;
+  let zoom = { i0: 0, span: null }, full = null;
 
   function setAgg(patch) { state.set((s) => ({ agg: { ...s.agg, ...patch } })); }
   function toggleBucket(key) {
@@ -4355,7 +4415,41 @@ function mount(root, ctx) {
       kind = "line";
       opts = { ...common, y: { ...common.y, ...(zero ? { min: 0 } : {}) }, series, x: { fmt: xf, integer: true, min: 0, max: Math.max(1, buckets.length - 1) },
         selected: selectedKey ? buckets.findIndex((b) => b.key === selectedKey) : null,
-        onPoint: (p) => { const b = buckets[p.index]; if (b) toggleBucket(b.key); } };
+        onPoint: (p) => { const b = buckets[Math.round(p.x)]; if (b) toggleBucket(b.key); } };
+    }
+    full = { kind, opts };
+    paintChart();
+
+    // ---- table
+    renderTable(key, units, selectedKey);
+    lastMs = performance.now() - t0;
+    root.dataset.renderMs = lastMs.toFixed(1);
+  }
+
+  /** [first, last] visible bucket index for n buckets. */
+  function windowFor(n) {
+    if (!zoom.span || zoom.span >= n) return [0, n - 1];
+    const sp = Math.max(Math.min(MIN_SPAN, n), Math.round(zoom.span));
+    const i0 = Math.max(0, Math.min(n - sp, Math.round(zoom.i0)));
+    return [i0, i0 + sp - 1];
+  }
+  function clampZoom() {
+    const n = buckets.length;
+    if (!zoom.span) return;
+    if (zoom.span >= n || n <= MIN_SPAN) { zoom = { i0: 0, span: null }; return; }
+    zoom.span = Math.max(MIN_SPAN, zoom.span);
+    zoom.i0 = Math.max(0, Math.min(n - zoom.span, zoom.i0));
+  }
+  function paintChart() {
+    if (!full) return;
+    clampZoom();
+    const n = buckets.length, [w0, w1] = windowFor(n);
+    const { kind } = full;
+    let opts = full.opts;
+    if (w0 > 0 || w1 < n - 1) {
+      if (kind === "bars") opts = { ...opts, buckets: opts.buckets.slice(w0, w1 + 1) };
+      else opts = { ...opts, x: { ...opts.x, min: w0, max: Math.max(w0 + 1, w1) },
+        series: opts.series.map((sr) => ({ ...sr, points: sr.points.filter((pt) => pt[0] >= w0 && pt[0] <= w1) })) };
     }
     if (chart && chartKind === kind) chart.update(opts);
     else {
@@ -4364,12 +4458,97 @@ function mount(root, ctx) {
       chart = (kind === "bars" ? bars : line)($("cbody"), opts);
       chartKind = kind;
     }
-
-    // ---- table
-    renderTable(key, units, selectedKey);
-    lastMs = performance.now() - t0;
-    root.dataset.renderMs = lastMs.toFixed(1);
+    const zoomed = n > 0 && (w0 > 0 || w1 < n - 1);
+    $("cbody").classList.toggle("zoomed", zoomed);
+    const pos = zel.pos;
+    pos.max = String(Math.max(0, n - (w1 - w0 + 1)));
+    pos.value = String(w0);
+    pos.disabled = !zoomed;
+    zel.out.disabled = zel.reset.disabled = !zoomed;
+    zel.in.disabled = n <= MIN_SPAN || w1 - w0 + 1 <= MIN_SPAN;
+    $("zr").textContent = n ? (zoomed ? `${buckets[w0].label} – ${buckets[w1].label}` : `All ${n.toLocaleString("en")} ${period}s`) : "";
+    pos.setAttribute("aria-valuetext", n ? `${buckets[w0].label} to ${buckets[w1].label}` : "");
   }
+  /** Zoom by factor (<1 = in) around fraction f (0..1) of the visible window. */
+  function zoomBy(factor, f = 0.5) {
+    const n = buckets.length;
+    if (n <= MIN_SPAN) return;
+    const [w0, w1] = windowFor(n), cur = zoom.span && zoom.span < n ? zoom.span : n;
+    const span = Math.max(MIN_SPAN, Math.min(n, cur * factor));
+    const anchor = (zoom.span ? zoom.i0 : w0) + f * cur;
+    zoom = span >= n ? { i0: 0, span: null } : { span, i0: anchor - f * span };
+    void w1;
+    paintChart();
+  }
+  function panBy(dBuckets) {
+    if (!zoom.span) return;
+    zoom.i0 += dBuckets;
+    paintChart();
+  }
+  const zel = { out: $("zoom").querySelector('[data-z="out"]'), in: $("zoom").querySelector('[data-z="in"]'),
+    reset: $("zoom").querySelector('[data-z="reset"]'), pos: $("zoom").querySelector('[data-z="pos"]') };
+  zel.in.onclick = () => zoomBy(0.5);
+  zel.out.onclick = () => zoomBy(2);
+  zel.reset.onclick = () => { zoom = { i0: 0, span: null }; paintChart(); };
+  zel.pos.addEventListener("input", () => { if (zoom.span) { zoom.i0 = +zel.pos.value; paintChart(); } });
+
+  // Gestures on the chart: ctrl/⌘ + wheel or trackpad pinch zooms; sideways / shift + wheel pans;
+  // mouse or one-finger drag pans when zoomed; two-finger pinch zooms. A drag never counts as a click.
+  const cb = $("cbody");
+  const frac = (clientX) => { const r = cb.getBoundingClientRect(); return r.width ? Math.max(0, Math.min(1, (clientX - r.left - 44) / Math.max(1, r.width - 60))) : 0.5; };
+  const plotW = () => Math.max(1, cb.getBoundingClientRect().width - 60);
+  const visSpan = () => { const [w0, w1] = windowFor(buckets.length); return w1 - w0 + 1; };
+  cb.addEventListener("wheel", (e) => {
+    if (!buckets.length) return;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.01), frac(e.clientX)); return; }
+    const dx = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+    if (zoom.span && Math.abs(dx) > Math.abs(e.deltaY) * (e.shiftKey ? 0 : 1)) { e.preventDefault(); panBy((dx / plotW()) * visSpan()); }
+  }, { passive: false });
+  const ptrs = new Map();
+  let drag = null, pinch = null, suppressClick = false;
+  cb.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    ptrs.set(e.pointerId, e.clientX);
+    if (ptrs.size === 1) drag = { x: e.clientX, i0: zoom.i0, moved: false, id: e.pointerId };
+    else if (ptrs.size === 2) {
+      const xs = [...ptrs.values()], dist = Math.abs(xs[0] - xs[1]);
+      drag = null;
+      if (dist > 20) pinch = { dist, span: zoom.span && zoom.span < buckets.length ? zoom.span : buckets.length, f: frac((xs[0] + xs[1]) / 2), i0: windowFor(buckets.length)[0] };
+    }
+  });
+  cb.addEventListener("pointermove", (e) => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, e.clientX);
+    if (pinch && ptrs.size === 2) {
+      const xs = [...ptrs.values()], dist = Math.max(10, Math.abs(xs[0] - xs[1]));
+      const n = buckets.length, span = Math.max(MIN_SPAN, Math.min(n, pinch.span * (pinch.dist / dist)));
+      const anchor = pinch.i0 + pinch.f * pinch.span;
+      zoom = span >= n ? { i0: 0, span: null } : { span, i0: anchor - pinch.f * span };
+      suppressClick = true;
+      paintChart();
+      return;
+    }
+    if (!drag || !zoom.span) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 6) return;
+    if (!drag.moved) { drag.moved = true; try { cb.setPointerCapture(drag.id); } catch (_) {} cb.classList.add("panning"); }
+    suppressClick = true;
+    zoom.i0 = drag.i0 - (dx / plotW()) * visSpan();
+    paintChart();
+  });
+  const endPtr = (e) => {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
+    if (!ptrs.size) { drag = null; cb.classList.remove("panning"); if (suppressClick) setTimeout(() => { suppressClick = false; }, 0); }
+  };
+  cb.addEventListener("pointerup", endPtr);
+  cb.addEventListener("pointercancel", endPtr);
+  cb.addEventListener("click", (e) => { if (suppressClick) { e.stopPropagation(); e.preventDefault(); suppressClick = false; } }, true);
+  cb.addEventListener("keydown", (e) => {
+    if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomBy(0.5); }
+    else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomBy(2); }
+    else if (e.key === "0") { e.preventDefault(); zoom = { i0: 0, span: null }; paintChart(); }
+  });
 
   function renderTable(key, units, selectedKey) {
     const def = METRICS[key];
@@ -4402,7 +4581,7 @@ function mount(root, ctx) {
   const visible = (s) => s.view === undefined || s.view === "aggregates";
   const unsub = state.subscribe((s, prev) => {
     const rel = s.filters !== prev.filters || s.agg !== prev.agg || s.units !== prev.units;
-    if (s.agg.period !== prev.agg.period) tableLimit = 40;
+    if (s.agg.period !== prev.agg.period) { tableLimit = 40; zoom = { i0: 0, span: null }; }
     if (rel) dirty = true;
     if (visible(s) && (dirty || ctx.data.rows !== lastRows)) render();
   });
