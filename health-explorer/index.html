@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; worker-src blob: 'self'; manifest-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src blob: data:">
 <meta name="referrer" content="no-referrer">
-<meta name="build" content="34e7d1f-2026-11-28">
+<meta name="build" content="e79d47e-2026-11-28">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Health Explorer</title>
 <link rel="icon" href="../icons/health-explorer-192.png">
@@ -4888,7 +4888,15 @@ const CSS = `
 .ag .tiles .tile .v{font-size:34px}
 .ag .tiles .tile .t-h{font-size:14px}
 .ag-chart{min-height:120px}
-.ag .chart .c-h span:last-child{text-transform:none;letter-spacing:0;font-weight:500;color:var(--label-3)}
+/* chart header: title + subtitle left, the bar-span selector (Day/Week/Month/Year) right, inside the chart card */
+.ag .chart .c-h.ag-ch{align-items:flex-start;flex-wrap:wrap;gap:8px 14px;padding-bottom:10px}
+.ag-ct{display:flex;flex-direction:column;gap:3px;min-width:0;padding-top:4px}
+.ag-per{display:flex;align-items:center;gap:8px;margin-left:auto;text-transform:none;letter-spacing:0}
+.ag-per-l{font-size:12px;font-weight:600;color:var(--label-2);white-space:nowrap}
+.ag-per .seg{margin:0;width:280px;max-width:100%}
+.ag-per .seg button{font-size:13px;padding-top:5px;padding-bottom:5px}
+@media (max-width:700px){.ag-per{margin-left:0;flex:1 1 100%}.ag-per .seg{flex:1 1 auto;width:auto}}
+.ag .chart .c-h .ag-ct span:last-child{text-transform:none;letter-spacing:0;font-weight:500;color:var(--label-3)}
 .ag-zoom{display:flex;align-items:center;gap:8px;margin-top:8px}
 .ag-zoom .btn{padding:4px 0;width:34px;font-size:17px;font-weight:600;line-height:1}
 .ag-zoom .btn.wide{width:auto;padding:4px 12px;font-size:13px}
@@ -4966,12 +4974,13 @@ function mount(root, ctx) {
   const el = document.createElement("div");
   el.className = "ag";
   el.innerHTML =
-    '<div class="ag-ctl"><div class="seg" data-ag="period"></div><div class="seg" data-ag="mode"></div></div>' +
+    '<div class="ag-ctl"><div class="seg" data-ag="mode"></div></div>' +
     '<div class="chips scroll" data-ag="metrics" role="group" aria-label="Metric"></div>' +
     '<div class="ag-row"><div class="chips" data-ag="opts"></div><div class="ag-sel" data-ag="sel" hidden></div></div>' +
     '<div data-ag="empty" hidden></div>' +
     '<div class="tiles auto" data-ag="tiles"></div>' +
-    '<div class="chart glass" data-ag="chart"><div class="c-h"><span data-ag="ct"></span><span data-ag="cs"></span></div><div class="ag-chart" data-ag="cbody"></div>' +
+    '<div class="chart glass" data-ag="chart"><div class="c-h ag-ch"><div class="ag-ct"><span data-ag="ct"></span><span data-ag="cs"></span></div>' +
+    '<div class="ag-per"><span class="ag-per-l" data-ag="perl" id="ag-per-l">Each bar</span><div class="seg" data-ag="period"></div></div></div><div class="ag-chart" data-ag="cbody"></div>' +
     '<div class="ag-zoom" data-ag="zoom"><button type="button" class="btn ghost" data-z="out" aria-label="Zoom out" title="Zoom out (−)">−</button>' +
     '<input type="range" min="0" max="0" step="1" value="0" data-z="pos" aria-label="Scroll along the time axis">' +
     '<button type="button" class="btn ghost" data-z="in" aria-label="Zoom in" title="Zoom in (+)">+</button>' +
@@ -4980,7 +4989,7 @@ function mount(root, ctx) {
   root.appendChild(el);
   const $ = (n) => el.querySelector(`[data-ag="${n}"]`);
 
-  const segPeriod = ui.segmented($("period"), PERIODS, state.get().agg.period, (v) => setAgg({ period: v }), { label: "Period" });
+  const segPeriod = ui.segmented($("period"), PERIODS, state.get().agg.period, (v) => setAgg({ period: v }), { label: "Time span of each bar or point" });
   const segMode = ui.segmented($("mode"), MODES, state.get().agg.mode, (v) => setAgg({ mode: v }), { label: "Aggregation" });
   if (ui.edgeFade) ui.edgeFade($("metrics"));
   const chipEls = {};
@@ -5185,6 +5194,7 @@ function mount(root, ctx) {
         return { key: b.key, label: b.label, parts, note: b.n ? `${b.n} workout${b.n === 1 ? "" : "s"}` : "" };
       });
       kind = "bars";
+      $("perl").textContent = "Each bar";
       opts = { ...common, buckets: bb, onClick: toggleBucket, selected: selectedKey };
     } else {
       const xf = (i) => { const b = buckets[Math.max(0, Math.min(buckets.length - 1, Math.round(i)))]; return b ? b.label : ""; };
@@ -5200,6 +5210,7 @@ function mount(root, ctx) {
       } else series = [{ name: def.label, color, points: buckets.map((b, i) => [i, has(b.value) ? conv(key, b.value, units) : null]) }];
       const zero = def.kind === "additive" || def.kind === "count";
       kind = "line";
+      $("perl").textContent = "Each point";
       opts = { ...common, y: { ...common.y, ...(zero ? { min: 0 } : {}) }, series, x: { fmt: xf, integer: true, min: 0, max: Math.max(1, buckets.length - 1) },
         selected: selectedKey ? buckets.findIndex((b) => b.key === selectedKey) : null,
         onPoint: (p) => { const b = buckets[Math.round(p.x)]; if (b) toggleBucket(b.key); } };
