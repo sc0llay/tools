@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; worker-src blob: 'self'; manifest-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src blob: data:">
 <meta name="referrer" content="no-referrer">
-<meta name="build" content="3ea2beb-2026-11-28">
+<meta name="build" content="97709aa-2026-11-28">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Health Explorer</title>
 <link rel="icon" href="../icons/health-explorer-192.png">
@@ -2263,9 +2263,13 @@ function mount(root, ctx) {
     return h + "</tr>";
   }
 
+  // Inside the Workouts split (desktop) the table is its own scroller; otherwise the page scrolls.
+  function scroller() { return wrap.closest(".wk-list") && getComputedStyle(wrap).overflowY === "auto" ? wrap : null; }
+
   function range(n) {
-    const top = wrap.getBoundingClientRect().top + headH;
-    const vh = window.innerHeight || 800;
+    const sc = scroller();
+    const top = sc ? headH - sc.scrollTop : wrap.getBoundingClientRect().top + headH;
+    const vh = sc ? sc.clientHeight : window.innerHeight || 800;
     let first = Math.floor(-top / rowH) - OVER;
     let last = Math.ceil((vh - top) / rowH) + OVER;
     first = clamp(first, 0, n);
@@ -2349,9 +2353,13 @@ function mount(root, ctx) {
       idxById = new Map(sorted.map((r, i) => [r.id, i]));
       if (cursorId !== null && !idxById.has(cursorId)) cursorId = null;
       if (resort) {
-        const top = wrap.getBoundingClientRect().top;
-        const stack = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stack-h")) || 0;
-        if (top < stack) window.scrollBy(0, top - stack);
+        const sc = scroller();
+        if (sc) sc.scrollTop = 0;
+        else {
+          const top = wrap.getBoundingClientRect().top;
+          const stack = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stack-h")) || 0;
+          if (top < stack) window.scrollBy(0, top - stack);
+        }
       }
     }
     mobile = mq.matches;
@@ -2482,7 +2490,7 @@ function mount(root, ctx) {
     const i = idxById.get(id);
     if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Home" || e.key === "End" || e.key === "PageDown" || e.key === "PageUp") {
       e.preventDefault();
-      const page = Math.max(1, Math.floor((window.innerHeight || 800) / rowH) - 2);
+      const page = Math.max(1, Math.floor(((scroller() || {}).clientHeight || window.innerHeight || 800) / rowH) - 2);
       const j = clamp(e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? sorted.length - 1 : e.key === "PageDown" ? i + page : i - page, 0, sorted.length - 1);
       moveTo(j);
     } else if (e.key === "Enter") { e.preventDefault(); openDetail(id); }
@@ -2492,11 +2500,18 @@ function mount(root, ctx) {
   function moveTo(j) {
     if (j < 0 || j >= sorted.length) return;
     cursorId = sorted[j].id;
-    const stack = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stack-h")) || 0) + headH;
-    const rowTop = wrap.getBoundingClientRect().top + headH + j * rowH;
-    const vh = window.innerHeight || 800;
-    if (rowTop < stack) window.scrollBy(0, rowTop - stack - 4);
-    else if (rowTop + rowH > vh) window.scrollBy(0, rowTop + rowH - vh + 8);
+    const sc = scroller();
+    if (sc) {
+      const rowTop = headH + j * rowH;
+      if (rowTop < sc.scrollTop + headH) sc.scrollTop = rowTop - headH - 4;
+      else if (rowTop + rowH > sc.scrollTop + sc.clientHeight) sc.scrollTop = rowTop + rowH - sc.clientHeight + 8;
+    } else {
+      const stack = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stack-h")) || 0) + headH;
+      const rowTop = wrap.getBoundingClientRect().top + headH + j * rowH;
+      const vh = window.innerHeight || 800;
+      if (rowTop < stack) window.scrollBy(0, rowTop - stack - 4);
+      else if (rowTop + rowH > vh) window.scrollBy(0, rowTop + rowH - vh + 8);
+    }
     dirty = true;
     render(true);
     focusRow(cursorId);
@@ -2510,6 +2525,7 @@ function mount(root, ctx) {
   const onScroll = () => schedule();
   const onResize = () => { colsSig = ""; refresh(); };
   window.addEventListener("scroll", onScroll, { passive: true });
+  wrap.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", onResize);
   let ro = null;
   if (typeof ResizeObserver !== "undefined") {
@@ -2527,52 +2543,11 @@ function mount(root, ctx) {
 
   return {
     update() { colsSig = ""; srcRef = null; refresh(); },
-    destroy() { unsub(); colsPop.destroy(); window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onResize); if (ro) ro.disconnect(); root.textContent = ""; },
+    destroy() { unsub(); colsPop.destroy(); window.removeEventListener("scroll", onScroll); wrap.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onResize); if (ro) ro.disconnect(); root.textContent = ""; },
   };
 }
 
 return { DEFAULT_COLUMNS, MAX_COMPARE, COLUMN_KEYS, toCsv, mount };
-})();
-// ---- ui/glyphs.js
-__m["ui/glyphs.js"] = (function () {
-// Original line-art workout glyphs, shared by the workout detail header and the Averages bucket table.
-const { typeLabel } = __m["ui/filters.js"];
-const { esc, inject } = __m["ui/util.js"];
-const ICONS = {
-  Running: '<circle cx="15" cy="4.5" r="2"/><path d="M13.5 8.5l-2.5 5 3.5 2.5 1 5M11 13.5l-3.5 1M13.5 8.5l3.5 2.5 3 .5M11 13.5l-2 6"/>',
-  Walking: '<circle cx="13" cy="4.5" r="2"/><path d="M13 8.5l-1 5.5M12 14l-3 7M12 14l1.5 3 .5 4M13 8.5l-3.5 2.5M13 8.5l3 3"/>',
-  Hiking: '<circle cx="12" cy="4.5" r="2"/><path d="M12 8.5l-.5 6M11.5 14.5l-3 6.5M11.5 14.5l2 3 .5 3.5M12 8.5l-3 3M12 8.5l4 2.5V21"/>',
-  Cycling: '<circle cx="6" cy="16" r="3.8"/><circle cx="18" cy="16" r="3.8"/><path d="M6 16l4-7h5l3 7M10 9l2.5 7M9 6.5h2.5"/>',
-  Strength: '<path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>',
-  Swimming: '<circle cx="16.5" cy="6" r="1.8"/><path d="M4 18c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0M5 13l5-3 3 2 3-2"/>',
-  Yoga: '<circle cx="12" cy="5" r="2"/><path d="M12 8v5M7 9.5l5 3.5 5-3.5M8 20l4-7 4 7"/>',
-  Other: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
-};
-/** type → [iconKey, toneCssColor] */
-function glyphFor(type) {
-  const t = String(type);
-  if (/Run/.test(t)) return ["Running", "var(--o2)"];
-  if (/Walk/.test(t)) return ["Walking", "var(--green)"];
-  if (/Hik/.test(t)) return ["Hiking", "var(--green)"];
-  if (/Cycl/.test(t)) return ["Cycling", "var(--blue)"];
-  if (/Strength|Weight|Training|HIIT|Cross/.test(t)) return ["Strength", "var(--kcal)"];
-  if (/Swim|Water/.test(t)) return ["Swimming", "var(--blue)"];
-  if (/Yoga|MindAndBody|Pilates|Flex/.test(t)) return ["Yoga", "var(--teal)"];
-  return ["Other", "var(--o2)"];
-}
-
-const CSS = `
-.gl{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;color:#fff;vertical-align:middle;background:linear-gradient(145deg,var(--tone,var(--o2)),color-mix(in srgb,var(--tone,var(--o2)) 60%,#000));box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 5px color-mix(in srgb,var(--tone,var(--o2)) 30%,transparent)}
-.gl svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-`;
-/** HTML for a small round type badge (gradient circle, white glyph); title / aria-label = the type label. */
-function glyphBadge(type) {
-  inject("he-glyphs-css", CSS);
-  const [gk, tone] = glyphFor(type), lab = esc(typeLabel(type));
-  return `<span class="gl" style="--tone:${tone}" role="img" aria-label="${lab}" title="${lab}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[gk]}</svg></span>`;
-}
-
-return { ICONS, glyphFor, glyphBadge };
 })();
 // ---- core/stats.js
 __m["core/stats.js"] = (function () {
@@ -2636,6 +2611,233 @@ function linreg(xs, ys) {
 }
 
 return { mean, quantile, median, sd, rollingMedian, histogram, linreg };
+})();
+// ---- core/wk-stats.js
+__m["core/wk-stats.js"] = (function () {
+// Data helpers for the Workouts tab chart tile (ui/workout-viz.js). Pure and DOM-free; every function takes the
+// rows the list shows (ctx.data.filtered()) and returns plain data. Missing values are skipped, never counted as 0.
+const { median, quantile, histogram } = __m["core/stats.js"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const num = (v) => v !== null && v !== undefined && v === v && v !== Infinity && v !== -Infinity;
+
+/** Pseudo type key of the merged "Other" slice / stack segment. */
+const OTHER = "__other";
+/** Types below this share of the total are grouped into Other. */
+const MIN_SHARE = 0.03;
+const MIX_METRICS = ["kcal", "time", "dist", "count"];
+const MIX_VALUE = { kcal: (r) => r.activeKcal, time: (r) => r.durMin, dist: (r) => r.distKm, count: () => 1 };
+
+/** Value a row contributes to the type mix for `metric` ("kcal" | "time" | "dist" | "count"); 0 when missing or not positive. */
+function mixValue(r, metric) {
+  const v = (MIX_VALUE[metric] || MIX_VALUE.kcal)(r);
+  return num(v) && v > 0 ? v : 0;
+}
+
+/** Group types under `minShare` of the total into one Other item (only when two or more qualify; a lone small type keeps its own slice). */
+function groupSmall(items, total, minShare) {
+  const small = items.filter((it) => it.value / total < minShare);
+  if (small.length < 2) return items;
+  const keep = items.filter((it) => it.value / total >= minShare);
+  const value = small.reduce((a, it) => a + it.value, 0);
+  keep.push({ type: OTHER, types: small.map((it) => it.type), value, n: small.reduce((a, it) => a + it.n, 0), other: true });
+  return keep;
+}
+
+/**
+ * Each workout type's share of `metric`.
+ * → {metric, total, n /* rows that contributed *\/, items:[{type, types:[type…], value, share, n, other?}]} sorted by value desc, Other last.
+ */
+function typeMix(rows, metric = "kcal", minShare = MIN_SHARE) {
+  const by = new Map();
+  let total = 0, n = 0;
+  for (const r of rows) {
+    const v = mixValue(r, metric);
+    if (!(v > 0)) continue;
+    let it = by.get(r.type);
+    if (!it) by.set(r.type, (it = { type: r.type, types: [r.type], value: 0, n: 0 }));
+    it.value += v; it.n++; total += v; n++;
+  }
+  if (!(total > 0)) return { metric, total: 0, n: 0, items: [] };
+  let items = [...by.values()].sort((a, b) => b.value - a.value || (a.type < b.type ? -1 : 1));
+  items = groupSmall(items, total, minShare);
+  items.sort((a, b) => (a.other ? 1 : 0) - (b.other ? 1 : 0) || b.value - a.value);
+  for (const it of items) it.share = it.value / total;
+  return { metric, total, n, items };
+}
+
+/** Types ranked by workout count over `rows` (desc, ties by name) → Map(type → rank). Used for stable colours across filters. */
+function typeRank(rows) {
+  const c = new Map();
+  for (const r of rows) c.set(r.type, (c.get(r.type) || 0) + 1);
+  const order = [...c.keys()].sort((a, b) => c.get(b) - c.get(a) || (a < b ? -1 : 1));
+  return new Map(order.map((t, i) => [t, i]));
+}
+
+const dayMs = (day) => { const [y, m, d] = day.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+const dayStr = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** "YYYY-MM-DD" → the Monday of its ISO week, "YYYY-MM-DD". */
+function weekStart(day) {
+  const ms = dayMs(day);
+  const wd = (new Date(ms).getUTCDay() + 6) % 7;
+  return dayStr(ms - wd * 86400000);
+}
+
+/**
+ * Stacked active kcal per ISO week for the last `weeks` weeks, ending with the week of the latest workout.
+ * Types are ranked by their kcal in the window; those under `minShare` (and everything past `maxTypes`) are grouped into Other.
+ * → {weeks:[{key, start, label, total, parts:[{type, value}]}], types:[type|OTHER…], total}   (weeks is [] without rows)
+ */
+function weeklyStacks(rows, weeks = 12, minShare = MIN_SHARE, maxTypes = 7) {
+  let last = "";
+  for (const r of rows) if (r.localDay && r.localDay > last) last = r.localDay;
+  if (!last) return { weeks: [], types: [], total: 0 };
+  const endMs = dayMs(weekStart(last));
+  const first = endMs - (weeks - 1) * 7 * 86400000;
+  const cells = [];
+  for (let i = 0; i < weeks; i++) cells.push(new Map());
+  const typeTot = new Map();
+  let total = 0;
+  for (const r of rows) {
+    if (!r.localDay || !num(r.activeKcal) || !(r.activeKcal > 0)) continue;
+    const i = Math.round((dayMs(weekStart(r.localDay)) - first) / (7 * 86400000));
+    if (i < 0 || i >= weeks) continue;
+    cells[i].set(r.type, (cells[i].get(r.type) || 0) + r.activeKcal);
+    typeTot.set(r.type, (typeTot.get(r.type) || 0) + r.activeKcal);
+    total += r.activeKcal;
+  }
+  const ranked = [...typeTot.keys()].sort((a, b) => typeTot.get(b) - typeTot.get(a) || (a < b ? -1 : 1));
+  const keep = new Set(ranked.filter((t, i) => i < maxTypes && typeTot.get(t) / total >= minShare));
+  // a lone grouped type keeps its own colour (nothing to merge it with)
+  const grouped = ranked.filter((t) => !keep.has(t));
+  if (grouped.length === 1) keep.add(grouped[0]);
+  const hasOther = ranked.some((t) => !keep.has(t));
+  const types = ranked.filter((t) => keep.has(t));
+  if (hasOther) types.push(OTHER);
+  const out = [];
+  for (let i = 0; i < weeks; i++) {
+    const ms = first + i * 7 * 86400000, d = new Date(ms);
+    const parts = [];
+    let sum = 0, oth = 0;
+    for (const t of types) {
+      if (t === OTHER) continue;
+      const v = cells[i].get(t);
+      if (v) { parts.push({ type: t, value: v }); sum += v; }
+    }
+    for (const [t, v] of cells[i]) if (!keep.has(t)) { oth += v; sum += v; }
+    if (oth) parts.push({ type: OTHER, value: oth });
+    out.push({ key: dayStr(ms), start: dayStr(ms), label: `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`, total: sum, parts });
+  }
+  return { weeks: out, types, total };
+}
+
+/**
+ * Workout count by weekday (Mon = 0 … Sun = 6) × time-of-day block, on each workout's own local start time (start + tzOffset).
+ * → {grid:number[7][24/block], max, total, block, cols}
+ */
+function weekdayTime(rows, block = 3) {
+  const cols = Math.ceil(24 / block);
+  const grid = [];
+  for (let d = 0; d < 7; d++) grid.push(new Array(cols).fill(0));
+  let max = 0, total = 0;
+  for (const r of rows) {
+    if (!num(r.start)) continue;
+    const t = new Date(r.start + (num(r.tzOffset) ? r.tzOffset : 0) * 60000);
+    const wd = (t.getUTCDay() + 6) % 7;
+    const c = Math.min(cols - 1, Math.floor(t.getUTCHours() / block));
+    const v = ++grid[wd][c];
+    if (v > max) max = v;
+    total++;
+  }
+  return { grid, max, total, block, cols };
+}
+
+const WIDTHS = [1, 2, 5, 10, 15, 20, 30, 60, 120];
+/** Smallest friendly bin width (minutes) that spans 0..max in at most `maxBins` bins. */
+function pickBinWidth(max, maxBins = 24) {
+  for (const w of WIDTHS) if (max / w <= maxBins) return w;
+  return WIDTHS[WIDTHS.length - 1];
+}
+
+/**
+ * Duration histogram. The bin width follows the 98th percentile so one marathon doesn't squash everything; `axisMax` is where the
+ * chart axis should stop (bins beyond it are cut, `hidden` counts those workouts).
+ * → {bins:[{x0,x1,n}], median, n, width, axisMax, hidden}
+ */
+function durationHist(rows) {
+  const v = [];
+  for (const r of rows) if (num(r.durMin) && r.durMin > 0) v.push(r.durMin);
+  if (!v.length) return { bins: [], median: null, n: 0, width: 0, axisMax: 0, hidden: 0 };
+  const width = pickBinWidth(quantile(v, 0.98));
+  const bins = histogram(v, width);
+  const q = quantile(v, 0.98);
+  const axisMax = Math.min(bins[bins.length - 1].x1, (Math.floor(q / width) + 1) * width);
+  let hidden = 0;
+  for (const b of bins) if (b.x0 >= axisMax) hidden += b.n;
+  return { bins, median: median(v), n: v.length, width, axisMax, hidden };
+}
+
+/** Shortest distance (km) that counts for the fastest-pace record. */
+const PB_MIN_KM = 1;
+const better = (a, b, key, dir) => {
+  // true when row a beats row b on key (dir 1 = higher, -1 = lower); ties go to the earlier workout
+  if (a[key] === b[key]) return a.start < b.start;
+  return dir > 0 ? a[key] > b[key] : a[key] < b[key];
+};
+function best(rows, key, dir, pred) {
+  let b = null;
+  for (const r of rows) {
+    if (!num(r[key]) || (pred && !pred(r))) continue;
+    if (!b || better(r, b, key, dir)) b = r;
+  }
+  return b;
+}
+
+/**
+ * Records among `rows`: longest duration, longest distance, most active kcal, fastest pace and highest average HR.
+ * Pace is only comparable within one kind of workout, so it considers rows of one type with ≥ PB_MIN_KM and a pace:
+ * Running when any run qualifies, otherwise the type with the most qualifying workouts.
+ * → {duration, distance, kcal, pace, hr: row|null, paceType: string|null}
+ */
+function personalBests(rows) {
+  const okPace = (r) => num(r.distKm) && r.distKm >= PB_MIN_KM && num(r.paceMinKm) && r.paceMinKm > 0;
+  const cnt = new Map();
+  for (const r of rows) if (okPace(r)) cnt.set(r.type, (cnt.get(r.type) || 0) + 1);
+  let paceType = null;
+  if (cnt.has("Running")) paceType = "Running";
+  else for (const [t, c] of cnt) if (paceType === null || c > cnt.get(paceType)) paceType = t;
+  return {
+    duration: best(rows, "durMin", 1, (r) => r.durMin > 0),
+    distance: best(rows, "distKm", 1, (r) => r.distKm > 0),
+    kcal: best(rows, "activeKcal", 1, (r) => r.activeKcal > 0),
+    pace: paceType === null ? null : best(rows, "paceMinKm", -1, (r) => r.type === paceType && okPace(r)),
+    hr: best(rows, "avgHr", 1, (r) => r.avgHr > 0),
+    paceType,
+  };
+}
+
+/**
+ * Total time in each heart-rate zone across the workouts that recorded zones (row.ext.zones, low to high).
+ * → {zones:[{n, sec, pct}], total /* seconds *\/, workouts /* with zone data *\/, of /* rows considered *\/}
+ */
+function zoneTotals(rows) {
+  const sums = [];
+  let workouts = 0;
+  for (const r of rows) {
+    const z = r.ext && r.ext.zones;
+    if (!Array.isArray(z) || !z.length) continue;
+    let any = false;
+    z.forEach((zz, i) => {
+      const s = zz && zz.sec;
+      if (num(s) && s > 0) { sums[i] = (sums[i] || 0) + s; any = true; }
+    });
+    if (any) workouts++;
+  }
+  let total = 0;
+  for (let i = 0; i < sums.length; i++) { sums[i] = sums[i] || 0; total += sums[i]; }
+  return { zones: sums.map((sec, i) => ({ n: i + 1, sec, pct: total ? (sec / total) * 100 : 0 })), total, workouts, of: rows.length };
+}
+
+return { OTHER, MIN_SHARE, MIX_METRICS, mixValue, typeMix, typeRank, weekStart, weeklyStacks, weekdayTime, pickBinWidth, durationHist, PB_MIN_KM, personalBests, zoneTotals };
 })();
 // ---- ui/charts.js
 __m["ui/charts.js"] = (function () {
@@ -3395,6 +3597,810 @@ function route(host, tracks) {
 
 return { SERIES_COLORS, niceTicks, axisScale, outlierSplit, line, bars, scatter, histogram, route };
 })();
+// ---- ui/glyphs.js
+__m["ui/glyphs.js"] = (function () {
+// Original line-art workout glyphs, shared by the workout detail header and the Averages bucket table.
+const { typeLabel } = __m["ui/filters.js"];
+const { esc, inject } = __m["ui/util.js"];
+const ICONS = {
+  Running: '<circle cx="15" cy="4.5" r="2"/><path d="M13.5 8.5l-2.5 5 3.5 2.5 1 5M11 13.5l-3.5 1M13.5 8.5l3.5 2.5 3 .5M11 13.5l-2 6"/>',
+  Walking: '<circle cx="13" cy="4.5" r="2"/><path d="M13 8.5l-1 5.5M12 14l-3 7M12 14l1.5 3 .5 4M13 8.5l-3.5 2.5M13 8.5l3 3"/>',
+  Hiking: '<circle cx="12" cy="4.5" r="2"/><path d="M12 8.5l-.5 6M11.5 14.5l-3 6.5M11.5 14.5l2 3 .5 3.5M12 8.5l-3 3M12 8.5l4 2.5V21"/>',
+  Cycling: '<circle cx="6" cy="16" r="3.8"/><circle cx="18" cy="16" r="3.8"/><path d="M6 16l4-7h5l3 7M10 9l2.5 7M9 6.5h2.5"/>',
+  Strength: '<path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>',
+  Swimming: '<circle cx="16.5" cy="6" r="1.8"/><path d="M4 18c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 4.5 0M5 13l5-3 3 2 3-2"/>',
+  Yoga: '<circle cx="12" cy="5" r="2"/><path d="M12 8v5M7 9.5l5 3.5 5-3.5M8 20l4-7 4 7"/>',
+  Other: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
+};
+/** type → [iconKey, toneCssColor] */
+function glyphFor(type) {
+  const t = String(type);
+  if (/Run/.test(t)) return ["Running", "var(--o2)"];
+  if (/Walk/.test(t)) return ["Walking", "var(--green)"];
+  if (/Hik/.test(t)) return ["Hiking", "var(--green)"];
+  if (/Cycl/.test(t)) return ["Cycling", "var(--blue)"];
+  if (/Strength|Weight|Training|HIIT|Cross/.test(t)) return ["Strength", "var(--kcal)"];
+  if (/Swim|Water/.test(t)) return ["Swimming", "var(--blue)"];
+  if (/Yoga|MindAndBody|Pilates|Flex/.test(t)) return ["Yoga", "var(--teal)"];
+  return ["Other", "var(--o2)"];
+}
+
+const CSS = `
+.gl{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;color:#fff;vertical-align:middle;background:linear-gradient(145deg,var(--tone,var(--o2)),color-mix(in srgb,var(--tone,var(--o2)) 60%,#000));box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 5px color-mix(in srgb,var(--tone,var(--o2)) 30%,transparent)}
+.gl svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+`;
+/** HTML for a small round type badge (gradient circle, white glyph); title / aria-label = the type label. */
+function glyphBadge(type) {
+  inject("he-glyphs-css", CSS);
+  const [gk, tone] = glyphFor(type), lab = esc(typeLabel(type));
+  return `<span class="gl" style="--tone:${tone}" role="img" aria-label="${lab}" title="${lab}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[gk]}</svg></span>`;
+}
+
+return { ICONS, glyphFor, glyphBadge };
+})();
+// ---- ui/workout-charts.js
+__m["ui/workout-charts.js"] = (function () {
+// Derived workout data for the detail page (Agent G): track metrics from a GPX, pace colours, splits, HR zones.
+// Pure functions, no DOM.
+
+const RAD = Math.PI / 180;
+const finite = (v) => typeof v === "number" && isFinite(v);
+
+function haversineM(la1, lo1, la2, lo2) {
+  const dla = (la2 - la1) * RAD, dlo = (lo2 - lo1) * RAD;
+  const a = Math.sin(dla / 2) ** 2 + Math.cos(la1 * RAD) * Math.cos(la2 * RAD) * Math.sin(dlo / 2) ** 2;
+  return 12742000 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Cumulative distance, smoothed speed (m/s, ±windowSec) and smoothed elevation of a GPX track.
+ * Points without finite lat/lon are dropped. `t` (ms) is optional: without it speed is null.
+ * → {n, lat, lon, cum: Float64Array km, t: Float64Array|null ms, ele: Float64Array|null m (smoothed), speed: Float64Array|null, totalKm, durSec}
+ */
+function trackMetrics(gpx, windowSec = 10) {
+  if (!gpx || !gpx.lat || !gpx.lon) return null;
+  const idx = [];
+  for (let i = 0; i < gpx.lat.length; i++) if (finite(gpx.lat[i]) && finite(gpx.lon[i])) idx.push(i);
+  const n = idx.length;
+  if (n < 2) return null;
+  const lat = new Float64Array(n), lon = new Float64Array(n), cum = new Float64Array(n);
+  const hasT = !!gpx.t && gpx.t.length >= gpx.lat.length && finite(gpx.t[idx[0]]) && finite(gpx.t[idx[n - 1]]);
+  const hasE = !!gpx.ele && gpx.ele.length >= gpx.lat.length;
+  const t = hasT ? new Float64Array(n) : null;
+  const rawE = hasE ? new Float64Array(n) : null;
+  for (let k = 0; k < n; k++) {
+    const i = idx[k];
+    lat[k] = gpx.lat[i]; lon[k] = gpx.lon[i];
+    if (k) cum[k] = cum[k - 1] + haversineM(lat[k - 1], lon[k - 1], lat[k], lon[k]) / 1000;
+    if (t) t[k] = gpx.t[i];
+    if (rawE) rawE[k] = finite(gpx.ele[i]) ? gpx.ele[i] : k ? rawE[k - 1] : 0;
+  }
+  let speed = null;
+  if (t) {
+    speed = new Float64Array(n);
+    const w = windowSec * 1000;
+    let j0 = 0, j1 = 0;
+    for (let k = 0; k < n; k++) {
+      while (j0 < k && t[k] - t[j0] > w) j0++;
+      if (j1 < k) j1 = k;
+      while (j1 < n - 1 && t[j1 + 1] - t[k] <= w) j1++;
+      const dt = (t[j1] - t[j0]) / 1000;
+      speed[k] = dt > 0 ? ((cum[j1] - cum[j0]) * 1000) / dt : 0;
+    }
+  }
+  let ele = null;
+  if (rawE) {
+    ele = new Float64Array(n);
+    const half = Math.max(2, Math.round(n / 150));
+    for (let k = 0; k < n; k++) {
+      let s = 0, c = 0;
+      for (let j = Math.max(0, k - half); j <= Math.min(n - 1, k + half); j++) { s += rawE[j]; c++; }
+      ele[k] = s / c;
+    }
+  }
+  return { n, lat, lon, cum, t, ele, speed, totalKm: cum[n - 1], durSec: t ? (t[n - 1] - t[0]) / 1000 : null };
+}
+
+const quantile = (a, q) => {
+  const s = Array.from(a).sort((x, y) => x - y);
+  return s.length ? s[Math.min(s.length - 1, Math.floor(q * (s.length - 1)))] : 0;
+};
+
+/** HSL colour for u in [0,1]: 0 = slow (red) -> 0.5 yellow -> 1 = fast (green). */
+function paceColor(u) {
+  const c = Math.max(0, Math.min(1, u));
+  return `hsl(${Math.round(c * 125)} 85% ${c > 0.3 && c < 0.6 ? 46 : 44}%)`;
+}
+
+/** One CSS colour per segment (length n-1) from the smoothed speed, slow = red, fast = green; null without times. */
+function paceColors(m) {
+  if (!m || !m.speed) return null;
+  const s = m.speed;
+  const live = [];
+  for (let i = 0; i < s.length; i++) if (s[i] > 0.3) live.push(s[i]);
+  const lo = quantile(live.length ? live : s, 0.08), hi = quantile(live.length ? live : s, 0.92);
+  const span = hi - lo > 1e-6 ? hi - lo : 1;
+  const out = new Array(m.n - 1);
+  for (let i = 0; i < m.n - 1; i++) out[i] = paceColor((((s[i] + s[i + 1]) / 2) - lo) / span);
+  return out;
+}
+
+/** Elevation gain (m) between track indices i0..i1 of the smoothed elevation. */
+function elevGain(m, i0 = 0, i1 = m.n - 1) {
+  if (!m.ele) return null;
+  let g = 0;
+  for (let i = i0 + 1; i <= i1; i++) { const d = m.ele[i] - m.ele[i - 1]; if (d > 0) g += d; }
+  return g;
+}
+
+const PAUSE_GAP_MS = 10000, PAUSE_MOVE_KM = 0.003;
+/**
+ * Per-unit splits from a track with times. unitKm = 1 or 1.609344.
+ * → [{n, km (distance of this split), sec, paceMinKm, gain (m)|null, t0, t1 (ms), partial, moving}]; sec / pace use moving time (pauses removed), elapsedSec is wall-clock (a trailing split under 5% of a unit is dropped).
+ */
+function splitsFromTrack(m, unitKm = 1) {
+  if (!m || !m.t) return [];
+  const out = [];
+  let k = 0;
+  // Moving clock: a gap of more than 10 s between fixes with ~no movement (3 m) is a pause and adds no time.
+  const mv = new Float64Array(m.n);
+  for (let i = 1; i < m.n; i++) {
+    const dt = m.t[i] - m.t[i - 1], dd = m.cum[i] - m.cum[i - 1];
+    mv[i] = mv[i - 1] + (dt > PAUSE_GAP_MS && dd < PAUSE_MOVE_KM ? 0 : dt);
+  }
+  let prevT = m.t[0], prevM = 0, prevI = 0, next = unitKm;
+  const frac = (d, i) => { const d0 = m.cum[i - 1], d1 = m.cum[i]; return d1 > d0 ? (d - d0) / (d1 - d0) : 1; };
+  const timeAt = (d, i) => m.t[i - 1] + frac(d, i) * (m.t[i] - m.t[i - 1]); // wall-clock ms at cumulative distance d
+  const movAt = (d, i) => mv[i - 1] + frac(d, i) * (mv[i] - mv[i - 1]); // moving ms at cumulative distance d
+  for (let i = 1; i < m.n; i++) {
+    while (m.cum[i] >= next - 1e-9 && next <= m.totalKm + 1e-9) {
+      const tt = timeAt(next, i), mm = movAt(next, i);
+      const km = unitKm;
+      out.push({ n: ++k, km, sec: (mm - prevM) / 1000, elapsedSec: (tt - prevT) / 1000, paceMinKm: (mm - prevM) / 60000 / km, gain: elevGain(m, prevI, i), t0: prevT, t1: tt, partial: false, moving: true });
+      prevT = tt; prevM = mm; prevI = i; next += unitKm;
+    }
+  }
+  const restKm = m.totalKm - (next - unitKm);
+  if (restKm >= 0.05 * unitKm && restKm > 0.02) {
+    const tt = m.t[m.n - 1], mm = mv[m.n - 1];
+    out.push({ n: ++k, km: restKm, sec: (mm - prevM) / 1000, elapsedSec: (tt - prevT) / 1000, paceMinKm: (mm - prevM) / 60000 / restKm, gain: elevGain(m, prevI, m.n - 1), t0: prevT, t1: tt, partial: true, moving: true });
+  }
+  return out;
+}
+
+/** Splits from Apple's km segment events. Last (short) segment gets the rest of the distance. */
+function splitsFromSegments(segments, distKm) {
+  if (!segments || !segments.length) return [];
+  const out = [];
+  let covered = 0;
+  segments.forEach((s, i) => {
+    const last = i === segments.length - 1;
+    let km = 1;
+    if (last && distKm) { const rest = distKm - covered; km = rest > 0.02 && rest <= 1.02 ? rest : 1; }
+    covered += km;
+    out.push({ n: i + 1, km, sec: s.sec, paceMinKm: s.sec / 60 / km, gain: null, t0: s.t, t1: s.t + s.sec * 1000, partial: km < 0.98 });
+  });
+  return out;
+}
+
+const ZONE_COLORS = ["var(--blue)", "var(--teal)", "var(--green)", "var(--orange)", "var(--red)"];
+
+/** ext.zones -> [{n, label, range, sec, pct, color}] or null when empty / all zero. */
+function zoneModel(zones) {
+  if (!zones || !zones.length) return null;
+  let total = 0;
+  for (const z of zones) total += z.sec || 0;
+  if (!(total > 0)) return null;
+  return zones.map((z, i) => ({
+    n: i + 1, label: "Zone " + (i + 1),
+    range: z.min === null && z.max === null ? "" : z.min === null ? `< ${Math.round(z.max)}` : z.max === null ? `${Math.round(z.min)}+` : `${Math.round(z.min)}–${Math.round(z.max)}`,
+    sec: z.sec || 0, pct: ((z.sec || 0) / total) * 100, color: ZONE_COLORS[Math.min(i, ZONE_COLORS.length - 1)],
+  }));
+}
+
+/** At most `max` evenly spaced indices of 0..n-1 (always includes the last). */
+function strideIdx(n, max) {
+  const step = Math.max(1, Math.ceil(n / max));
+  const out = [];
+  for (let i = 0; i < n; i += step) out.push(i);
+  if (out[out.length - 1] !== n - 1) out.push(n - 1);
+  return out;
+}
+
+/** Mean HR (bpm) of an HR slice {t: seconds since workout start, v} between two absolute ms, given the workout start. */
+function meanHrBetween(hr, startMs, t0, t1) {
+  if (!hr || !hr.t || !hr.t.length) return null;
+  const a = (t0 - startMs) / 1000, b = (t1 - startMs) / 1000;
+  let s = 0, c = 0;
+  for (let i = 0; i < hr.t.length; i++) { if (hr.t[i] >= a && hr.t[i] <= b) { s += hr.v[i]; c++; } }
+  return c ? s / c : null;
+}
+
+return { haversineM, trackMetrics, paceColor, paceColors, elevGain, splitsFromTrack, splitsFromSegments, ZONE_COLORS, zoneModel, strideIdx, meanHrBetween };
+})();
+// ---- ui/workout-viz.js
+__m["ui/workout-viz.js"] = (function () {
+// Workouts tab chart tile: six charts over exactly the rows the list shows (ctx.data.filtered()).
+// mountWorkoutsSplit(host, ctx, mountList) lays the tile above the list; mount(root, ctx) is the tile alone.
+// Desktop (≥900px wide and ≥560px tall): one chart at a time, switched by icon buttons, tile and list share the viewport height.
+// Otherwise: a scroll-snap carousel of all charts with page dots. Pure data lives in core/wk-stats.js.
+const { fmtNum, fmtDur, fmtPace, fmtDate, fmtDist } = __m["core/format.js"];
+const { MI } = __m["core/units.js"];
+const { typeMix, typeRank, weeklyStacks, weekdayTime, durationHist, personalBests, zoneTotals, OTHER, MIX_METRICS } = __m["core/wk-stats.js"];
+const { bars, histogram } = __m["ui/charts.js"];
+const { typeLabel } = __m["ui/filters.js"];
+const { glyphBadge } = __m["ui/glyphs.js"];
+const { ZONE_COLORS } = __m["ui/workout-charts.js"];
+const { esc, inject, clamp } = __m["ui/util.js"];
+const DESKTOP_QUERY = "(min-width:900px) and (min-height:560px)";
+const LS_CHART = "he.wkChart";
+const LS_MIX = "he.wkMix";
+
+const ICON = {
+  mix: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 4v4.8"/>',
+  weekly: '<path d="M4 20h16M6.5 20v-6M11 20V6M15.5 20v-9M20 20v-4" transform="translate(-1 0)"/>',
+  when: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+  duration: '<path d="M3.5 20h17M6 20v-4M10 20V9M14 20v-7M18 20v-3"/><path d="M12 4v3" stroke-dasharray="1.5 2"/>',
+  bests: '<circle cx="12" cy="9" r="5"/><path d="M9.2 13.2L7.5 21l4.5-2.6 4.5 2.6-1.7-7.8"/>',
+  zones: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/>',
+};
+const CHARTS = [
+  { id: "mix", label: "Type mix", icon: ICON.mix },
+  { id: "weekly", label: "Weekly active kcal by type", icon: ICON.weekly },
+  { id: "when", label: "When you work out", icon: ICON.when },
+  { id: "duration", label: "Duration spread", icon: ICON.duration },
+  { id: "bests", label: "Personal bests", icon: ICON.bests },
+  { id: "zones", label: "Heart-rate zone mix", icon: ICON.zones },
+];
+const MIX_LABELS = { kcal: "kcal", time: "Time", dist: "Dist", count: "Count" };
+
+// Distinct, stable colour per workout type (rank by workout count over the whole dataset), shared by the donut and the weekly stacks.
+const TYPE_COLORS = [
+  "var(--blue)", "var(--orange)", "var(--teal)", "var(--red)", "var(--green)", "var(--yellow)",
+  "color-mix(in srgb,var(--blue) 55%,var(--red))", "color-mix(in srgb,var(--teal) 55%,var(--green))",
+  "color-mix(in srgb,var(--orange) 55%,var(--red))", "color-mix(in srgb,var(--blue) 55%,var(--teal))",
+  "color-mix(in srgb,var(--green) 55%,var(--yellow))", "color-mix(in srgb,var(--blue) 60%,var(--label-2))",
+];
+const OTHER_COLOR = "var(--label-3)";
+
+const CSS = `
+.wk-split{display:flex;flex-direction:column;gap:12px}
+.wk-tile{border-radius:22px;padding:12px 14px 10px;height:max(300px,40dvh);display:flex;flex-direction:column;min-height:0;min-width:0}
+.wk-tile > *{position:relative;z-index:1}
+.wk-track{flex:1;min-height:0;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.wk-track::-webkit-scrollbar{display:none}
+.wk-pane{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;display:flex;flex-direction:column;height:100%;box-sizing:border-box;padding:0 2px}
+.wk-ph{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px;margin-bottom:6px}
+.wk-pt{min-width:0;display:flex;flex-direction:column;gap:1px}
+.wk-pt h3{margin:0;font-size:12px;font-weight:600;color:var(--label-2);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-sub{font-size:13px;color:var(--label);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-pc{flex:none}
+.wk-tile .seg{margin:0}
+.wk-metric button{padding:5px 11px;font-size:13px}
+.wk-pb{flex:1;min-height:0;position:relative;overflow:hidden}
+.wk-pane .hx-svg{touch-action:pan-x pan-y}
+.wk-pick{display:none}
+.wk-pick button{display:grid;place-items:center;padding:6px 11px}
+.wk-pick svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.wk-dots{display:flex;justify-content:center;gap:2px;padding-top:2px;flex:none}
+.wk-dots button{width:22px;height:22px;border:0;background:none;padding:0;display:grid;place-items:center;cursor:pointer;border-radius:50%}
+.wk-dots button::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--label-3);transition:background .2s,transform .2s}
+.wk-dots button.on::after{background:var(--label);transform:scale(1.25)}
+.wk-dots button:focus-visible{outline:2px solid var(--blue)}
+.wk-empty{height:100%;display:grid;place-items:center;text-align:center;color:var(--label-2);font-size:15px;padding:0 16px}
+.wk-tt{position:absolute;left:0;top:0;z-index:5;pointer-events:none;border-radius:12px;padding:6px 10px;font-size:12px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--label)}
+.wk-tt[hidden]{display:none}
+.wk-tt b{font-weight:700}
+.wk-tt .t-h{color:var(--label-2);font-size:11px;font-weight:600}
+/* type mix */
+.wk-mix{display:flex;align-items:center;gap:16px;height:100%;min-width:0}
+.wk-donut{position:relative;flex:none}
+.wk-donut svg{display:block;overflow:visible}
+.wk-slice{fill:none;cursor:pointer;transition:stroke-width .15s,opacity .15s}
+.wk-slice:focus-visible{outline:none;stroke:var(--label)}
+.wk-donut.hov .wk-slice:not(:hover):not(:focus-visible){opacity:.45}
+.wk-dc{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border:0;background:none;color:var(--label);font-family:var(--font);padding:0;text-align:center;border-radius:50%}
+.wk-dc b{font-family:var(--round);font-size:22px;font-weight:700;letter-spacing:-.4px;line-height:1.05;font-variant-numeric:tabular-nums}
+.wk-dc small{font-size:11px;color:var(--label-2);font-weight:600}
+.wk-dc:not(:disabled){cursor:pointer}
+.wk-dc:not(:disabled) small::after{content:" · clear";color:var(--blue)}
+.wk-dc:focus-visible{outline:2px solid var(--blue)}
+.wk-leg{flex:1;min-width:0;max-width:440px;max-height:100%;overflow:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:1px 14px;align-content:center}
+.wk-leg.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.wk-lg{display:flex;align-items:center;gap:7px;min-width:0;border:0;background:none;color:var(--label);font:inherit;font-size:13px;padding:3px 6px;margin:0 -6px;border-radius:10px;cursor:pointer;text-align:left}
+.wk-lg:hover{background:var(--fill)}
+.wk-lg:focus-visible{outline:2px solid var(--blue);outline-offset:-1px}
+.wk-lg[aria-pressed=true]{background:color-mix(in srgb,var(--blue) 13%,transparent)}
+.wk-sw{flex:none;width:9px;height:9px;border-radius:50%}
+.wk-lg .gl{width:20px;height:20px}
+.wk-lg .gl svg{width:12px;height:12px}
+.wk-ln{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.wk-lv{flex:none;color:var(--label-2);font-variant-numeric:tabular-nums;font-size:12px}
+/* heatmap */
+.wk-heat{display:grid;grid-template-columns:34px repeat(var(--c),minmax(0,1fr));grid-template-rows:repeat(7,minmax(0,1fr)) auto;gap:3px;height:100%}
+.wk-hl{display:flex;align-items:center;font-size:11px;font-weight:600;color:var(--label-2)}
+.wk-hx{display:flex;justify-content:center;font-size:11px;color:var(--label-2);padding-top:1px;font-variant-numeric:tabular-nums}
+.wk-cell{border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--label);min-height:0;outline:none}
+.wk-cell:focus-visible{box-shadow:0 0 0 2px var(--blue)}
+.wk-cell.hi{color:#fff}
+/* personal bests */
+.wk-pbs{display:flex;flex-direction:column;height:100%;overflow:auto;gap:0}
+.wk-pbr{flex:1 1 0;min-height:36px;display:flex;align-items:center;gap:10px;border:0;background:none;color:var(--label);font:inherit;text-align:left;padding:0 8px;margin:0 -8px;border-radius:12px;cursor:pointer;min-width:0}
+.wk-pbr + .wk-pbr{box-shadow:inset 0 .5px 0 var(--sep)}
+.wk-pbr:hover{background:var(--fill)}
+.wk-pbr:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.wk-pbr:disabled{cursor:default;opacity:.55}
+.wk-pbr:disabled:hover{background:none}
+.wk-pbl{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.wk-pbl span:first-child{font-size:12px;font-weight:600;color:var(--label-2)}
+.wk-pbl span:last-child{font-size:12px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-pbv{flex:none;font-family:var(--round);font-size:19px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+/* zones */
+.wk-zones{display:flex;flex-direction:column;justify-content:center;gap:7px;height:100%}
+.wk-zr{display:grid;grid-template-columns:54px minmax(0,1fr) auto;align-items:center;gap:10px;font-size:13px;outline:none;border-radius:8px}
+.wk-zr:focus-visible{box-shadow:0 0 0 2px var(--blue)}
+.wk-zr > span:first-child{font-weight:600;color:var(--label-2)}
+.wk-zt{height:14px;border-radius:7px;background:var(--fill);overflow:hidden}
+.wk-zt i{display:block;height:100%;border-radius:7px;min-width:2px}
+.wk-zv{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;min-width:118px}
+.wk-zv b{font-weight:700}
+.wk-zv small{color:var(--label-2);font-size:12px;margin-left:4px}
+.wk-zs{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin-bottom:2px}
+.wk-zs i{display:block;min-width:2px}
+@media(max-width:420px){.wk-mix{gap:10px}.wk-zr{grid-template-columns:46px minmax(0,1fr) auto}.wk-zv{min-width:96px}}
+@media(prefers-reduced-motion:reduce){.wk-slice,.wk-dots button::after{transition:none}}
+@media (min-width:900px) and (min-height:560px){
+  .wk-split{height:var(--wk-h,calc(100dvh - var(--stack-h,0px) - 30px));min-height:440px;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:12px}
+  .wk-viz{min-height:0;display:flex;flex-direction:column}
+  .wk-viz > .wk-tile{height:auto;flex:1;min-height:0}
+  .wk-track{overflow:hidden;scroll-snap-type:none}
+  .wk-pane:not(.on){display:none}
+  .wk-pick{display:grid}
+  .wk-dots{display:none}
+  .wk-ph{padding-right:262px}
+  .wk-pick-host{position:absolute;right:14px;top:12px;z-index:2}
+  .wk-list{min-height:0;display:flex;flex-direction:column}
+  .wk-list > div{flex:1;min-height:0;display:flex;flex-direction:column}
+  .wk-split .wk-list .fx-table.table{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+  .wk-split .wk-list .fx-table.table th{top:0}
+  .wk-list .fx-empty{flex:1}
+}
+@media (max-width:899px),(max-height:559px){.wk-ph{min-height:30px;flex-wrap:wrap}.wk-pt{flex:1 1 100%}.wk-pc:empty{display:none}.wk-pc{flex:1 1 100%}.wk-pc .seg{width:100%}}
+`;
+
+const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } };
+
+const fmtHM = (min) => {
+  let h = Math.floor(min / 60), m = Math.round(min - h * 60);
+  if (m === 60) { h++; m = 0; }
+  return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+};
+const axisDur = (v) => (v < 60 ? `${v}m` : v % 60 ? `${Math.floor(v / 60)}h${String(Math.round(v % 60)).padStart(2, "0")}` : `${v / 60}h`);
+const compact = (v) => (v >= 100000 ? fmtNum(v / 1000, 0) + "k" : v >= 10000 ? fmtNum(v / 1000, 1) + "k" : fmtNum(v));
+const pctText = (p) => (p > 0 && p < 1 ? "<1%" : fmtNum(p, p < 10 ? 1 : 0) + "%");
+const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const pad2 = (n) => String(n).padStart(2, "0");
+
+/** The tile alone (charts + switcher). */
+function mount(root, ctx) {
+  inject("wk-viz-css", CSS);
+  const { state } = ctx;
+  const segmented = (ctx.ui && ctx.ui.segmented);
+  const mq = window.matchMedia ? window.matchMedia(DESKTOP_QUERY) : { matches: true, addEventListener() {}, removeEventListener() {} };
+  root.textContent = "";
+
+  const tile = el("section", "wk-tile glass");
+  tile.setAttribute("aria-label", "Workout charts");
+  const pickHost = el("div", "wk-pick-host");
+  const pick = el("div", "wk-pick");
+  pickHost.appendChild(pick);
+  const track = el("div", "wk-track");
+  const dots = el("div", "wk-dots");
+  dots.setAttribute("role", "group");
+  dots.setAttribute("aria-label", "Choose chart");
+  tile.append(pickHost, track, dots);
+  root.appendChild(tile);
+
+  const saved = lsGet(LS_CHART);
+  let active = Math.max(0, CHARTS.findIndex((c) => c.id === saved));
+  let mixMetric = MIX_METRICS.includes(lsGet(LS_MIX)) ? lsGet(LS_MIX) : "kcal";
+  let desk = mq.matches;
+  let raf = 0, destroyed = false;
+  const cache = new WeakMap();
+  let rankFor = null, ranks = null;
+
+  const memo = (rows, key, fn) => {
+    let m = cache.get(rows);
+    if (!m) cache.set(rows, (m = new Map()));
+    if (!m.has(key)) m.set(key, fn());
+    return m.get(key);
+  };
+  // Colours are ranked over the whole dataset so a type keeps its colour whatever the filters.
+  const colorOf = (type) => {
+    if (type === OTHER) return OTHER_COLOR;
+    const all = (ctx.data && ctx.data.rows) || [];
+    if (rankFor !== all) { rankFor = all; ranks = typeRank(all); }
+    const i = ranks.has(type) ? ranks.get(type) : ranks.size;
+    return TYPE_COLORS[i % TYPE_COLORS.length];
+  };
+  const unitsNow = () => state.get().units || "km";
+
+  // ----------------------------------------------------------- panes
+  const panes = CHARTS.map((def, i) => {
+    const p = el("div", "wk-pane");
+    p.dataset.id = def.id;
+    p.setAttribute("role", "group");
+    p.setAttribute("aria-roledescription", "slide");
+    p.setAttribute("aria-label", `${def.label}, ${i + 1} of ${CHARTS.length}`);
+    p.innerHTML = `<div class="wk-ph"><div class="wk-pt"><h3>${esc(def.label)}</h3><span class="wk-sub"></span></div><div class="wk-pc"></div></div><div class="wk-pb"></div>`;
+    const o = { def, el: p, sub: p.querySelector(".wk-sub"), pc: p.querySelector(".wk-pc"), pb: p.querySelector(".wk-pb"), sig: "", charts: [], tip: null };
+    const tt = el("div", "wk-tt glass");
+    tt.hidden = true;
+    o.tt = tt;
+    track.appendChild(p);
+    return o;
+  });
+
+  let mixSeg = null;
+  if (segmented) {
+    mixSeg = segmented(panes[0].pc, MIX_METRICS.map((v) => ({ value: v, label: MIX_LABELS[v] })), mixMetric, (v) => {
+      mixMetric = v; lsSet(LS_MIX, v); panes[0].sig = ""; paint(0);
+    }, { label: "Measure" });
+    panes[0].pc.classList.add("wk-metric");
+  }
+
+  // Desktop chart switcher: an icon-only segmented control (labels live in title / aria-label).
+  let pickSeg = null;
+  if (segmented) {
+    pickSeg = segmented(pick, CHARTS.map((c) => ({ value: c.id, label: c.label })), CHARTS[active].id, (id) => select(CHARTS.findIndex((c) => c.id === id), true), { label: "Chart type" });
+    [...pick.querySelectorAll("button")].forEach((b, i) => {
+      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${CHARTS[i].icon}</svg>`;
+      b.title = CHARTS[i].label;
+      b.setAttribute("aria-label", CHARTS[i].label);
+    });
+  }
+  const dotBtns = CHARTS.map((c, i) => {
+    const b = el("button");
+    b.type = "button"; b.title = c.label;
+    b.setAttribute("aria-label", `${c.label}, ${i + 1} of ${CHARTS.length}`);
+    b.addEventListener("click", () => select(i, true));
+    dots.appendChild(b);
+    return b;
+  });
+
+  function markActive() {
+    panes.forEach((p, i) => p.el.classList.toggle("on", i === active));
+    dotBtns.forEach((b, i) => { b.classList.toggle("on", i === active); if (i === active) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); });
+    if (pickSeg) pickSeg.set(CHARTS[active].id);
+  }
+  function select(i, scroll) {
+    i = clamp(i, 0, CHARTS.length - 1);
+    const changed = i !== active;
+    active = i;
+    lsSet(LS_CHART, CHARTS[i].id);
+    markActive();
+    if (scroll && !desk) track.scrollTo({ left: i * track.clientWidth, behavior: "smooth" });
+    if (changed || scroll) schedule();
+  }
+  // Phone carousel: the page dots follow the scroll position.
+  let scrollRaf = 0;
+  track.addEventListener("scroll", () => {
+    if (desk || scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      const w = track.clientWidth || 1;
+      const i = clamp(Math.round(track.scrollLeft / w), 0, CHARTS.length - 1);
+      if (i !== active) { active = i; lsSet(LS_CHART, CHARTS[i].id); markActive(); }
+    });
+  }, { passive: true });
+
+  // ----------------------------------------------------- tooltips (custom charts)
+  function tipFor(p) {
+    const tt = p.tt;
+    if (!tt.parentNode) p.pb.appendChild(tt);
+    const place = (x, y) => {
+      const b = p.pb.getBoundingClientRect();
+      const tw = tt.offsetWidth, th = tt.offsetHeight;
+      let left = x - b.left + 14;
+      if (left + tw > b.width) left = x - b.left - tw - 14;
+      tt.style.transform = `translate(${Math.round(Math.max(0, left))}px,${Math.round(clamp(y - b.top - th / 2, 0, Math.max(0, b.height - th)))}px)`;
+    };
+    return {
+      show(html, x, y) { tt.innerHTML = html; tt.hidden = false; place(x, y); },
+      hide() { tt.hidden = true; },
+    };
+  }
+  /** Delegated tooltips for elements carrying data-tip (already-escaped HTML). */
+  function wireTips(p, host) {
+    const t = tipFor(p);
+    const at = (e) => {
+      const n = e.target.closest && e.target.closest("[data-tip]");
+      if (!n || !host.contains(n)) { t.hide(); return null; }
+      return n;
+    };
+    host.addEventListener("pointermove", (e) => { const n = at(e); if (n) t.show(n.dataset.tip, e.clientX, e.clientY); });
+    host.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") { const n = at(e); if (n) t.show(n.dataset.tip, e.clientX, e.clientY); } });
+    host.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") t.hide(); });
+    host.addEventListener("focusin", (e) => {
+      const n = e.target.closest && e.target.closest("[data-tip]");
+      if (!n) return;
+      const r = n.getBoundingClientRect();
+      t.show(n.dataset.tip, r.left + r.width / 2, r.top + r.height / 2);
+    });
+    host.addEventListener("focusout", () => t.hide());
+    return t;
+  }
+  const outsideTip = (e) => { for (const p of panes) if (!p.tt.hidden && !p.pb.contains(e.target)) p.tt.hidden = true; };
+  document.addEventListener("pointerdown", outsideTip, true);
+
+  // -------------------------------------------------------------- painters
+  const empty = (p, msg) => { p.pb.innerHTML = `<div class="wk-empty">${esc(msg)}</div>`; p.sub.textContent = ""; };
+
+  /** Fit a chart's height to the pane body: draw, measure what the chart wrapper adds (legend, tooltip row), then shrink the svg to fit. */
+  function fitChart(p, make) {
+    const H = p.pb.clientHeight;
+    const c = make(Math.max(110, H - 30));
+    p.charts.push(c);
+    const extra = c.el.offsetHeight - Math.max(110, H - 30);
+    const want = Math.max(110, H - extra - 2);
+    if (Math.abs(want - (H - 30)) > 2) c.update({ height: want });
+    return c;
+  }
+
+  function clearTypes() { state.set((s) => ({ filters: { ...s.filters, types: [] } })); }
+  function toggleType(item) {
+    const cur = state.get().filters.types || [];
+    const same = cur.length === item.types.length && item.types.every((t) => cur.includes(t));
+    state.set((s) => ({ filters: { ...s.filters, types: same ? [] : item.types.slice() } }));
+  }
+
+  function paintMix(p, rows) {
+    const mix = memo(rows, "mix:" + mixMetric, () => typeMix(rows, mixMetric));
+    if (!mix.items.length) { empty(p, rows.length ? "Nothing recorded for this measure" : "No workouts match the filters"); return; }
+    const u = unitsNow(), mi = u === "mi";
+    const fmtV = (v) => (mixMetric === "kcal" ? fmtNum(v) + " kcal" : mixMetric === "time" ? fmtHM(v) : mixMetric === "dist" ? fmtDist(v, u).replace(/\.\d+/, (d) => (v > 100 ? "" : d)) : fmtNum(v));
+    const centre = mixMetric === "kcal" ? [compact(mix.total), "active kcal"] : mixMetric === "time" ? [fmtNum(mix.total / 60, mix.total / 60 >= 100 ? 0 : 1) + " h", "total time"]
+      : mixMetric === "dist" ? [compact(mi ? mix.total / MI : mix.total), mi ? "miles" : "km"] : [fmtNum(mix.total), "workouts"];
+    p.sub.textContent = `${fmtNum(mix.n)} workouts · ${mix.items.filter((i) => !i.other).length + (mix.items.some((i) => i.other) ? mix.items.find((i) => i.other).types.length : 0)} types`;
+    const cur = state.get().filters.types || [];
+    const S = Math.round(clamp(Math.min(p.pb.clientHeight - 2, p.pb.clientWidth * 0.46), 110, 236));
+    const sw = Math.round(S * 0.17), r = (S - sw) / 2 - 3, C = 2 * Math.PI * r, c0 = S / 2;
+    const gap = mix.items.length > 1 ? 2.5 : 0;
+    let acc = 0, circles = "";
+    mix.items.forEach((it, i) => {
+      const len = it.share * C, dash = Math.max(0.6, len - gap), off = -(acc * C + gap / 2);
+      acc += it.share;
+      const lab = it.other ? "Other" : typeLabel(it.type);
+      const tip = `<div class="t-h">${esc(lab)}</div><b>${esc(fmtV(it.value))}</b> · ${esc(pctText(it.share * 100))}${it.other ? `<div class="t-h">${esc(it.types.map(typeLabel).join(", "))}</div>` : ""}`;
+      const on = cur.length === it.types.length && it.types.every((t) => cur.includes(t));
+      circles += `<circle class="wk-slice" data-i="${i}" data-tip="${esc(tip)}" tabindex="0" role="button" aria-pressed="${on}" aria-label="${esc(`${lab}: ${fmtV(it.value)}, ${pctText(it.share * 100)}. ${on ? "Clear type filter" : "Filter to this type"}`)}" cx="${c0}" cy="${c0}" r="${r.toFixed(2)}" stroke="${colorOf(it.type)}" stroke-width="${sw}" stroke-dasharray="${dash.toFixed(2)} ${(C - dash).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" transform="rotate(-90 ${c0} ${c0})"/>`;
+    });
+    const legend = mix.items.map((it, i) => {
+      const lab = it.other ? "Other" : typeLabel(it.type);
+      const badge = it.other ? '<span class="gl" style="--tone:var(--label-3)" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg></span>' : glyphBadge(it.type);
+      const on = cur.length === it.types.length && it.types.every((t) => cur.includes(t));
+      return `<button type="button" class="wk-lg" data-i="${i}" aria-pressed="${on}" title="${esc(it.other ? it.types.map(typeLabel).join(", ") : lab)}"><span class="wk-sw" style="background:${colorOf(it.type)}"></span>${badge.replace(/ role="img"[^>]*?aria-label="[^"]*"/, ' aria-hidden="true"').replace(/ title="[^"]*"/, "")}<span class="wk-ln">${esc(lab)}</span><span class="wk-lv">${esc(pctText(it.share * 100))}</span></button>`;
+    }).join("");
+    p.pb.innerHTML = `<div class="wk-mix"><div class="wk-donut" style="width:${S}px;height:${S}px"><svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" role="group" aria-label="Type mix donut">${circles}</svg><button type="button" class="wk-dc" style="width:${Math.round(S - sw * 2 - 8)}px;height:${Math.round(S - sw * 2 - 8)}px"${cur.length ? ' aria-label="Clear type filter"' : " disabled"}><b>${esc(centre[0])}</b><small>${esc(centre[1])}</small></button></div><div class="wk-leg${mix.items.length > 6 ? " two" : ""}">${legend}</div></div>`;
+    const donut = p.pb.querySelector(".wk-donut");
+    const wrap = p.pb.querySelector(".wk-mix");
+    wireTips(p, donut);
+    donut.addEventListener("pointerover", (e) => donut.classList.toggle("hov", !!(e.target.closest && e.target.closest(".wk-slice"))));
+    donut.addEventListener("pointerleave", () => donut.classList.remove("hov"));
+    wrap.addEventListener("click", (e) => {
+      const s = e.target.closest && e.target.closest("[data-i]");
+      if (s) toggleType(mix.items[Number(s.dataset.i)]);
+      else if (e.target.closest && e.target.closest(".wk-dc")) clearTypes();
+    });
+    wrap.addEventListener("keydown", (e) => {
+      const s = e.target.closest && e.target.closest(".wk-slice");
+      if (s && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleType(mix.items[Number(s.dataset.i)]); }
+    });
+    donut.querySelectorAll(".wk-slice").forEach((c) => {
+      c.addEventListener("pointerenter", () => c.setAttribute("stroke-width", sw + 5));
+      c.addEventListener("pointerleave", () => c.setAttribute("stroke-width", sw));
+    });
+  }
+
+  function paintWeekly(p, rows) {
+    if (!rows.length) { empty(p, "No workouts match the filters"); return; }
+    const ws = memo(rows, "weekly", () => weeklyStacks(rows));
+    if (!(ws.total > 0)) { empty(p, "No active energy recorded in these workouts"); return; }
+    p.sub.textContent = `${fmtNum(ws.total)} kcal over ${ws.weeks.length} weeks`;
+    fitChart(p, (height) => bars(p.pb, {
+      buckets: ws.weeks.map((w) => ({
+        key: w.key, label: w.label, note: `Week of ${w.label}`,
+        parts: w.parts.map((x) => ({ group: x.type === OTHER ? "Other" : typeLabel(x.type), value: x.value, color: colorOf(x.type) })),
+      })),
+      y: { tipFmt: (v) => fmtNum(v) + " kcal" }, height,
+    }));
+  }
+
+  function paintWhen(p, rows) {
+    if (!rows.length) { empty(p, "No workouts match the filters"); return; }
+    const w = memo(rows, "when", () => weekdayTime(rows, 3));
+    let bw = 0, bc = 0, bm = 0;
+    w.grid.forEach((row, d) => row.forEach((n, c) => { if (n > bm) { bm = n; bw = d; bc = c; } }));
+    const range = (c) => `${pad2(c * w.block)}:00–${pad2(Math.min(24, (c + 1) * w.block) - 1)}:59`;
+    p.sub.textContent = bm ? `Busiest ${WD[bw]} ${range(bc).slice(0, 5)}–${pad2((bc + 1) * w.block % 24)}:00 · ${bm} workouts` : "";
+    let h = `<div class="wk-heat" style="--c:${w.cols}" role="group" aria-label="Workouts by weekday and time of day, local start time">`;
+    for (let d = 0; d < 7; d++) {
+      h += `<div class="wk-hl">${WD[d]}</div>`;
+      for (let c = 0; c < w.cols; c++) {
+        const n = w.grid[d][c];
+        const f = w.max ? n / w.max : 0;
+        const bg = n ? `color-mix(in srgb,var(--blue) ${Math.round(14 + 76 * Math.sqrt(f))}%,transparent)` : "var(--fill)";
+        const lab = `${WD[d]} ${range(c)}: ${n} workout${n === 1 ? "" : "s"}`;
+        h += `<div class="wk-cell${f > 0.55 ? " hi" : ""}" style="background:${bg}" tabindex="${n ? 0 : -1}" role="img" aria-label="${esc(lab)}" data-tip="${esc(`<div class="t-h">${WD[d]} ${range(c)}</div><b>${n}</b> workout${n === 1 ? "" : "s"}`)}">${n || ""}</div>`;
+      }
+    }
+    h += "<div></div>";
+    for (let c = 0; c < w.cols; c++) h += `<div class="wk-hx">${pad2(c * w.block)}</div>`;
+    p.pb.innerHTML = h + "</div>";
+    wireTips(p, p.pb.firstChild);
+  }
+
+  function paintDuration(p, rows) {
+    if (!rows.length) { empty(p, "No workouts match the filters"); return; }
+    const d = memo(rows, "dur", () => durationHist(rows));
+    if (!d.n) { empty(p, "No workout durations recorded"); return; }
+    p.sub.textContent = `Median ${fmtHM(d.median)} · ${fmtNum(d.n)} workouts${d.hidden ? ` · ${d.hidden} longer not shown` : ""}`;
+    fitChart(p, (height) => histogram(p.pb, {
+      bins: d.bins, marker: d.median, markerLabel: `median ${fmtHM(d.median)}`, height,
+      x: { fmt: axisDur, tipFmt: axisDur, max: d.axisMax },
+    }));
+  }
+
+  function paintBests(p, rows) {
+    if (!rows.length) { empty(p, "No workouts match the filters"); return; }
+    const b = memo(rows, "bests", () => personalBests(rows));
+    const u = unitsNow();
+    const items = [
+      ["Longest workout", b.duration, (r) => fmtHM(r.durMin)],
+      ["Longest distance", b.distance, (r) => fmtDist(r.distKm, u)],
+      ["Most active energy", b.kcal, (r) => fmtNum(r.activeKcal) + " kcal"],
+      [b.paceType ? `Fastest pace (${typeLabel(b.paceType).toLowerCase()}, ≥ 1 km)` : "Fastest pace (≥ 1 km)", b.pace, (r) => fmtPace(r.paceMinKm, u)],
+      ["Highest average HR", b.hr, (r) => fmtNum(r.avgHr) + " bpm"],
+    ];
+    p.sub.textContent = "";
+    p.pb.innerHTML = '<div class="wk-pbs">' + items.map(([label, r, f], i) => (r
+      ? `<button type="button" class="wk-pbr" data-id="${r.id}" aria-label="${esc(`${label}: ${f(r)}, ${typeLabel(r.type)}, ${fmtDate(r.start, r.tzOffset)}. Open workout`)}">${glyphBadge(r.type).replace(/ role="img"[^>]*?aria-label="[^"]*"/, ' aria-hidden="true"').replace(/ title="[^"]*"/, "")}<span class="wk-pbl"><span>${esc(label)}</span><span>${esc(typeLabel(r.type))} · ${esc(fmtDate(r.start, r.tzOffset).split(",")[0])}</span></span><span class="wk-pbv">${esc(f(r))}</span></button>`
+      : `<button type="button" class="wk-pbr" disabled data-i="${i}"><span class="wk-pbl"><span>${esc(label)}</span><span>Not recorded in these workouts</span></span><span class="wk-pbv">—</span></button>`)).join("") + "</div>";
+    p.pb.firstChild.addEventListener("click", (e) => {
+      const n = e.target.closest && e.target.closest("[data-id]");
+      if (n) state.set({ detail: Number(n.dataset.id) });
+    });
+  }
+
+  function paintZones(p, rows) {
+    if (!rows.length) { empty(p, "No workouts match the filters"); return; }
+    const z = memo(rows, "zones", () => zoneTotals(rows));
+    if (!z.workouts || !(z.total > 0)) { empty(p, "No heart-rate zone data"); return; }
+    p.sub.textContent = `${fmtNum(z.workouts)} of ${fmtNum(z.of)} workouts have zone data · ${fmtHM(z.total / 60)} total`;
+    const mx = Math.max(...z.zones.map((x) => x.pct)) || 1;
+    const col = (i) => ZONE_COLORS[Math.min(i, ZONE_COLORS.length - 1)];
+    let h = '<div class="wk-zones" role="group" aria-label="Time in each heart-rate zone">';
+    h += '<div class="wk-zs" aria-hidden="true">' + z.zones.filter((x) => x.sec > 0).map((x) => `<i style="flex:${x.sec};background:${col(x.n - 1)}"></i>`).join("") + "</div>";
+    h += z.zones.map((x) => {
+      const t = `<div class="t-h">Zone ${x.n}</div><b>${esc(fmtHM(x.sec / 60))}</b> · ${esc(pctText(x.pct))}`;
+      return `<div class="wk-zr" tabindex="0" role="img" aria-label="${esc(`Zone ${x.n}: ${fmtHM(x.sec / 60)}, ${pctText(x.pct)}`)}" data-tip="${esc(t)}"><span>Zone ${x.n}</span><span class="wk-zt"><i style="width:${(x.pct / mx * 100).toFixed(1)}%;background:${col(x.n - 1)}"></i></span><span class="wk-zv"><b>${esc(fmtHM(x.sec / 60))}</b><small>${esc(pctText(x.pct))}</small></span></div>`;
+    }).join("");
+    p.pb.innerHTML = h + "</div>";
+    wireTips(p, p.pb.firstChild);
+  }
+
+  const PAINT = { mix: paintMix, weekly: paintWeekly, when: paintWhen, duration: paintDuration, bests: paintBests, zones: paintZones };
+
+  let lastRows = null;
+  function paint(i) {
+    const p = panes[i];
+    const pb = p.pb;
+    if (pb.clientWidth < 40 || pb.clientHeight < 40) return; // hidden or not laid out yet: the tile's ResizeObserver repaints
+    const rows = ctx.data.filtered();
+    const types = ((state.get().filters || {}).types || []).join("|");
+    const sig = [rows.length, unitsNow(), types, mixMetric, pb.clientWidth, pb.clientHeight].join(":");
+    if (p.rows === rows && p.sig === sig) return;
+    p.rows = rows; p.sig = sig;
+    for (const c of p.charts.splice(0)) { try { c.destroy(); } catch (e) { /* gone */ } }
+    pb.textContent = "";
+    p.tt.hidden = true;
+    PAINT[p.def.id](p, rows);
+    lastRows = rows;
+  }
+  function paintVisible() {
+    raf = 0;
+    if (destroyed || root.closest("[hidden]")) return;
+    if (desk) paint(active);
+    else for (let i = 0; i < panes.length; i++) paint(i);
+  }
+  function schedule() { if (!raf && !destroyed) raf = requestAnimationFrame(paintVisible); }
+
+  function setMode() {
+    desk = mq.matches;
+    tile.classList.toggle("wk-desk", desk);
+    markActive();
+    if (!desk) requestAnimationFrame(() => { track.scrollLeft = active * track.clientWidth; });
+    schedule();
+  }
+  const onMq = () => setMode();
+  if (mq.addEventListener) mq.addEventListener("change", onMq);
+
+  let ro = null;
+  if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(() => schedule()); ro.observe(tile); }
+
+  let lastKey = "";
+  const unsub = state.subscribe((s) => {
+    const key = [ctx.data.filtered(), s.units, (s.filters.types || []).join("|")].map((x) => (typeof x === "object" ? (x === lastRows ? "same" : "new") : x)).join(";");
+    // cheap guard: repaint only when the row set, units or type filter changed (selection / sort / detail changes don't affect the charts)
+    if (key === lastKey && ctx.data.filtered() === lastRows) return;
+    lastKey = key;
+    schedule();
+  });
+
+  setMode();
+  paintVisible();
+
+  return {
+    update() { for (const p of panes) { p.sig = ""; } schedule(); },
+    destroy() {
+      destroyed = true;
+      unsub();
+      if (ro) ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      if (mq.removeEventListener) mq.removeEventListener("change", onMq);
+      document.removeEventListener("pointerdown", outsideTip, true);
+      for (const p of panes) for (const c of p.charts.splice(0)) { try { c.destroy(); } catch (e) { /* gone */ } }
+      root.textContent = "";
+    },
+    /** Test hook: which chart id is showing. */
+    get active() { return CHARTS[active].id; },
+  };
+}
+
+/**
+ * Lay the chart tile above the workout list inside `host` (the Workouts view) and mount both.
+ * `mountList(listHost, ctx)` is the table's mount. Desktop: the two halves share the viewport height and the list scrolls inside its own half.
+ */
+function mountWorkoutsSplit(host, ctx, mountList) {
+  host.classList.add("wk-split");
+  inject("wk-viz-css", CSS);
+  const tileHost = el("div", "wk-viz"), listHost = el("div", "wk-list");
+  host.append(tileHost, listHost);
+  const list = mountList(listHost, ctx) || {};
+  const viz = mount(tileHost, ctx);
+  // Fill exactly what is left of the window below the split's own position (header, filter bar and any notice above it),
+  // so the page itself needs no scrolling on desktop; CSS ignores --wk-h below the desktop breakpoint.
+  let lastH = -1;
+  const fit = () => {
+    if (!host.isConnected) return;
+    const top = host.getBoundingClientRect().top + window.scrollY;
+    const h = Math.max(440, Math.round(window.innerHeight - top - 16));
+    if (Math.abs(h - lastH) > 1) { lastH = h; host.style.setProperty("--wk-h", h + "px"); }
+  };
+  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => fit()) : null;
+  if (ro) ro.observe(document.body);
+  window.addEventListener("resize", fit, { passive: true });
+  fit();
+  return {
+    update() { if (list.update) list.update(); if (viz.update) viz.update(); fit(); },
+    destroy() {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", fit);
+      host.style.removeProperty("--wk-h");
+      if (viz.destroy) viz.destroy();
+      if (list.destroy) list.destroy();
+      host.classList.remove("wk-split");
+      host.textContent = "";
+    },
+    viz, list,
+  };
+}
+
+return { DESKTOP_QUERY, LS_CHART, LS_MIX, CHARTS, OTHER_COLOR, mount, mountWorkoutsSplit };
+})();
 // ---- ui/map.js
 __m["ui/map.js"] = (function () {
 // Route map (Agent G). routeMap(host, {tracks, settings, theme, travelMode}) -> {update, destroy, kind}.
@@ -4111,186 +5117,6 @@ function vo2Card(row, hrRest, hrMax, measured, elevM) {
 }
 
 return { REST_VO2, SUITABLE, minettiC, vo2AtPace, pctHrr, extrapolate, modeFor, suitability, estimateFromRow, nearestMeasured, meanOf, defaultHr, hrRange, workoutMinima, vo2Card };
-})();
-// ---- ui/workout-charts.js
-__m["ui/workout-charts.js"] = (function () {
-// Derived workout data for the detail page (Agent G): track metrics from a GPX, pace colours, splits, HR zones.
-// Pure functions, no DOM.
-
-const RAD = Math.PI / 180;
-const finite = (v) => typeof v === "number" && isFinite(v);
-
-function haversineM(la1, lo1, la2, lo2) {
-  const dla = (la2 - la1) * RAD, dlo = (lo2 - lo1) * RAD;
-  const a = Math.sin(dla / 2) ** 2 + Math.cos(la1 * RAD) * Math.cos(la2 * RAD) * Math.sin(dlo / 2) ** 2;
-  return 12742000 * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
-/**
- * Cumulative distance, smoothed speed (m/s, ±windowSec) and smoothed elevation of a GPX track.
- * Points without finite lat/lon are dropped. `t` (ms) is optional: without it speed is null.
- * → {n, lat, lon, cum: Float64Array km, t: Float64Array|null ms, ele: Float64Array|null m (smoothed), speed: Float64Array|null, totalKm, durSec}
- */
-function trackMetrics(gpx, windowSec = 10) {
-  if (!gpx || !gpx.lat || !gpx.lon) return null;
-  const idx = [];
-  for (let i = 0; i < gpx.lat.length; i++) if (finite(gpx.lat[i]) && finite(gpx.lon[i])) idx.push(i);
-  const n = idx.length;
-  if (n < 2) return null;
-  const lat = new Float64Array(n), lon = new Float64Array(n), cum = new Float64Array(n);
-  const hasT = !!gpx.t && gpx.t.length >= gpx.lat.length && finite(gpx.t[idx[0]]) && finite(gpx.t[idx[n - 1]]);
-  const hasE = !!gpx.ele && gpx.ele.length >= gpx.lat.length;
-  const t = hasT ? new Float64Array(n) : null;
-  const rawE = hasE ? new Float64Array(n) : null;
-  for (let k = 0; k < n; k++) {
-    const i = idx[k];
-    lat[k] = gpx.lat[i]; lon[k] = gpx.lon[i];
-    if (k) cum[k] = cum[k - 1] + haversineM(lat[k - 1], lon[k - 1], lat[k], lon[k]) / 1000;
-    if (t) t[k] = gpx.t[i];
-    if (rawE) rawE[k] = finite(gpx.ele[i]) ? gpx.ele[i] : k ? rawE[k - 1] : 0;
-  }
-  let speed = null;
-  if (t) {
-    speed = new Float64Array(n);
-    const w = windowSec * 1000;
-    let j0 = 0, j1 = 0;
-    for (let k = 0; k < n; k++) {
-      while (j0 < k && t[k] - t[j0] > w) j0++;
-      if (j1 < k) j1 = k;
-      while (j1 < n - 1 && t[j1 + 1] - t[k] <= w) j1++;
-      const dt = (t[j1] - t[j0]) / 1000;
-      speed[k] = dt > 0 ? ((cum[j1] - cum[j0]) * 1000) / dt : 0;
-    }
-  }
-  let ele = null;
-  if (rawE) {
-    ele = new Float64Array(n);
-    const half = Math.max(2, Math.round(n / 150));
-    for (let k = 0; k < n; k++) {
-      let s = 0, c = 0;
-      for (let j = Math.max(0, k - half); j <= Math.min(n - 1, k + half); j++) { s += rawE[j]; c++; }
-      ele[k] = s / c;
-    }
-  }
-  return { n, lat, lon, cum, t, ele, speed, totalKm: cum[n - 1], durSec: t ? (t[n - 1] - t[0]) / 1000 : null };
-}
-
-const quantile = (a, q) => {
-  const s = Array.from(a).sort((x, y) => x - y);
-  return s.length ? s[Math.min(s.length - 1, Math.floor(q * (s.length - 1)))] : 0;
-};
-
-/** HSL colour for u in [0,1]: 0 = slow (red) -> 0.5 yellow -> 1 = fast (green). */
-function paceColor(u) {
-  const c = Math.max(0, Math.min(1, u));
-  return `hsl(${Math.round(c * 125)} 85% ${c > 0.3 && c < 0.6 ? 46 : 44}%)`;
-}
-
-/** One CSS colour per segment (length n-1) from the smoothed speed, slow = red, fast = green; null without times. */
-function paceColors(m) {
-  if (!m || !m.speed) return null;
-  const s = m.speed;
-  const live = [];
-  for (let i = 0; i < s.length; i++) if (s[i] > 0.3) live.push(s[i]);
-  const lo = quantile(live.length ? live : s, 0.08), hi = quantile(live.length ? live : s, 0.92);
-  const span = hi - lo > 1e-6 ? hi - lo : 1;
-  const out = new Array(m.n - 1);
-  for (let i = 0; i < m.n - 1; i++) out[i] = paceColor((((s[i] + s[i + 1]) / 2) - lo) / span);
-  return out;
-}
-
-/** Elevation gain (m) between track indices i0..i1 of the smoothed elevation. */
-function elevGain(m, i0 = 0, i1 = m.n - 1) {
-  if (!m.ele) return null;
-  let g = 0;
-  for (let i = i0 + 1; i <= i1; i++) { const d = m.ele[i] - m.ele[i - 1]; if (d > 0) g += d; }
-  return g;
-}
-
-const PAUSE_GAP_MS = 10000, PAUSE_MOVE_KM = 0.003;
-/**
- * Per-unit splits from a track with times. unitKm = 1 or 1.609344.
- * → [{n, km (distance of this split), sec, paceMinKm, gain (m)|null, t0, t1 (ms), partial, moving}]; sec / pace use moving time (pauses removed), elapsedSec is wall-clock (a trailing split under 5% of a unit is dropped).
- */
-function splitsFromTrack(m, unitKm = 1) {
-  if (!m || !m.t) return [];
-  const out = [];
-  let k = 0;
-  // Moving clock: a gap of more than 10 s between fixes with ~no movement (3 m) is a pause and adds no time.
-  const mv = new Float64Array(m.n);
-  for (let i = 1; i < m.n; i++) {
-    const dt = m.t[i] - m.t[i - 1], dd = m.cum[i] - m.cum[i - 1];
-    mv[i] = mv[i - 1] + (dt > PAUSE_GAP_MS && dd < PAUSE_MOVE_KM ? 0 : dt);
-  }
-  let prevT = m.t[0], prevM = 0, prevI = 0, next = unitKm;
-  const frac = (d, i) => { const d0 = m.cum[i - 1], d1 = m.cum[i]; return d1 > d0 ? (d - d0) / (d1 - d0) : 1; };
-  const timeAt = (d, i) => m.t[i - 1] + frac(d, i) * (m.t[i] - m.t[i - 1]); // wall-clock ms at cumulative distance d
-  const movAt = (d, i) => mv[i - 1] + frac(d, i) * (mv[i] - mv[i - 1]); // moving ms at cumulative distance d
-  for (let i = 1; i < m.n; i++) {
-    while (m.cum[i] >= next - 1e-9 && next <= m.totalKm + 1e-9) {
-      const tt = timeAt(next, i), mm = movAt(next, i);
-      const km = unitKm;
-      out.push({ n: ++k, km, sec: (mm - prevM) / 1000, elapsedSec: (tt - prevT) / 1000, paceMinKm: (mm - prevM) / 60000 / km, gain: elevGain(m, prevI, i), t0: prevT, t1: tt, partial: false, moving: true });
-      prevT = tt; prevM = mm; prevI = i; next += unitKm;
-    }
-  }
-  const restKm = m.totalKm - (next - unitKm);
-  if (restKm >= 0.05 * unitKm && restKm > 0.02) {
-    const tt = m.t[m.n - 1], mm = mv[m.n - 1];
-    out.push({ n: ++k, km: restKm, sec: (mm - prevM) / 1000, elapsedSec: (tt - prevT) / 1000, paceMinKm: (mm - prevM) / 60000 / restKm, gain: elevGain(m, prevI, m.n - 1), t0: prevT, t1: tt, partial: true, moving: true });
-  }
-  return out;
-}
-
-/** Splits from Apple's km segment events. Last (short) segment gets the rest of the distance. */
-function splitsFromSegments(segments, distKm) {
-  if (!segments || !segments.length) return [];
-  const out = [];
-  let covered = 0;
-  segments.forEach((s, i) => {
-    const last = i === segments.length - 1;
-    let km = 1;
-    if (last && distKm) { const rest = distKm - covered; km = rest > 0.02 && rest <= 1.02 ? rest : 1; }
-    covered += km;
-    out.push({ n: i + 1, km, sec: s.sec, paceMinKm: s.sec / 60 / km, gain: null, t0: s.t, t1: s.t + s.sec * 1000, partial: km < 0.98 });
-  });
-  return out;
-}
-
-const ZONE_COLORS = ["var(--blue)", "var(--teal)", "var(--green)", "var(--orange)", "var(--red)"];
-
-/** ext.zones -> [{n, label, range, sec, pct, color}] or null when empty / all zero. */
-function zoneModel(zones) {
-  if (!zones || !zones.length) return null;
-  let total = 0;
-  for (const z of zones) total += z.sec || 0;
-  if (!(total > 0)) return null;
-  return zones.map((z, i) => ({
-    n: i + 1, label: "Zone " + (i + 1),
-    range: z.min === null && z.max === null ? "" : z.min === null ? `< ${Math.round(z.max)}` : z.max === null ? `${Math.round(z.min)}+` : `${Math.round(z.min)}–${Math.round(z.max)}`,
-    sec: z.sec || 0, pct: ((z.sec || 0) / total) * 100, color: ZONE_COLORS[Math.min(i, ZONE_COLORS.length - 1)],
-  }));
-}
-
-/** At most `max` evenly spaced indices of 0..n-1 (always includes the last). */
-function strideIdx(n, max) {
-  const step = Math.max(1, Math.ceil(n / max));
-  const out = [];
-  for (let i = 0; i < n; i += step) out.push(i);
-  if (out[out.length - 1] !== n - 1) out.push(n - 1);
-  return out;
-}
-
-/** Mean HR (bpm) of an HR slice {t: seconds since workout start, v} between two absolute ms, given the workout start. */
-function meanHrBetween(hr, startMs, t0, t1) {
-  if (!hr || !hr.t || !hr.t.length) return null;
-  const a = (t0 - startMs) / 1000, b = (t1 - startMs) / 1000;
-  let s = 0, c = 0;
-  for (let i = 0; i < hr.t.length; i++) { if (hr.t[i] >= a && hr.t[i] <= b) { s += hr.v[i]; c++; } }
-  return c ? s / c : null;
-}
-
-return { haversineM, trackMetrics, paceColor, paceColors, elevGain, splitsFromTrack, splitsFromSegments, ZONE_COLORS, zoneModel, strideIdx, meanHrBetween };
 })();
 // ---- ui/detail.js
 __m["ui/detail.js"] = (function () {
@@ -7516,6 +8342,7 @@ const { applyFilters, hrSlice } = __m["core/model.js"];
 const { save: saveDs, latest: latestDs, clear: clearDs, toCompactJSON, fromCompactJSON, validate: validateDs, isQuotaError, DATASET_VERSION } = __m["core/store.js"];
 const { defaultFilters, mount: mountFilters } = __m["ui/filters.js"];
 const { mount: mountTable, DEFAULT_COLUMNS, COLUMN_KEYS } = __m["ui/table.js"];
+const { mountWorkoutsSplit } = __m["ui/workout-viz.js"];
 const { mount: mountDetail } = __m["ui/detail.js"];
 const { mount: mountAggregates } = __m["ui/aggregates.js"];
 const { mount: mountCompare } = __m["ui/compare.js"];
@@ -7727,7 +8554,7 @@ function mountAll() {
   const m = (fn, host) => { const h = fn(host, ctx); return h || {}; };
   mounted = [
     m(mountFilters, shell.filterHost),
-    m(mountTable, shell.viewHosts.workouts),
+    m((h, c) => mountWorkoutsSplit(h, c, mountTable), shell.viewHosts.workouts),
     m(mountCompare, shell.viewHosts.compare),
     m(mountAggregates, shell.viewHosts.aggregates),
     m(mountCalibration, shell.viewHosts.calibration),
