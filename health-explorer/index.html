@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; worker-src blob: 'self'; manifest-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src blob: data:">
 <meta name="referrer" content="no-referrer">
-<meta name="build" content="bc9e03d-2026-11-27">
+<meta name="build" content="563b19f-2026-11-28">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Health Explorer</title>
 <link rel="icon" href="../icons/health-explorer-192.png">
@@ -3982,6 +3982,19 @@ function defaultHr(rows, hrSeries, minima) {
   return { hrMax: hrMax === null ? null : Math.round(hrMax), hrRest: hrRest === null ? null : Math.round(hrRest), restSource: hrRest === null ? null : source };
 }
 
+/**
+ * All-time heart-rate range for chart axes → {lo, hi} (rounded numbers or null).
+ * hi: the plain (not percentile) highest per-workout maxHr within 100-220 bpm across all rows.
+ * lo: the lowest per-workout HR minimum (`minima`, from workoutMinima) within 35-100 bpm; if none, the lowest rhrDay within 35-100; else null.
+ */
+function hrRange(rows, minima) {
+  let hi = null, lo = null;
+  for (const r of rows || []) if (r.maxHr >= 100 && r.maxHr <= 220 && (hi === null || r.maxHr > hi)) hi = r.maxHr;
+  for (const v of minima || []) if (v >= 35 && v <= 100 && (lo === null || v < lo)) lo = v;
+  if (lo === null) for (const r of rows || []) if (r.rhrDay >= 35 && r.rhrDay <= 100 && (lo === null || r.rhrDay < lo)) lo = r.rhrDay;
+  return { lo: lo === null ? null : Math.round(lo), hi: hi === null ? null : Math.round(hi) };
+}
+
 /** Minimum HR sample inside each workout window (array of numbers, workouts without samples skipped). */
 function workoutMinima(rows, hrSeries) {
   const out = [];
@@ -4009,7 +4022,7 @@ function vo2Card(row, hrRest, hrMax, measured, elevM) {
   return { ...e, watch, watchAt: measured ? measured.t : null, watchDays: measured ? measured.days : null, final, watchOnly };
 }
 
-return { REST_VO2, SUITABLE, minettiC, vo2AtPace, pctHrr, extrapolate, modeFor, suitability, estimateFromRow, nearestMeasured, meanOf, defaultHr, workoutMinima, vo2Card };
+return { REST_VO2, SUITABLE, minettiC, vo2AtPace, pctHrr, extrapolate, modeFor, suitability, estimateFromRow, nearestMeasured, meanOf, defaultHr, hrRange, workoutMinima, vo2Card };
 })();
 // ---- ui/workout-charts.js
 __m["ui/workout-charts.js"] = (function () {
@@ -6494,6 +6507,7 @@ const { fmtNum, fmtDur, fmtDate, fmtDist } = __m["core/format.js"];
 const { median, mean, sd, rollingMedian, histogram, linreg } = __m["core/stats.js"];
 const { line, scatter, histogram: histChart, axisScale, outlierSplit } = __m["ui/charts.js"];
 const { surface3d } = __m["ui/surface3d.js"];
+const { hrRange, workoutMinima } = __m["core/vo2max.js"];
 const { typeLabel } = __m["ui/filters.js"];
 const { esc, has, inject } = __m["ui/util.js"];
 const CSS = `
@@ -6650,6 +6664,25 @@ function mount(root, ctx) {
   let xKey = "avgHr", yKey = "kcalPerKm", win = 10, zThr = OUTLIER_Z;
   let dim = "2d", ax = "paceMinKm", ay = "avgHr", az = "kcalPerKm", view3 = null; // 2D scatter, or 3D surface: height az over ax × ay
   let charts = [], dirty = true, destroyed = false;
+  // all-time HR range (from ALL rows, not the type-filtered ones), cached per ctx.data.rows identity
+  let hrRows = null, hrRng = { lo: null, hi: null };
+  function allTimeHr() {
+    const rows = ctx.data.rows || [];
+    if (rows !== hrRows) {
+      hrRows = rows;
+      const ser = ctx.data.series || {};
+      hrRng = hrRange(rows, ser.hr ? workoutMinima(rows, ser.hr) : []);
+    }
+    return hrRng;
+  }
+  // axis limits: the Avg HR axis spans the all-time min..max heart rate; every other axis the outlierSplit-kept min..max
+  function axisSplit(key, vals) {
+    const sp = outlierSplit(vals, zThr);
+    if (key !== "avgHr") return sp;
+    const { lo, hi } = allTimeHr();
+    if (lo === null || hi === null || !(lo < hi)) return sp;
+    return { ...sp, lo, hi, isOut: (x) => typeof x === "number" && x === x && (x < lo || x > hi) };
+  }
   const el = document.createElement("div");
   el.className = "fk";
   root.textContent = "";
@@ -6862,9 +6895,9 @@ function mount(root, ctx) {
     }
     if (!is3) {
       const rel = relation(cr, xAxis, yAxis);
-      // every axis spans the min..max of its non-outlier values (shared outlierSplit); outlying workouts sit at the edge, drawn red,
-      // with the true value in the tooltip
-      const spx = outlierSplit(rel.pts.map((p) => p.x), zThr), spy = outlierSplit(rel.pts.map((p) => p.y), zThr);
+      // every axis spans the min..max of its non-outlier values (shared outlierSplit), except Avg HR which spans the all-time
+      // min..max heart rate (hrRange); outlying workouts sit at the edge, drawn red, with the true value in the tooltip
+      const spx = axisSplit(xKey, rel.pts.map((p) => p.x)), spy = axisSplit(yKey, rel.pts.map((p) => p.y));
       const cx = (v) => Math.min(spx.hi, Math.max(spx.lo, v)), cy = (v) => Math.min(spy.hi, Math.max(spy.lo, v));
       const clamped = (p) => spx.isOut(p.x) || spy.isOut(p.y);
       const offS = rel.pts.filter(clamped).length;
@@ -6896,8 +6929,8 @@ function mount(root, ctx) {
         const x = aX.get(r), y = aY.get(r), z = aZ.get(r);
         if (has(x) && has(y) && has(z)) pts.push({ x, y, z, id: r.id, label: dayLabel(r.start) });
       }
-      // each axis spans its non-outlier min..max at the current σ threshold (shared outlierSplit); outliers sit at the edge
-      const rs = ["x", "y", "z"].map((k) => outlierSplit(pts.map((p) => p[k]), zThr));
+      // each axis spans its non-outlier min..max at the current σ threshold (shared outlierSplit; Avg HR: all-time HR range); outliers sit at the edge
+      const rs = [[aX, "x"], [aY, "y"], [aZ, "z"]].map(([a, k]) => axisSplit(a.key, pts.map((p) => p[k])));
       const offN = pts.filter((p) => rs[0].isOut(p.x) || rs[1].isOut(p.y) || rs[2].isOut(p.z)).length;
       const offTxt3 = offN ? ` · ${offN} off-scale (at edge)` : "";
       const { card, host } = chartCard(`${aZ.label} by ${aX.label} × ${aY.label}`, `n ${pts.length}`);
