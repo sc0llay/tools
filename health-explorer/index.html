@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; worker-src blob: 'self'; manifest-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src blob: data:">
 <meta name="referrer" content="no-referrer">
-<meta name="build" content="97709aa-2026-11-28">
+<meta name="build" content="4edf2ce-2026-11-28">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Health Explorer</title>
 <link rel="icon" href="../icons/health-explorer-192.png">
@@ -3914,6 +3914,7 @@ const CSS = `
 .wk-sw{flex:none;width:9px;height:9px;border-radius:50%}
 .wk-lg .gl{width:20px;height:20px}
 .wk-lg .gl svg{width:12px;height:12px}
+.wk-la{display:none}
 .wk-ln{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .wk-lv{flex:none;color:var(--label-2);font-variant-numeric:tabular-nums;font-size:12px}
 /* heatmap */
@@ -3954,6 +3955,18 @@ const CSS = `
   .wk-viz{min-height:0;display:flex;flex-direction:column}
   .wk-viz > .wk-tile{height:auto;flex:1;min-height:0}
   .wk-track{overflow:hidden;scroll-snap-type:none}
+  /* Type mix on desktop: centre donut + legend and scale the text to the space */
+  .wk-mix{justify-content:center;gap:clamp(24px,4vw,64px)}
+  .wk-leg{max-width:640px;gap:0 48px;align-content:space-evenly;height:100%;overflow:hidden}
+  .wk-lg{font-size:var(--lg-fs,16px);gap:.7em;padding:.15em 10px;margin:0 -10px}
+  .wk-sw{width:.6em;height:.6em}
+  .wk-lg .gl{width:1.5em;height:1.5em}
+  .wk-lg .gl svg{width:.85em;height:.85em}
+  .wk-leg.two{max-width:1000px}
+  .wk-la{display:block;flex:none;color:var(--label-2);font-variant-numeric:tabular-nums;font-weight:500}
+  .wk-lv{min-width:4.2em;text-align:right;font-weight:700;color:var(--label);font-size:inherit}
+  .wk-dc b{font-size:clamp(26px,2.4vw,38px)}
+  .wk-dc small{font-size:clamp(12px,.95vw,15px)}
   .wk-pane:not(.on){display:none}
   .wk-pick{display:grid}
   .wk-dots{display:none}
@@ -4165,7 +4178,7 @@ function mount(root, ctx) {
       : mixMetric === "dist" ? [compact(mi ? mix.total / MI : mix.total), mi ? "miles" : "km"] : [fmtNum(mix.total), "workouts"];
     p.sub.textContent = `${fmtNum(mix.n)} workouts · ${mix.items.filter((i) => !i.other).length + (mix.items.some((i) => i.other) ? mix.items.find((i) => i.other).types.length : 0)} types`;
     const cur = state.get().filters.types || [];
-    const S = Math.round(clamp(Math.min(p.pb.clientHeight - 2, p.pb.clientWidth * 0.46), 110, 236));
+    const S = Math.round(clamp(Math.min(p.pb.clientHeight - 2, p.pb.clientWidth * 0.46), 110, wideLayout() ? 340 : 236));
     const sw = Math.round(S * 0.17), r = (S - sw) / 2 - 3, C = 2 * Math.PI * r, c0 = S / 2;
     const gap = mix.items.length > 1 ? 2.5 : 0;
     let acc = 0, circles = "";
@@ -4181,11 +4194,16 @@ function mount(root, ctx) {
       const lab = it.other ? "Other" : typeLabel(it.type);
       const badge = it.other ? '<span class="gl" style="--tone:var(--label-3)" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg></span>' : glyphBadge(it.type);
       const on = cur.length === it.types.length && it.types.every((t) => cur.includes(t));
-      return `<button type="button" class="wk-lg" data-i="${i}" aria-pressed="${on}" title="${esc(it.other ? it.types.map(typeLabel).join(", ") : lab)}"><span class="wk-sw" style="background:${colorOf(it.type)}"></span>${badge.replace(/ role="img"[^>]*?aria-label="[^"]*"/, ' aria-hidden="true"').replace(/ title="[^"]*"/, "")}<span class="wk-ln">${esc(lab)}</span><span class="wk-lv">${esc(pctText(it.share * 100))}</span></button>`;
+      return `<button type="button" class="wk-lg" data-i="${i}" aria-pressed="${on}" title="${esc(it.other ? it.types.map(typeLabel).join(", ") : lab)}"><span class="wk-sw" style="background:${colorOf(it.type)}"></span>${badge.replace(/ role="img"[^>]*?aria-label="[^"]*"/, ' aria-hidden="true"').replace(/ title="[^"]*"/, "")}<span class="wk-ln">${esc(lab)}</span><span class="wk-la">${esc(fmtV(it.value))}</span><span class="wk-lv">${esc(pctText(it.share * 100))}</span></button>`;
     }).join("");
     p.pb.innerHTML = `<div class="wk-mix"><div class="wk-donut" style="width:${S}px;height:${S}px"><svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" role="group" aria-label="Type mix donut">${circles}</svg><button type="button" class="wk-dc" style="width:${Math.round(S - sw * 2 - 8)}px;height:${Math.round(S - sw * 2 - 8)}px"${cur.length ? ' aria-label="Clear type filter"' : " disabled"}><b>${esc(centre[0])}</b><small>${esc(centre[1])}</small></button></div><div class="wk-leg${mix.items.length > 6 ? " two" : ""}">${legend}</div></div>`;
     const donut = p.pb.querySelector(".wk-donut");
     const wrap = p.pb.querySelector(".wk-mix");
+    // desktop: size legend text so every row fits the pane height (row ≈ 2.1 × font size), 14–20px
+    const cols = wideLayout() ? (mix.items.length > 3 ? 2 : 1) : (mix.items.length > 6 ? 2 : 1);
+    if (cols === 2) wrap.querySelector(".wk-leg").classList.add("two");
+    const rowsN = Math.ceil(mix.items.length / cols);
+    wrap.style.setProperty("--lg-fs", clamp(Math.floor((p.pb.clientHeight - 4) / rowsN / 2.1), 14, 20) + "px");
     wireTips(p, donut);
     donut.addEventListener("pointerover", (e) => donut.classList.toggle("hov", !!(e.target.closest && e.target.closest(".wk-slice"))));
     donut.addEventListener("pointerleave", () => donut.classList.remove("hov"));
@@ -4364,6 +4382,8 @@ function mount(root, ctx) {
  * Lay the chart tile above the workout list inside `host` (the Workouts view) and mount both.
  * `mountList(listHost, ctx)` is the table's mount. Desktop: the two halves share the viewport height and the list scrolls inside its own half.
  */
+function wideLayout() { return typeof matchMedia === "function" && matchMedia("(min-width:900px) and (min-height:560px)").matches; }
+
 function mountWorkoutsSplit(host, ctx, mountList) {
   host.classList.add("wk-split");
   inject("wk-viz-css", CSS);
