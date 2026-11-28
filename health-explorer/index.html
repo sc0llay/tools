@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; worker-src blob: 'self'; manifest-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src blob: data:">
 <meta name="referrer" content="no-referrer">
-<meta name="build" content="563b19f-2026-11-28">
+<meta name="build" content="34e7d1f-2026-11-28">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Health Explorer</title>
 <link rel="icon" href="../icons/health-explorer-192.png">
@@ -4271,11 +4271,13 @@ const CSS = `
 .wk-top .wk-card{display:flex;flex-direction:column}
 .wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 10px;align-content:start}
 @media(min-width:420px){.wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(min-width:900px){.wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 12px}.wk-top [data-sec=details] .wk-c .wk-v{font-size:26px}.wk-top [data-sec=details] .wk-c .wk-l{font-size:13px}}
+@media(min-width:900px){.wk-top [data-sec=details] .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .wk-top [data-sec=details] .wk-c .wk-l{font-size:12px}
 .wk-top [data-sec=details] .wk-c .wk-v{font-size:22px;margin-top:1px}
 .wk-top [data-sec=details] .wk-c .wk-v small{font-size:11px;margin-left:2px}
 .wk-top [data-sec=details] .wk-c .wk-s{font-size:11px}
+/* ≥900px: the details tile is a square; the grid fills it (rows share the height) and text scales with the tile width */
+@media(min-width:900px){.wk-top [data-sec=details]{container-type:inline-size}.wk-top [data-sec=details] .wk-grid{flex:1 1 auto;min-height:0;grid-auto-rows:minmax(0,1fr);align-content:stretch;gap:2.5cqi 3cqi;margin-top:2cqi}.wk-top [data-sec=details] .wk-c{display:flex;flex-direction:column;justify-content:center}.wk-top [data-sec=details] .wk-c .wk-l{font-size:clamp(13px,3.3cqi,18px);line-height:1.2}.wk-top [data-sec=details] .wk-c .wk-v{font-size:clamp(26px,8.2cqi,48px);margin-top:.15em}.wk-top [data-sec=details] .wk-c .wk-v small{font-size:clamp(11px,3cqi,17px)}.wk-top [data-sec=details] .wk-c .wk-s{font-size:clamp(11px,2.9cqi,16px)}}
 .wk-top .wk-vo2 .wk-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .wk-top .wk-vo2 .wk-c .wk-v{font-size:24px}
 .wk-top .wk-vo2-in{margin-top:auto}
